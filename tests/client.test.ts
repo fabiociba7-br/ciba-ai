@@ -99,6 +99,22 @@ describe("CibaClient", () => {
     await expect(client.getTaskResults("")).rejects.toThrow("invalid_task_id");
   });
 
+  it("requests bounded semantic synthesis for correlated task results", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      task_id: "task-1", synthesis: "As fontes concordam no essencial.",
+      sources: [{ app_id: "com.ciba.notes", status: "completed" }],
+      input_characters: 120, model: "@cf/google/gemma-4-26b-a4b-it",
+      intelligence: { strategy: "bounded-task-synthesis", provider: "cloudflare-workers-ai",
+        inference_calls: 1, max_output_tokens: 384, zero_cost_model_approved: true },
+    }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const result = await client.synthesizeTaskResults("task-1");
+    expect(result.intelligence.strategy).toBe("bounded-task-synthesis");
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/apps/tasks/synthesize");
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ task_id: "task-1" });
+    await expect(client.synthesizeTaskResults("")).rejects.toThrow("invalid_task_id");
+  });
+
   it("maps message and grant fields to the API contract", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ queued: true }), { status: 201 })
