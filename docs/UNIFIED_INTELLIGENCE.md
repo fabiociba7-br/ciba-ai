@@ -38,7 +38,7 @@ A ativação deverá ocorrer somente após inventário dos modelos e licenças, 
 
 ## Memória
 
-A implementação inicial usa somente o histórico limitado enviado na requisição. Uma memória persistente futura deverá ser opt-in por usuário, separada por usuário e aplicativo, minimizada, com retenção configurável, exportável e apagável, e excluída de logs por padrão.
+A implementação atual usa somente o histórico limitado enviado na requisição e não persiste conteúdo. O contrato de memória futura exige opt-in explícito, separação por usuário e aplicativo, minimização, retenção configurável, exportação e exclusão. Ainda não há armazenamento persistente implementado nem chave de criptografia provisionada.
 
 ## Ferramentas e MCP
 
