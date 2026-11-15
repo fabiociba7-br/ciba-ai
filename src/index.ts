@@ -20,6 +20,7 @@ import { validateCuratedMemory } from "./core/memory";
 import { validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./core/apps/registry";
 import { isAppTaskType, selectTaskRoute } from "./core/task-coordinator";
 import { consolidateTaskResults, type TaskResultRecord } from "./core/task-results";
+import { buildTaskSynthesisRequest, MAX_TASK_SYNTHESIS_OUTPUT_TOKENS } from "./core/task-synthesis";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -1574,6 +1575,119 @@ const handleTaskResults = async (request: Request, env: Env) => {
   return json({ task_id: taskId, results, count: results.length, maximum: 20, consolidation });
 };
 
+
+const handleTaskSynthesis = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  if (!(await isAppAllowed(env, device.app_id))) return json({ error: "source_app_disabled" }, 403);
+  if (!(await readOwnerFeatureSettings(env, owner.owner_id)).app_messaging_enabled) {
+    return json({ error: "app_messaging_disabled" }, 403);
+  }
+
+  const body = await readJson(request, 2_000);
+  const taskId = typeof body.task_id === "string" ? body.task_id.trim() : "";
+  if (!taskId || taskId.length > 100) return json({ error: "invalid_task_id" }, 400);
+
+  const timestamp = nowIso();
+  const rows = await env.DB.prepare(`
+    SELECT m.source_app_id, m.task_id, m.payload_json
+    FROM app_messages m
+    WHERE m.owner_id = ? AND m.destination_app_id = ? AND m.task_id = ?
+      AND m.scope = 'task' AND m.acknowledged_at IS NULL AND m.expires_at > ?
+      AND json_extract(m.payload_json, '$.protocol') = 'garcia.task.result'
+      AND EXISTS (
+        SELECT 1 FROM app_access_grants g
+        WHERE g.owner_id = m.owner_id AND g.grantee_app_id = m.source_app_id
+          AND g.source_app_id = m.source_app_id AND g.destination_app_id = m.destination_app_id
+          AND g.permission = 'send' AND g.scope = 'task'
+          AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)
+      )
+      AND EXISTS (
+        SELECT 1 FROM app_access_grants g
+        WHERE g.owner_id = m.owner_id AND g.grantee_app_id = m.destination_app_id
+          AND g.source_app_id = m.source_app_id AND g.destination_app_id = m.destination_app_id
+          AND g.permission = 'receive' AND g.scope = 'task'
+          AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)
+      )
+    ORDER BY m.created_at ASC LIMIT 20
+  `).bind(owner.owner_id, device.app_id, taskId, timestamp, timestamp, timestamp)
+    .all<{ source_app_id: string; task_id: string; payload_json: string }>();
+
+  const results = (rows.results || []).flatMap((row) => {
+    try {
+      const payload = JSON.parse(row.payload_json);
+      return [{ source_app_id: row.source_app_id, task_id: row.task_id, payload }];
+    } catch {
+      return [];
+    }
+  });
+  const synthesisRequest = buildTaskSynthesisRequest(taskId, results as TaskResultRecord[]);
+  if (!synthesisRequest) return json({ error: "no_usable_task_results" }, 409);
+
+  try {
+    await reserveMinuteRateLimit(env, device.device_id);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "";
+    if (reason.includes("request_rate_exceeded")) {
+      return json({ error: "rate_limit_exceeded", retry_after_seconds: 60 }, 429, { "retry-after": "60" });
+    }
+    throw error;
+  }
+
+  const settings = await readRuntimeSettings(env);
+  if (settings.maintenance_mode === "true") return json({ error: "maintenance_mode" }, 503);
+  if (settings.ai_enabled === "false") return json({ error: "ai_disabled" }, 503);
+  const model = resolveModel(settings.ai_model, env.AI_MODEL);
+  if (!model || !ZERO_COST_MODELS.has(model)) return json({ error: "ai_model_not_available" }, 503);
+
+  try {
+    await reserveQuota(env, device.app_id, device.device_id);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "";
+    if (reason.includes("quota_exceeded")) {
+      const retryAfter = secondsUntilUtcDayReset();
+      return json({ error: "daily_quota_exceeded", retry_after_seconds: retryAfter }, 429, { "retry-after": String(retryAfter) });
+    }
+    throw error;
+  }
+
+  const registry = createRuntimeProviderRegistry(env, model, MAX_TASK_SYNTHESIS_OUTPUT_TOKENS);
+  const registeredModel = registry.select("general", "cloudflare-workers-ai");
+  const provider = registeredModel ? registry.get(registeredModel.providerId) : undefined;
+  if (!registeredModel || !provider || !registeredModel.zeroCostApproved) {
+    return json({ error: "ai_provider_not_available" }, 503);
+  }
+
+  const inference = await provider.generate({
+    model: registeredModel.modelId,
+    maxOutputTokens: Math.min(registeredModel.maxOutputTokens, MAX_TASK_SYNTHESIS_OUTPUT_TOKENS),
+    messages: synthesisRequest.messages,
+  });
+  await env.DB.prepare(
+    "UPDATE devices SET last_seen_at = ? WHERE device_id = ?"
+  ).bind(nowIso(), device.device_id).run();
+
+  return json({
+    task_id: taskId,
+    synthesis: inference.text,
+    sources: synthesisRequest.sources.map((source) => ({
+      app_id: source.app_id,
+      status: source.status,
+    })),
+    input_characters: synthesisRequest.input_characters,
+    model: inference.model,
+    intelligence: {
+      strategy: "bounded-task-synthesis",
+      provider: inference.provider,
+      inference_calls: 1,
+      max_output_tokens: MAX_TASK_SYNTHESIS_OUTPUT_TOKENS,
+      zero_cost_model_approved: true,
+    },
+  });
+};
+
 const handleSendAppMessage = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
@@ -1880,6 +1994,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/apps/tasks/results" && request.method === "POST") {
     return handleSubmitTaskResult(request, env);
+  }
+  if (url.pathname === "/v1/apps/tasks/synthesize" && request.method === "POST") {
+    return handleTaskSynthesis(request, env);
   }
   if (url.pathname === "/v1/apps/messages" && request.method === "POST") {
     return handleSendAppMessage(request, env);
