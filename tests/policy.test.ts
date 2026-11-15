@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getLimit, isValidAppId, resolveModel, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE } from "../src/policy";
+import { getLimit, isValidAppId, resolveModel, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_DAILY_GLOBAL_LIMIT, MAX_DAILY_APP_LIMIT, MAX_DAILY_DEVICE_LIMIT, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "../src/policy";
 
 describe("policy: numeric limits", () => {
   it("accepts positive safe integers", () => {
@@ -39,5 +39,19 @@ describe("policy: request throttling", () => {
 describe("policy: administrative authentication throttling", () => {
   it("limits failed admin authentication to 10 attempts per minute", () => {
     expect(MAX_ADMIN_AUTH_FAILURES_PER_MINUTE).toBe(10);
+  });
+});
+
+
+describe("policy: hard usage ceilings", () => {
+  it("keeps global, app, device and output ceilings conservative", () => {
+    expect(MAX_DAILY_GLOBAL_LIMIT).toBe(500);
+    expect(MAX_DAILY_APP_LIMIT).toBe(200);
+    expect(MAX_DAILY_DEVICE_LIMIT).toBe(40);
+    expect(MAX_OUTPUT_TOKENS).toBe(700);
+  });
+  it("caps individual and aggregate input sizes", () => {
+    expect(MAX_MESSAGE_CHARS).toBe(6_000);
+    expect(MAX_TOTAL_INPUT_CHARS).toBe(12_000);
   });
 });
