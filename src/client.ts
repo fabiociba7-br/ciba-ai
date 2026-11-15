@@ -1,3 +1,5 @@
+export const GARCIA_APP_CONTRACT_VERSION = "1.0.0" as const;
+
 export type CibaChatMessage = { role: "user" | "assistant"; content: string };
 export type CibaMessageScope = "task" | "context";
 export type CibaGrantPermission = "send" | "receive" | "memory_read" | "memory_write";
