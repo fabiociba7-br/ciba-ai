@@ -137,6 +137,19 @@ const corsHeaders = (request: Request, env: Env): HeadersInit => {
   };
 };
 
+const applyResponseHeaders = (response: Response, cors: HeadersInit): Response => {
+  const headers = new Headers(response.headers);
+  new Headers(cors).forEach((value, key) => headers.set(key, value));
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("referrer-policy", "no-referrer");
+  headers.set("x-frame-options", "DENY");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+};
+
 const readJson = async (request: Request, maxBytes = 40_000): Promise<Record<string, unknown>> => {
   const declared = Number(request.headers.get("content-length") || 0);
   if (declared > maxBytes) throw new Error("body_too_large");
@@ -502,33 +515,18 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const cors = corsHeaders(request, env);
     try {
-      const response = await handleRequest(request, env);
-      const headers = new Headers(response.headers);
-      new Headers(cors).forEach((value, key) => headers.set(key, value));
-      headers.set("x-content-type-options", "nosniff");
-      headers.set("referrer-policy", "no-referrer");
-      headers.set("x-frame-options", "DENY");
-      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+      return applyResponseHeaders(await handleRequest(request, env), cors);
     } catch (error) {
       // Do not expose database errors, tokens, prompts, or provider internals.
       const reason = error instanceof Error ? error.message : "";
       if (reason === "body_too_large") {
-        const response = json({ error: "body_too_large" }, 413);
-        const headers = new Headers(response.headers);
-        new Headers(cors).forEach((value, key) => headers.set(key, value));
-        return new Response(response.body, { status: response.status, headers });
+        return applyResponseHeaders(json({ error: "body_too_large" }, 413), cors);
       }
       if (reason === "invalid_json") {
-        const response = json({ error: "invalid_json" }, 400);
-        const headers = new Headers(response.headers);
-        new Headers(cors).forEach((value, key) => headers.set(key, value));
-        return new Response(response.body, { status: response.status, headers });
+        return applyResponseHeaders(json({ error: "invalid_json" }, 400), cors);
       }
       console.error("Ciba AI request failed", error instanceof Error ? error.name : "unknown");
-      const response = json({ error: "internal_error" }, 500);
-      const headers = new Headers(response.headers);
-      new Headers(cors).forEach((value, key) => headers.set(key, value));
-      return new Response(response.body, { status: response.status, headers });
+      return applyResponseHeaders(json({ error: "internal_error" }, 500), cors);
     }
-  },
+  }
 };
