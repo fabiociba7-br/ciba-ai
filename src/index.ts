@@ -13,6 +13,8 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
 }
 
+import { getLimit, resolveModel, isValidAppId } from "./policy";
+
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
 const json = (data: unknown, status = 200, extra: HeadersInit = {}) =>
@@ -20,11 +22,6 @@ const json = (data: unknown, status = 200, extra: HeadersInit = {}) =>
     status,
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extra },
   });
-
-const getLimit = (value: string | undefined, fallback: number): number => {
-  const n = Number(value);
-  return Number.isSafeInteger(n) && n > 0 ? n : fallback;
-};
 
 const b64url = (bytes: Uint8Array): string => {
   let binary = "";
@@ -67,22 +64,15 @@ const readRuntimeSettings = async (env: Env): Promise<Record<string, string>> =>
   return Object.fromEntries((rows.results || []).map((row) => [row.setting_key, row.setting_value]));
 };
 
-const ZERO_COST_MODELS = new Set(["@cf/google/gemma-4-26b-a4b-it"]);
-
 const CONFIG_KEYS = new Set([
   "ai_enabled", "ai_model", "daily_global_limit", "daily_app_limit",
   "daily_device_limit", "max_output_tokens", "maintenance_mode",
 ]);
 
-const configuredModel = (settings: Record<string, string>, env: Env) => {
-  const candidate = settings.ai_model || env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it";
-  return ZERO_COST_MODELS.has(candidate) ? candidate : null;
-};
-
 const publicConfig = (settings: Record<string, string>, env: Env) => ({
   service: "ciba-ai",
-  ai_enabled: settings.ai_enabled !== "false" && Boolean(configuredModel(settings, env)),
-  model: configuredModel(settings, env),
+  ai_enabled: settings.ai_enabled !== "false" && Boolean(resolveModel(settings.ai_model, env.AI_MODEL)),
+  model: resolveModel(settings.ai_model, env.AI_MODEL),
   maintenance_mode: settings.maintenance_mode === "true",
   limits: {
     global_daily: getLimit(settings.daily_global_limit || env.DAILY_GLOBAL_LIMIT, 500),
@@ -178,7 +168,7 @@ const handleRegister = async (request: Request, env: Env) => {
   const body = await readJson(request, 8_000);
   const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
   const invite = typeof body.invitation_code === "string" ? body.invitation_code.trim() : "";
-  if (!appId || appId.length > 100 || !(await isAppAllowed(env, appId))) {
+  if (!isValidAppId(appId) || !(await isAppAllowed(env, appId))) {
     return json({ error: "app_not_allowed" }, 403);
   }
   if (invite.length < 20 || invite.length > 256) return json({ error: "invalid_invitation" }, 400);
@@ -221,7 +211,7 @@ const handleCreateInvitation = async (request: Request, env: Env) => {
   }
   const body = await readJson(request, 4_000);
   const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
-  if (!appId || !(await isAppAllowed(env, appId))) return json({ error: "app_not_allowed" }, 400);
+  if (!isValidAppId(appId) || !(await isAppAllowed(env, appId))) return json({ error: "app_not_allowed" }, 400);
 
   const hours = typeof body.valid_hours === "number" && Number.isInteger(body.valid_hours)
     ? Math.min(Math.max(body.valid_hours, 1), 168) : 24;
@@ -293,7 +283,7 @@ const handleChat = async (request: Request, env: Env) => {
     throw error;
   }
 
-  const model = configuredModel(settings, env);
+  const model = resolveModel(settings.ai_model, env.AI_MODEL);
   if (!model) return json({ error: "ai_model_not_available" }, 503);
   const maxTokens = Math.min(getLimit(settings.max_output_tokens || env.MAX_OUTPUT_TOKENS, 700), 2_000);
   const inputMessages = [
@@ -347,7 +337,7 @@ const handleAdminApps = async (request: Request, env: Env) => {
   const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
   const displayName = typeof body.display_name === "string" ? body.display_name.trim() : "";
   const enabled = body.enabled === undefined ? true : body.enabled;
-  if (!/^[A-Za-z0-9_.]{3,150}$/.test(appId) || !displayName || displayName.length > 100 ||
+  if (!isValidAppId(appId) || !displayName || displayName.length > 100 ||
       typeof enabled !== "boolean") return json({ error: "invalid_app" }, 400);
   const timestamp = nowIso();
   await env.DB.prepare(
@@ -421,7 +411,7 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
       service: "ciba-ai",
       status: "ready",
       database: "connected",
-      ai_enabled: settings.ai_enabled !== "false" && Boolean(configuredModel(settings, env)),
+      ai_enabled: settings.ai_enabled !== "false" && Boolean(resolveModel(settings.ai_model, env.AI_MODEL)),
       maintenance_mode: settings.maintenance_mode === "true",
       inference: "cloudflare-workers-ai",
     });
