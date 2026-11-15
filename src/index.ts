@@ -505,6 +505,9 @@ export default {
       const response = await handleRequest(request, env);
       const headers = new Headers(response.headers);
       new Headers(cors).forEach((value, key) => headers.set(key, value));
+      headers.set("x-content-type-options", "nosniff");
+      headers.set("referrer-policy", "no-referrer");
+      headers.set("x-frame-options", "DENY");
       return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
     } catch (error) {
       // Do not expose database errors, tokens, prompts, or provider internals.
