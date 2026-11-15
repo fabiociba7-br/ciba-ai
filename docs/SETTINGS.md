@@ -160,3 +160,18 @@ A resposta inclui:
 O inventário nunca retorna tokens, hashes de tokens, credenciais ou conteúdo de conversas. Os dispositivos são limitados a 100 e as concessões a 200 registros mais recentes. O endpoint é somente leitura; alterações continuam usando as rotas específicas de configurações, concessões e revogação.
 
 **Escopo desta etapa:** API de dados do painel e método correspondente no SDK. A interface visual ainda não foi criada nem publicada. Nenhuma migration foi aplicada e nenhum deploy foi realizado.
+
+
+## Interface web privada Garcia
+
+A interface inicial do painel está disponível na rota `GET /dashboard` do próprio Worker. Ela não depende de framework, CDN, serviço de hospedagem adicional ou armazenamento de navegador.
+
+O painel oferece:
+- visão geral do estado real da IA, modelo, limites e capacidades ainda desativadas;
+- ativação e desativação das opções de memória e comunicação;
+- inventário de aplicativos conectados e dispositivos pareados;
+- consulta, criação e revogação de concessões de acesso.
+
+O usuário informa o token de um dispositivo já pareado. O token fica somente em memória JavaScript durante a sessão e é descartado ao sair ou fechar a página; não é escrito em `localStorage` nem `sessionStorage`. A página chama somente endpoints do mesmo domínio e não envia credenciais a serviços externos. A resposta HTML usa política CSP restritiva, bloqueio de cache e cabeçalhos de segurança.
+
+A rota da interface é pública no sentido de que entrega apenas o HTML estático; os dados e todas as alterações continuam protegidos pelas APIs autenticadas do proprietário. Para usar o painel, o Worker e as migrations necessárias precisam estar configurados. Esta implementação no repositório não significa que já esteja publicado.
