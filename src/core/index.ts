@@ -18,3 +18,6 @@ export type { AppMessageAccessRequest, AppMessageEnvelope, AppMessageGrant, AppM
 
 export { canDeviceActForOwner, canPairDevice, canUseOwnerPairingInvitation } from "./owner";
 export type { OwnerBoundDevice, OwnerIdentity, OwnerPairingInvitation, OwnerStatus } from "./owner";
+
+export { canUseAppAccessGrant } from "./access-grants";
+export type { AppAccessGrant, AppAccessPermission, AppAccessRequest, AppAccessScope } from "./access-grants";
