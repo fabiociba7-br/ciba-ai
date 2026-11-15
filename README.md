@@ -11,9 +11,13 @@ Gateway privado de IA compartilhada para aplicativos da família Ciba.
 - Limites diários por dispositivo, aplicativo e instalação.
 - Não persistir o conteúdo das conversas.
 
+## Custo zero: condição obrigatória
+
+A franquia gratuita documentada pela Cloudflare é de 10.000 Neurons por dia, compartilhada entre os modelos elegíveis. No plano Free, as chamadas falham ao atingir o limite; no plano Paid, o excedente pode ser cobrado. Para manter custo zero, use uma conta Workers Free, não habilite Workers Paid nem créditos pré-pagos do AI Gateway e não configure fallback pago. O limite interno de requisições do Ciba AI é uma proteção adicional, não uma conversão exata de Neurons. Confira o painel de consumo da Cloudflare regularmente. [Documentação oficial de preços](https://developers.cloudflare.com/workers-ai/platform/pricing/).
+
 ## Estado do projeto
 
-Esta é a primeira implementação no repositório. Ainda exige configuração da conta Cloudflare, criação do banco D1, definição dos segredos, seleção/validação do modelo disponível e testes de integração antes de uso real.
+Esta é a primeira implementação no repositório. O CI de TypeScript passou. Ainda exige configuração da conta Cloudflare, criação do banco D1, definição dos segredos, confirmação dos package IDs Android e teste real de inferência antes de uso.
 
 ## Arquitetura
 
