@@ -541,8 +541,12 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
       model,
       agents: listAgents(),
       multi_model_fanout_enabled: false,
+      multi_model_ensemble_available: true,
+      provider_registry_available: true,
+      openai_compatible_adapter_available: true,
       persistent_memory_enabled: false,
       external_tools_enabled: false,
+      tool_contracts_available: true,
     });
   }
   if (url.pathname === "/v1/auth/register" && request.method === "POST") {
