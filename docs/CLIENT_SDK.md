@@ -114,3 +114,10 @@ getTaskResults(taskId) continua retornando os resultados individuais e agora inc
 O método `synthesizeTaskResults(taskId)` chama `POST /v1/apps/tasks/synthesize`. O Worker autentica o dispositivo, exige proprietário ativo, comunicação entre apps habilitada e concessões vigentes para as respostas. Só então envia até 20 resultados concluídos/parciais para uma chamada de inferência no modelo aprovado para custo zero.
 
 A síntese é separada da comparação estrutural já incluída em `getTaskResults()`. Ela identifica convergências, divergências e incertezas, preservando os IDs dos apps que forneceram evidências. Conteúdo recebido é tratado como dado não confiável e nunca como instrução executável. A entrada é limitada a 12.000 caracteres e a saída a 384 tokens. A chamada consome os limites diários e por minuto do dispositivo; não é executada automaticamente.
+
+
+## Recuperação contextual da memória
+
+Use `retrieveMemory(query, limit?)` para localizar itens curados relevantes sem listar toda a memória. O endpoint `POST /v1/owner/memory/retrieve` faz uma busca lexical determinística, retorna até 20 registros ordenados por correspondência e não chama nenhum modelo (`inference_calls: 0`).
+
+O servidor autentica o dispositivo, exige proprietário ativo e memória habilitada. A memória do próprio app pode ser pesquisada diretamente; memória do proprietário e de outros apps só entra nos resultados com uma concessão vigente de `memory_read` para o escopo correspondente. Itens expirados ou excluídos são ignorados. A busca não cria, altera ou exclui memórias e não armazena a consulta.
