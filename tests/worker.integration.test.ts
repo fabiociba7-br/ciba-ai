@@ -215,23 +215,23 @@ describe("Ciba AI response security headers", () => {
 describe("Ciba AI administrative safety ceilings", () => {
   it("rejects runtime limits that exceed the zero-cost safety ceilings", async () => {
     const globalLimit = await adminRequest("/v1/admin/settings", "POST", {
-      settings: { daily_global_limit: 501 },
+      settings: { daily_global_limit: 51 },
     });
     expect(globalLimit.status).toBe(400);
     expect(await globalLimit.json()).toEqual({
       error: "setting_exceeds_safety_ceiling",
       key: "daily_global_limit",
-      maximum: 500,
+      maximum: 50,
     });
 
     const outputLimit = await adminRequest("/v1/admin/settings", "POST", {
-      settings: { max_output_tokens: 701 },
+      settings: { max_output_tokens: 513 },
     });
     expect(outputLimit.status).toBe(400);
     expect(await outputLimit.json()).toEqual({
       error: "setting_exceeds_safety_ceiling",
       key: "max_output_tokens",
-      maximum: 700,
+      maximum: 512,
     });
   });
 });
