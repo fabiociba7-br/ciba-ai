@@ -101,10 +101,10 @@ A administração pode reduzir os limites, mas não ultrapassar os tetos definid
 
 | Controle | Teto |
 |---|---:|
-| Requisições globais por dia | 500 |
-| Requisições por app por dia | 200 |
-| Requisições por dispositivo por dia | 40 |
-| Tokens máximos de saída por resposta | 700 |
+| Requisições globais por dia | 50 |
+| Requisições por app por dia | 25 |
+| Requisições por dispositivo por dia | 10 |
+| Tokens máximos de saída por resposta | 512 |
 | Caracteres por mensagem | 6.000 |
 | Caracteres somados por requisição | 12.000 |
 
