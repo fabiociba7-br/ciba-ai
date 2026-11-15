@@ -15,7 +15,7 @@ A unificação inicial é feita na camada de software. Não há fusão dos pesos
 - Provider registry: catálogo em memória de providers e modelos, com seleção por especialidade, verificação de provider habilitado e aprovação explícita para uso no caminho de custo zero.
 - Cloudflare Workers AI adapter: provedor atualmente ativo.
 - OpenAI-compatible adapter: base para endpoints auto-hospedados compatíveis, como Ollama, vLLM ou LM Studio.
-- Memory adapter: contexto limitado à conversa atual, sem persistência de conteúdo.
+- Memory adapter: contexto da conversa atual e memória persistente curada por proprietário/app, com recuperação lexical contextual e permissões explícitas; o chat normal ainda não injeta memórias automaticamente.
 - GET /v1/ai/capabilities: informa as capacidades realmente habilitadas.
 
 ## Transparência sobre agentes
@@ -53,7 +53,7 @@ A base de política em `src/core/memory.ts` define escopos, concessões, permiss
 
 O fluxo de resultados possui uma camada determinística de consolidação (src/core/task-results.ts). Ao consultar os resultados correlacionados de uma tarefa, Garcia compara as estruturas JSON retornadas pelos apps, contabiliza respostas concluídas/parciais/falhas e identifica concordância exata ou divergência. Se houver divergência, não escolhe um resultado nem inventa uma resposta combinada; mantém a proveniência por aplicativo e deixa o consenso vazio. A comparação ignora apenas a ordem das chaves dos objetos JSON.
 
-Essa etapa não adiciona chamadas de IA, não ativa ensemble ou modelos externos e não altera o modo de inferência atual (single-pass). Portanto, ela não acrescenta custo de inferência. Uma futura síntese semântica exigirá uma etapa separada, orçamento explícito, modelo aprovado para custo zero e testes específicos; não está ativada aqui.
+A síntese semântica opcional foi adicionada em `POST /v1/apps/tasks/synthesize`, com até 20 resultados, entrada limitada a 12.000 caracteres, saída até 384 tokens e uma única chamada no modelo aprovado para custo zero. Ela não ativa ensemble ou modelos externos e não altera o chat normal. Consome os limites de uso do dispositivo e ainda depende do deploy para ficar disponível em produção.
 
 ## Ferramentas e MCP
 
