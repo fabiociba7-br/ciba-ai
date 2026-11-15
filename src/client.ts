@@ -415,6 +415,23 @@ export class CibaClient {
     return this.request(`/v1/owner/memory?${params.toString()}`);
   }
 
+  retrieveMemory<T = Record<string, unknown>>(query: string, limit = 10): Promise<{
+    query: string;
+    memories: T[];
+    returned: number;
+    searched_records: number;
+    retrieval: "deterministic-keyword";
+    inference_calls: 0;
+    shared_memory_requires_explicit_grant: true;
+  }> {
+    if (query.trim().length < 2 || query.length > 500) throw new Error("invalid_memory_query");
+    if (!Number.isInteger(limit) || limit < 1 || limit > 20) throw new Error("invalid_memory_limit");
+    return this.request("/v1/owner/memory/retrieve", {
+      method: "POST",
+      body: JSON.stringify({ query, limit }),
+    });
+  }
+
   saveMemory(input: CibaMemoryInput): Promise<Record<string, unknown>> {
     const params = new URLSearchParams({ scope: input.scope });
     if (input.sourceAppId) params.set("source_app_id", input.sourceAppId);
