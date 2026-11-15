@@ -85,3 +85,8 @@ Os códigos são armazenados apenas como hashes. O app deve armazenar o token de
 O contrato comum está documentado em [APP_INTEGRATION_CONTRACT.md](./APP_INTEGRATION_CONTRACT.md), versão `garcia-app@1.0.0`. O schema JSON do transporte fica em `schemas/app-message-v1.schema.json` e um exemplo TypeScript completo em `examples/garcia-integration.ts`. O SDK exporta `GARCIA_APP_CONTRACT_VERSION` para identificar a versão contratual incorporada.
 
 Consulte o contrato antes de integrar um novo app. Ele descreve o vínculo por convites, armazenamento seguro do token, chat, mensagens, permissões, tratamento de erros e limites. O exemplo também é incluído no typecheck do CI.
+
+
+## Identidade e reconhecimento do aplicativo
+
+`getAppIdentity()` chama `GET /v1/apps/identity`. O Worker deriva o aplicativo e o dispositivo do token autenticado e retorna o perfil cadastrado, versão do contrato e outros aplicativos habilitados com dispositivos ativos vinculados ao mesmo proprietário. As capacidades listadas são declarativas: não habilitam execução de ações e não substituem concessões de acesso.
