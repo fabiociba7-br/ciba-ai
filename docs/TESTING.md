@@ -39,6 +39,8 @@ O teste de cotas força uma configuração de modelo inválida diretamente no D1
 - status de prontidão degradado quando o modelo não é permitido;
 - ocultação de modelos fora da allowlist em `/v1/models`;
 - configuração pública coerente com o estado real da IA;
-- bloqueio temporário após 10 falhas de autenticação administrativa no mesmo minuto e IP.
+- bloqueio temporário após 10 falhas de autenticação administrativa no mesmo minuto e IP;
+- rejeição de origens de navegador não configuradas;
+- cabeçalhos básicos de segurança também nas respostas de erro.
 
 Os testes não substituem o teste de integração com Workers AI real, que só será feito depois do provisionamento Cloudflare e com autorização explícita para usar a conta.
