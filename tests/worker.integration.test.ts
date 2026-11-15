@@ -288,6 +288,24 @@ describe("Ciba AI owner-controlled app access grants", () => {
     const defaultSettings = await ownerRequest("/v1/owner/settings", "GET");
     expect((await defaultSettings.json() as { settings: { memory_enabled: boolean; app_messaging_enabled: boolean } }).settings)
       .toEqual({ memory_enabled: false, app_messaging_enabled: false });
+
+    const dashboardResponse = await ownerRequest("/v1/owner/dashboard", "GET");
+    expect(dashboardResponse.status).toBe(200);
+    const dashboard = await dashboardResponse.json() as {
+      identity: string;
+      intelligence: { mode: string; multi_model_execution_enabled: boolean };
+      connected_apps: Array<{ app_id: string; active_device_count: number }>;
+      devices: Array<Record<string, unknown>>;
+      security: { credentials_returned: boolean; conversation_content_returned: boolean };
+    };
+    expect(dashboard.identity).toBe("Garcia");
+    expect(dashboard.intelligence.mode).toBe("single-pass");
+    expect(dashboard.intelligence.multi_model_execution_enabled).toBe(false);
+    expect(dashboard.connected_apps.some((app) => app.app_id === sourceApp && app.active_device_count === 1)).toBe(true);
+    expect(dashboard.devices).toHaveLength(1);
+    expect(dashboard.devices[0]).not.toHaveProperty("token_hash");
+    expect(dashboard.security).toEqual({ credentials_returned: false, conversation_content_returned: false });
+
     const enabled = await ownerRequest("/v1/owner/settings", "POST", {
       settings: { app_messaging_enabled: true },
     });
