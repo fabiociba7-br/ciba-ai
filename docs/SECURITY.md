@@ -25,6 +25,8 @@ O identificador de aplicativo é uma declaração do cliente, não uma prova cri
 - Não armazenar histórico de conversas neste serviço.
 - Configurar alertas e limites na própria conta Cloudflare.
 
+Todas as respostas do Worker recebem `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` e `X-Frame-Options: DENY`, inclusive respostas de erro.
+
 ## Proteção administrativa
 
 As rotas `/v1/admin/*` exigem `ADMIN_TOKEN` no cabeçalho Bearer. Falhas são limitadas por minuto usando o endereço fornecido pela borda Cloudflare; ao atingir o limite, o Worker responde `429 admin_auth_rate_limited` com `retry_after_seconds`. Se o cabeçalho de IP não estiver disponível, as falhas compartilham o bucket `unknown`, o que é intencionalmente conservador. A tabela `admin_auth_usage` guarda um hash com pepper derivado do `ADMIN_TOKEN`, nunca o endereço IP em texto puro.
