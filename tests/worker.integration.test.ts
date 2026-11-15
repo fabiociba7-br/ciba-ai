@@ -664,6 +664,12 @@ describe("Ciba AI private app-to-app message relay", () => {
     expect(await taskResults.json()).toMatchObject({
       task_id: dispatchBody.route.task_id,
       count: 1,
+      consolidation: {
+        status: "single_result",
+        completed_results: 1,
+        agreement: true,
+        consensus_result: { summary: "Resumo concluído", items: 3 },
+      },
       results: [expect.objectContaining({
         source_app_id: targetApp,
         payload: {
