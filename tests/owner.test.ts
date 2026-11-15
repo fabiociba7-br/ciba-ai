@@ -49,11 +49,12 @@ describe("owner access through authenticated devices", () => {
 
 describe("authenticated device pairing", () => {
   it("pairs only an unlinked, active device for the invited app", () => {
-    expect(canPairDevice(device, invitation, owner, 5_000)).toBe(true);
-    expect(canPairDevice({ ...device, ownerId: "already-linked" }, invitation, owner, 5_000)).toBe(false);
-    expect(canPairDevice({ ...device, appId: "another-app" }, invitation, owner, 5_000)).toBe(false);
-    expect(canPairDevice({ ...device, revokedAt: 1_000 }, invitation, owner, 5_000)).toBe(false);
-    expect(canPairDevice(device, invitation, { ...owner, status: "revoked" }, 5_000)).toBe(false);
+    const unlinkedDevice = { ...device, ownerId: null };
+    expect(canPairDevice(unlinkedDevice, invitation, owner, 5_000)).toBe(true);
+    expect(canPairDevice(device, invitation, owner, 5_000)).toBe(false);
+    expect(canPairDevice({ ...unlinkedDevice, appId: "another-app" }, invitation, owner, 5_000)).toBe(false);
+    expect(canPairDevice({ ...unlinkedDevice, revokedAt: 1_000 }, invitation, owner, 5_000)).toBe(false);
+    expect(canPairDevice({ ...device, ownerId: null }, invitation, { ...owner, status: "revoked" }, 5_000)).toBe(false);
     expect(canPairDevice(null, invitation, owner, 5_000)).toBe(false);
   });
 });
