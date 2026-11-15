@@ -17,6 +17,7 @@ export interface Env {
 import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_DAILY_GLOBAL_LIMIT, MAX_DAILY_APP_LIMIT, MAX_DAILY_DEVICE_LIMIT, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "./policy";
 import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents } from "./core";
 import { validateCuratedMemory } from "./core/memory";
+import { rankRelevantMemories, type MemorySearchRecord } from "./core/memory-retrieval";
 import { validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./core/apps/registry";
 import { isAppTaskType, selectTaskRoute } from "./core/task-coordinator";
 import { consolidateTaskResults, type TaskResultRecord } from "./core/task-results";
@@ -799,6 +800,68 @@ const handleOwnerAccessGrants = async (request: Request, env: Env) => {
   }, 201);
 };
 
+
+const handleMemoryRetrieve = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+
+  const featureSettings = await readOwnerFeatureSettings(env, owner.owner_id);
+  if (!featureSettings.memory_enabled) return json({ error: "memory_disabled" }, 403);
+  if (!(await isAppAllowed(env, device.app_id))) return json({ error: "source_app_disabled" }, 403);
+
+  const body = await readJson(request, 2_000);
+  const query = typeof body.query === "string" ? body.query.trim() : "";
+  if (query.length < 2 || query.length > 500) {
+    return json({ error: "invalid_memory_query", minimum: 2, maximum: 500 }, 400);
+  }
+  const limit = body.limit === undefined ? 10 : body.limit;
+  if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 20) {
+    return json({ error: "invalid_memory_limit", minimum: 1, maximum: 20 }, 400);
+  }
+
+  const timestamp = nowIso();
+  const rows = await env.DB.prepare(`
+    SELECT m.memory_id, m.scope, m.source_app_id, m.memory_key, m.value,
+      m.created_by_app_id, m.updated_at, m.expires_at
+    FROM memory_records m
+    WHERE m.owner_id = ? AND m.deleted_at IS NULL
+      AND (m.expires_at IS NULL OR m.expires_at > ?)
+      AND (
+        (m.scope = 'app' AND m.source_app_id = ?)
+        OR (m.scope = 'app' AND EXISTS (
+          SELECT 1 FROM app_access_grants g
+          WHERE g.owner_id = m.owner_id AND g.grantee_app_id = ?
+            AND g.permission = 'memory_read' AND g.scope = 'app_memory'
+            AND g.source_app_id = m.source_app_id AND g.destination_app_id IS NULL
+            AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)
+        ))
+        OR (m.scope = 'owner' AND EXISTS (
+          SELECT 1 FROM app_access_grants g
+          WHERE g.owner_id = m.owner_id AND g.grantee_app_id = ?
+            AND g.permission = 'memory_read' AND g.scope = 'owner_memory'
+            AND g.source_app_id IS NULL AND g.destination_app_id IS NULL
+            AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)
+        ))
+      )
+    ORDER BY m.updated_at DESC LIMIT 200
+  `).bind(
+    owner.owner_id, timestamp, device.app_id, device.app_id, timestamp,
+    device.app_id, timestamp
+  ).all<MemorySearchRecord>();
+
+  const memories = rankRelevantMemories(query, rows.results || [], limit);
+  return json({
+    query,
+    memories,
+    returned: memories.length,
+    searched_records: (rows.results || []).length,
+    retrieval: "deterministic-keyword",
+    inference_calls: 0,
+    shared_memory_requires_explicit_grant: true,
+  });
+};
 
 const handleOwnerMemory = async (request: Request, env: Env, url: URL) => {
   const device = await authenticateDevice(request, env);
@@ -1977,7 +2040,7 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   if (url.pathname === "/v1/owner/access-grants" && (request.method === "GET" || request.method === "POST")) {
     return handleOwnerAccessGrants(request, env);
   }
-  if (url.pathname === "/v1/owner/memory" && ["GET", "POST", "DELETE"].includes(request.method)) {
+  if (url.pathname === "/v1/owner/memory/retrieve" && request.method === "POST") {\n    return handleMemoryRetrieve(request, env);\n  }\n  if (url.pathname === "/v1/owner/memory" && ["GET", "POST", "DELETE"].includes(request.method)) {
     return handleOwnerMemory(request, env, url);
   }
   if (url.pathname === "/v1/owner/devices/revoke" && request.method === "POST") {
