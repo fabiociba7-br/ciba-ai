@@ -1188,7 +1188,8 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
       multi_model_ensemble_available: true,
       provider_registry_available: true,
       openai_compatible_adapter_available: true,
-      persistent_memory_enabled: true,
+      persistent_memory_enabled: false,
+      persistent_memory_api_available: true,
       external_tools_enabled: false,
       tool_contracts_available: true,
     });
@@ -1251,6 +1252,7 @@ export default {
       env.DB.prepare("DELETE FROM invitations WHERE expires_at < ? AND used_at IS NULL").bind(invitationCutoff),
       env.DB.prepare("DELETE FROM owner_pairing_invitations WHERE expires_at < ? AND consumed_at IS NULL").bind(invitationCutoff),
       env.DB.prepare("DELETE FROM app_messages WHERE expires_at < ? OR (acknowledged_at IS NOT NULL AND acknowledged_at < ?)").bind(nowIso(), new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+      env.DB.prepare("DELETE FROM memory_records WHERE (expires_at IS NOT NULL AND expires_at < ?) OR (deleted_at IS NOT NULL AND deleted_at < ?)").bind(nowIso(), new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
     ]);
   },
   async fetch(request: Request, env: Env): Promise<Response> {
