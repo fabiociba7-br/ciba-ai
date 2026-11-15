@@ -73,7 +73,7 @@ O callback é consultado em cada chamada autenticada. O SDK não persiste tokens
 | Conversar com Garcia | POST /v1/ai/chat | Token de dispositivo | Até 20 mensagens; até 1.500 caracteres por mensagem e 3.000 no total |
 | Enviar mensagem a outro app | POST /v1/apps/messages | Token de dispositivo | Requer recurso ativado e concessões send/receive |
 | Consultar caixa de entrada | GET /v1/apps/messages/inbox?limit=20 | Token de dispositivo | Limite máximo 50 |
-| Confirmar recebimento | POST /v1/apps/messages/ack | Token de dispositivo | Até 50 IDs por chamada |
+| Confirmar recebimento | POST /v1/apps/messages/ack | Token de dispositivo | Até 50 IDs por chamada |\n| Consultar e consolidar resultados | GET /v1/apps/tasks/results?task_id=... | Token de dispositivo | Retorna resultados e comparação estrutural determinística |
 | Listar concessões | GET /v1/owner/access-grants | Token pareado | Painel/proprietário |
 | Consultar memória | GET /v1/owner/memory?scope=app | Token pareado | Recurso memória deve estar ativo |
 
@@ -111,7 +111,20 @@ Regras atuais do servidor:
 
 O formato interno do payload é definido pelos apps participantes. Use type e version em cada payload, valide os campos e ignore tipos/versões desconhecidos. Não existe execução automática de payload pelo Garcia.
 
-## 7. Permissões e capacidades
+## 7. Consolidação dos resultados de tarefas
+
+O GET /v1/apps/tasks/results?task_id=... retorna os resultados autorizados e um campo consolidation calculado no servidor, sem uma chamada adicional a modelo e sem custo de inferência.
+
+Estados possíveis:
+- awaiting_results: nenhum resultado válido chegou.
+- no_successful_results: só existem respostas com falha ou sem conteúdo utilizável.
+- single_result: uma resposta concluída/parcial utilizável.
+- agreement: duas ou mais respostas têm conteúdo JSON estruturalmente idêntico (a ordem das chaves de objetos não altera a comparação).
+- divergent: existem conteúdos diferentes; o servidor não escolhe um vencedor nem mistura respostas conflitantes.
+
+O objeto informa contagens por status, fontes participantes, número de saídas distintas, agreement, consensus_result e divergent_source_app_ids. consensus_result só é preenchido quando existe uma saída utilizável única ou concordância exata. Em divergência, consensus_result é null. Isso é comparação determinística, não síntese semântica nem validação de veracidade. Os aplicativos devem preservar a proveniência e apresentar divergências ao usuário, sem tratar uma resposta como fato confirmado.
+
+## 8. Permissões e capacidades
 
 Antes de enviar mensagens, o proprietário deve:
 
