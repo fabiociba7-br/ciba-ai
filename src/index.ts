@@ -469,6 +469,83 @@ const readOwnerFeatureSettings = async (env: Env, ownerId: string): Promise<Owne
   };
 };
 
+const handleOwnerDashboard = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+
+  const [settings, runtimeSettings, appRows, deviceRows, grantRows] = await Promise.all([
+    readOwnerFeatureSettings(env, owner.owner_id),
+    readRuntimeSettings(env),
+    env.DB.prepare(`
+      SELECT a.app_id, a.display_name, a.enabled,
+        COUNT(d.device_id) AS device_count,
+        SUM(CASE WHEN d.revoked_at IS NULL THEN 1 ELSE 0 END) AS active_device_count,
+        MAX(d.last_seen_at) AS last_seen_at
+      FROM devices d
+      INNER JOIN app_registry a ON a.app_id = d.app_id
+      WHERE d.owner_id = ?
+      GROUP BY a.app_id, a.display_name, a.enabled
+      ORDER BY a.display_name COLLATE NOCASE
+    `).bind(owner.owner_id).all<{
+      app_id: string; display_name: string; enabled: number;
+      device_count: number; active_device_count: number; last_seen_at: string | null;
+    }>(),
+    env.DB.prepare(`
+      SELECT d.device_id, d.app_id, a.display_name, d.created_at,
+        d.last_seen_at, d.revoked_at
+      FROM devices d
+      INNER JOIN app_registry a ON a.app_id = d.app_id
+      WHERE d.owner_id = ?
+      ORDER BY d.created_at DESC LIMIT 100
+    `).bind(owner.owner_id).all<{
+      device_id: string; app_id: string; display_name: string;
+      created_at: string; last_seen_at: string | null; revoked_at: string | null;
+    }>(),
+    env.DB.prepare(`
+      SELECT grant_id, grantee_app_id, source_app_id, destination_app_id,
+        permission, scope, created_at, expires_at, revoked_at
+      FROM app_access_grants WHERE owner_id = ?
+      ORDER BY created_at DESC LIMIT 200
+    `).bind(owner.owner_id).all(),
+  ]);
+
+  const config = publicConfig(runtimeSettings, env);
+  return json({
+    identity: "Garcia",
+    owner: { status: "active" },
+    intelligence: {
+      mode: "single-pass",
+      enabled: config.ai_enabled,
+      active: config.ai_enabled && !config.maintenance_mode,
+      maintenance_mode: config.maintenance_mode,
+      provider: config.model ? "cloudflare-workers-ai" : null,
+      model: config.model,
+      configured: Boolean(config.model),
+      agents: listAgents(),
+      multi_model_execution_enabled: false,
+      ensemble_available_but_disabled: true,
+      external_tool_execution_enabled: false,
+      limits: config.limits,
+    },
+    features: settings,
+    connected_apps: appRows.results || [],
+    devices: (deviceRows.results || []).map((row) => ({
+      ...row,
+      status: row.revoked_at ? "revoked" : "active",
+    })),
+    access_grants: grantRows.results || [],
+    limits: { maximum_devices_shown: 100, maximum_grants_shown: 200 },
+    security: {
+      owner_identity_derived_from_paired_device: true,
+      credentials_returned: false,
+      conversation_content_returned: false,
+    },
+  });
+};
+
+
 const handleOwnerSettings = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
@@ -1274,6 +1351,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/owner/pair" && request.method === "POST") {
     return handlePairOwner(request, env);
+  }
+  if (url.pathname === "/v1/owner/dashboard" && request.method === "GET") {
+    return handleOwnerDashboard(request, env);
   }
   if (url.pathname === "/v1/owner/settings" && (request.method === "GET" || request.method === "POST")) {
     return handleOwnerSettings(request, env);
