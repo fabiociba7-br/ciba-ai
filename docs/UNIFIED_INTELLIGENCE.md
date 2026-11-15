@@ -15,7 +15,7 @@ A unificação inicial é feita na camada de software. Não há fusão dos pesos
 - Provider registry: catálogo em memória de providers e modelos, com seleção por especialidade, verificação de provider habilitado e aprovação explícita para uso no caminho de custo zero.
 - Cloudflare Workers AI adapter: provedor atualmente ativo.
 - OpenAI-compatible adapter: base para endpoints auto-hospedados compatíveis, como Ollama, vLLM ou LM Studio.
-- Memory adapter: contexto da conversa atual e memória persistente curada por proprietário/app, com recuperação lexical contextual e permissões explícitas; o chat normal ainda não injeta memórias automaticamente.
+- Memory adapter: contexto da conversa atual e memória persistente curada por proprietário/app, com recuperação lexical contextual e permissões explícitas; o chat injeta automaticamente apenas itens relevantes e autorizados quando a memória está habilitada.
 - GET /v1/ai/capabilities: informa as capacidades realmente habilitadas.
 
 ## Transparência sobre agentes
@@ -47,7 +47,7 @@ O Ciba AI é uma inteligência privada do proprietário e dos aplicativos autori
 
 A base de política em `src/core/memory.ts` define escopos, concessões, permissões, validade, contrato de armazenamento e validação de itens curados. A validação rejeita alguns padrões óbvios de credenciais, mas não é um detector geral de dados sensíveis. O conteúdo precisa ser curado explicitamente; conversas brutas não são transformadas em memória automaticamente.
 
-**Estado efetivo:** o fluxo de chat ainda usa apenas o contexto limitado da requisição atual e não persiste prompts nem respostas. A memória persistente curada tem migration, API de leitura/gravação/exclusão e recuperação contextual determinística; seu uso em ambiente real depende das migrations 0007–0011 e do deploy, ainda não realizados. O relay de mensagens também depende da migration 0009 e de deploy; portanto, não está ativo em produção. Nenhum dado de um app é repassado a outro por padrão.
+**Estado efetivo:** o fluxo de chat usa o contexto limitado da requisição atual e, quando a memória está habilitada para um proprietário pareado ativo, acrescenta até cinco itens curados relevantes e autorizados (máximo de 1.800 caracteres de itens). Memórias do próprio app são elegíveis; memórias centrais ou de outros apps só entram com concessão ativa de leitura. O conteúdo é rotulado como dado não confiável, nunca como instrução. O gateway não persiste prompts nem respostas e não grava memórias automaticamente. A memória persistente curada tem migration, API de leitura/gravação/exclusão e recuperação contextual determinística; seu uso em ambiente real depende das migrations 0007–0011 e do deploy, ainda não realizados. O relay de mensagens também depende da migration 0009 e de deploy; portanto, não está ativo em produção. Nenhum dado de um app é repassado a outro por padrão.
 
 ## Consolidação de tarefas entre aplicativos
 
@@ -132,3 +132,10 @@ O endpoint autenticado `POST /v1/owner/memory/retrieve` recupera itens curados r
 A consulta considera a memória do próprio app e inclui memória central ou de outros apps somente quando existe concessão ativa de leitura para o dispositivo/app solicitante. O proprietário ativo, o interruptor `memory_enabled`, a expiração e a exclusão são verificados no servidor. A busca limita a leitura a 200 registros e devolve até 20 resultados. Não persiste a consulta nem altera dados.
 
 A recuperação é uma API explícita do SDK (`retrieveMemory`); nesta etapa, o chat normal não injeta memórias automaticamente. Isso evita enviar contexto privado a uma inferência sem uma integração explícita e testada em etapa posterior. Não há migration nova.
+
+
+## Injeção contextual de memória no chat (etapa 25)
+
+No chat normal, a última mensagem do usuário é usada como consulta lexical (até 500 caracteres). Se o dispositivo estiver pareado a um proprietário ativo e `memory_enabled` estiver ligado, o Worker busca até 200 registros não expirados e não excluídos que o app autenticado pode ler. São elegíveis a memória do próprio app e, somente com concessão `memory_read` vigente, a memória de outros apps ou do proprietário.
+
+A classificação é determinística e não faz chamada extra de inferência. Até cinco itens relevantes são acrescentados ao contexto de sistema, com limite de 1.800 caracteres para os itens. O prompt identifica esses registros como dados não confiáveis, não como instruções, e orienta a ignorar comandos contidos neles e considerar possível desatualização. Sem proprietário ativo, com memória desligada ou sem correspondências, o chat segue sem memória adicional. Não há gravação automática, histórico persistido, migration nova ou aumento do limite de tokens de saída.
