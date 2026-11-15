@@ -52,3 +52,12 @@ As políticas em `src/core/owner.ts` exigem proprietário ativo, convite não co
 O gateway agora contém endpoints administrativos para criar um proprietário privado com convite inicial e emitir convites para associar outros aplicativos. Um dispositivo já registrado usa seu token de dispositivo para consumir um convite de uso único em `/v1/owner/pair`. A associação é feita no servidor, com verificações de proprietário ativo, aplicativo correspondente, convite não expirado/não consumido e dispositivo ainda não associado. A listagem administrativa inclui o identificador opaco do proprietário associado.
 
 O fluxo depende da migration `0007_private_owner_identity.sql` e permanece inoperante em ambientes cujo banco ainda não recebeu essa migration. Não há cadastro público, sessão de proprietário separada, interface de pareamento nem grants entre apps nesta etapa. Consulte `OWNER_PAIRING.md` para o protocolo.
+
+
+## Concessões explícitas entre aplicativos
+
+A migration `0008_explicit_app_access_grants.sql` cria a tabela `app_access_grants`. Cada registro representa uma única permissão e um único escopo: envio ou recebimento de tarefa/contexto entre um par exato de apps, leitura/escrita da memória de um app específico ou leitura/escrita da memória do proprietário. As concessões podem expirar e podem ser revogadas; uma concessão revogada falha imediatamente. A tabela vincula o registro ao proprietário e ao dispositivo que o criou.
+
+O módulo `src/core/access-grants.ts` contém a política pura de validação, com negação por padrão e correspondência exata de proprietário, aplicativo solicitante, origem, destino, permissão e escopo. A identidade do proprietário e do app solicitante deve ser obtida pelo gateway a partir do dispositivo autenticado, nunca do corpo enviado pelo aplicativo.
+
+**Limite desta etapa:** a migration e a política estão no repositório, mas não há endpoint ou interface para criar, listar ou revogar concessões; também não há leitura dessas concessões pelo gateway, relay, fila ou memória persistente. Nenhum compartilhamento foi ativado. A migration não foi aplicada e não houve deploy. A criação de concessões só deverá ser exposta por um fluxo autenticado de controle do proprietário, não por um endpoint público nem por um simples token administrativo genérico.
