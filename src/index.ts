@@ -114,9 +114,10 @@ const authenticateDevice = async (request: Request, env: Env) => {
 const reserveQuota = async (env: Env, appId: string, deviceId: string) => {
   const day = utcDay();
   const timestamp = nowIso();
-  const globalLimit = getLimit(env.DAILY_GLOBAL_LIMIT, 500);
-  const appLimit = getLimit(env.DAILY_APP_LIMIT, 200);
-  const deviceLimit = getLimit(env.DAILY_DEVICE_LIMIT, 40);
+  const settings = await readRuntimeSettings(env);
+  const globalLimit = getLimit(settings.daily_global_limit || env.DAILY_GLOBAL_LIMIT, 500);
+  const appLimit = getLimit(settings.daily_app_limit || env.DAILY_APP_LIMIT, 200);
+  const deviceLimit = getLimit(settings.daily_device_limit || env.DAILY_DEVICE_LIMIT, 40);
 
   // One multi-row UPSERT is atomic. The trigger aborts the whole statement
   // if any of the three buckets would exceed its limit.
