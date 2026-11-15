@@ -81,3 +81,10 @@ O nome do modelo é configurado em `AI_MODEL`. Antes de produção, confirme no 
 - `POST /v1/admin/settings`
 
 Consulte [SECURITY.md](docs/SECURITY.md) antes de disponibilizar convites ou distribuir os aplicativos. A futura tela Configurações deve usar a API descrita em [SETTINGS.md](docs/SETTINGS.md); segredos de infraestrutura nunca devem ser enviados ao cliente.
+
+
+## Proteções de uso
+
+- O endpoint `POST /v1/ai/chat` limita cada dispositivo a 12 chamadas por minuto; excedentes recebem HTTP 429 (`rate_limit_exceeded`).
+- O modelo efetivo é validado por allowlist no próprio Worker. Atualmente, somente `@cf/google/gemma-4-26b-a4b-it` é aceito; uma configuração de ambiente fora da allowlist não será executada.
+- A migration `0004_minute_rate_limit.sql` cria o contador por minuto. A limpeza agendada remove registros antigos.
