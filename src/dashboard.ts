@@ -57,6 +57,19 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 </section>
 </div>
 <section class="panel" style="margin-bottom:16px"><h3>Aplicativos conectados</h3><div id="apps-list" class="muted small">Nenhum dado carregado.</div></section>
+<section class="panel" style="margin-bottom:16px"><h3>Conectar novo aplicativo</h3>
+<p class="small muted">Escolha um aplicativo já cadastrado e habilitado pelo administrador. Garcia criará dois convites de uso único, válidos por 24 horas.</p>
+<div class="formgrid"><div><label for="available-apps">Aplicativo autorizado</label><select id="available-apps"><option value="">Carregando aplicativos...</option></select></div><div class="actions" style="align-items:end"><button id="connect-app">Gerar convites de conexão</button></div></div>
+<div id="connection-result" class="notice small" style="display:none">
+<strong>Convites gerados — copie e entregue somente ao responsável pelo aplicativo.</strong>
+<p>1. Código de registro: o aplicativo usa este código para registrar o dispositivo e receber seu token.</p><input id="registration-code" type="text" readonly aria-label="Código de registro">
+<div class="actions"><button id="copy-registration" class="secondary">Copiar código de registro</button></div>
+<p>2. Código de pareamento: depois do registro, o aplicativo usa este código para vincular o dispositivo ao seu Garcia.</p><input id="pairing-code" type="text" readonly aria-label="Código de pareamento">
+<div class="actions"><button id="copy-pairing" class="secondary">Copiar código de pareamento</button></div>
+<p id="connection-expiry" class="muted"></p>
+</div>
+<div class="small muted">Os códigos são exibidos somente nesta resposta e não podem ser recuperados depois. Não os publique nem os envie juntos em canais inseguros. A criação do convite não instala nem configura o aplicativo automaticamente.</div>
+</section>
 <section class="panel" style="margin-bottom:16px"><h3>Dispositivos pareados</h3><div class="tablewrap"><table><thead><tr><th>Aplicativo</th><th>Dispositivo</th><th>Estado</th><th>Último acesso</th><th>Ação</th></tr></thead><tbody id="devices-list"></tbody></table></div></section>
 <section class="panel" style="margin-bottom:16px"><h3>Permissões entre aplicativos</h3><div class="tablewrap"><table><thead><tr><th>App autorizado</th><th>Permissão</th><th>Escopo</th><th>Validade</th><th>Estado</th><th></th></tr></thead><tbody id="grants-list"></tbody></table></div>
 <h3 style="margin-top:24px">Criar permissão</h3>
@@ -84,6 +97,7 @@ var el=function(tag,text){var node=document.createElement(tag);node.textContent=
 var dateText=function(value){if(!value)return "Nunca";var d=new Date(value);return isNaN(d.getTime())?String(value):d.toLocaleString("pt-BR")};
 var api=async function(path,method,body){var response=await fetch(path,{method:method||"GET",headers:{"authorization":"Bearer "+token,"accept":"application/json","content-type":"application/json"},body:body?JSON.stringify(body):undefined,cache:"no-store"});var data=await response.json().catch(function(){return {error:"Resposta inválida"};});if(!response.ok)throw new Error(data.error||("HTTP "+response.status));return data};
 var addCell=function(row,value){row.appendChild(el("td",value))};
+var loadAvailableApps=async function(){var data=await api("/v1/owner/available-apps");var select=byId("available-apps");var previous=select.value;select.replaceChildren();(data.apps||[]).forEach(function(app){var option=el("option",app.display_name+" ("+app.app_id+")");option.value=app.app_id;select.appendChild(option)});if(previous&&Array.from(select.options).some(function(o){return o.value===previous}))select.value=previous;if(!select.options.length)select.appendChild(el("option","Nenhum aplicativo habilitado"))};
 var render=function(data){
 dashboard=data;
 byId("ai-state").textContent=data.intelligence.active?"Operacional":data.intelligence.maintenance_mode?"Manutenção":"Indisponível";
@@ -108,10 +122,13 @@ if(!(data.devices||[]).length){var empty=el("tr","");var cell=el("td","Nenhum di
 renderGrants(data.access_grants||[]);
 };
 var renderGrants=function(grants){var body=byId("grants-list");body.replaceChildren();grants.forEach(function(g){var row=el("tr","");addCell(row,g.grantee_app_id);addCell(row,g.permission);addCell(row,g.scope);addCell(row,dateText(g.expires_at));addCell(row,g.revoked_at?"Revogada":(new Date(g.expires_at)<new Date()?"Expirada":"Ativa"));var cell=el("td","");if(!g.revoked_at&&new Date(g.expires_at)>new Date()){var b=el("button","Revogar");b.className="danger";b.addEventListener("click",async function(){if(!confirm("Revogar esta permissão?"))return;try{await api("/v1/owner/access-grants/revoke","POST",{grant_id:g.grant_id});say("Permissão revogada.");await refresh()}catch(e){say(e.message)}});cell.appendChild(b)}row.appendChild(cell);body.appendChild(row)});if(!grants.length){var row=el("tr","");var cell=el("td","Nenhuma permissão cadastrada.");cell.colSpan=6;row.appendChild(cell);body.appendChild(row)}};
-var refresh=async function(){var data=await api("/v1/owner/dashboard");render(data)};
+var refresh=async function(){var data=await api("/v1/owner/dashboard");render(data);await loadAvailableApps()};
 byId("connect").addEventListener("click",async function(){var value=byId("token").value.trim();if(value.length<32){loginSay("Informe um token válido.");return}token=value;byId("connect").disabled=true;loginSay("Verificando acesso...");try{await refresh();byId("login").style.display="none";byId("app").style.display="block";byId("logout").style.display="inline-block";byId("token").value="";loginSay("")}catch(e){token=null;loginSay(e.message)}finally{byId("connect").disabled=false}});
 byId("refresh").addEventListener("click",async function(){try{await refresh();say("Dados atualizados.")}catch(e){say(e.message)}});
 byId("logout").addEventListener("click",function(){token=null;dashboard=null;byId("app").style.display="none";byId("login").style.display="block";byId("logout").style.display="none";byId("token").value="";say("");loginSay("Sessão encerrada.")});
+byId("connect-app").addEventListener("click",async function(){var appId=byId("available-apps").value;if(!appId){say("Selecione um aplicativo habilitado.");return}var button=byId("connect-app");button.disabled=true;try{var result=await api("/v1/owner/apps/connect","POST",{app_id:appId});byId("registration-code").value=result.registration_invitation_code;byId("pairing-code").value=result.pairing_invitation_code;byId("connection-expiry").textContent="Validade dos dois códigos: até "+dateText(result.expires_at)+". Cada código só pode ser usado uma vez.";byId("connection-result").style.display="block";say("Convites gerados. Copie e encaminhe os códigos com segurança.")}catch(e){say(e.message)}finally{button.disabled=false}});
+byId("copy-registration").addEventListener("click",async function(){try{await navigator.clipboard.writeText(byId("registration-code").value);say("Código de registro copiado.")}catch(e){byId("registration-code").select();say("Selecione e copie o código de registro.")}});
+byId("copy-pairing").addEventListener("click",async function(){try{await navigator.clipboard.writeText(byId("pairing-code").value);say("Código de pareamento copiado.")}catch(e){byId("pairing-code").select();say("Selecione e copie o código de pareamento.")}});
 byId("save-settings").addEventListener("click",async function(){try{var result=await api("/v1/owner/settings","POST",{settings:{memory_enabled:byId("memory").checked,app_messaging_enabled:byId("messaging").checked}});say("Controles salvos.");await refresh()}catch(e){say(e.message)}});
 byId("create-grant").addEventListener("click",async function(){var permission=byId("permission").value,scope=byId("scope").value;var body={grantee_app_id:byId("grantee").value.trim(),permission:permission,scope:scope,valid_hours:Number(byId("hours").value)};var source=byId("source").value.trim(),destination=byId("destination").value.trim();if(source)body.source_app_id=source;if(destination)body.destination_app_id=destination;try{await api("/v1/owner/access-grants","POST",body);say("Permissão criada.");await refresh()}catch(e){say(e.message)}});
 byId("permission").addEventListener("change",function(){var p=byId("permission").value;byId("scope").value=(p==="send"||p==="receive")?"task":(p==="memory_read"||p==="memory_write")?"owner_memory":"task"});
