@@ -13,7 +13,7 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
 }
 
-import { getLimit, resolveModel, isValidAppId } from "./policy";
+import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS } from "./policy";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
