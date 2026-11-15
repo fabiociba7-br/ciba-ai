@@ -121,3 +121,8 @@ A síntese é separada da comparação estrutural já incluída em `getTaskResul
 Use `retrieveMemory(query, limit?)` para localizar itens curados relevantes sem listar toda a memória. O endpoint `POST /v1/owner/memory/retrieve` faz uma busca lexical determinística, retorna até 20 registros ordenados por correspondência e não chama nenhum modelo (`inference_calls: 0`).
 
 O servidor autentica o dispositivo, exige proprietário ativo e memória habilitada. A memória do próprio app pode ser pesquisada diretamente; memória do proprietário e de outros apps só entra nos resultados com uma concessão vigente de `memory_read` para o escopo correspondente. Itens expirados ou excluídos são ignorados. A busca não cria, altera ou exclui memórias e não armazena a consulta.
+
+
+## Memória contextual no chat
+
+Quando `memory_enabled` estiver ligado para um proprietário ativo e pareado, `chat(messages)` utiliza automaticamente a última mensagem do usuário para localizar até cinco memórias curadas relevantes. O app autenticado só recebe sua própria memória; itens de outros apps ou do proprietário exigem concessão ativa de leitura. A busca é lexical, não faz inferência adicional e limita os itens a 1.800 caracteres. O conteúdo é tratado como dado não confiável. Sem pareamento, sem habilitação ou sem correspondências, a chamada segue normalmente sem contexto de memória. O chat não salva mensagens nem cria memórias automaticamente.
