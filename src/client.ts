@@ -48,6 +48,31 @@ export interface CibaTaskDispatchInput {
   ttlHours?: number;
 }
 
+export interface CibaTaskResultInput<T = unknown> {
+  taskId: string;
+  clientMessageId: string;
+  result: T;
+  status?: "completed" | "failed" | "partial";
+}
+
+export interface CibaTaskResults<T = unknown> {
+  task_id: string;
+  results: Array<{
+    message_id: string;
+    source_app_id: string;
+    task_id: string;
+    payload: {
+      protocol: "garcia.task.result";
+      status: "completed" | "failed" | "partial";
+      result: T;
+    };
+    created_at: string;
+    expires_at: string;
+  }>;
+  count: number;
+  maximum: number;
+}
+
 export interface CibaTaskDispatchResult {
   dispatched: true;
   duplicate: boolean;
@@ -249,6 +274,23 @@ export class CibaClient {
         ...(input.ttlHours === undefined ? {} : { ttl_hours: input.ttlHours }),
       }),
     });
+  }
+
+  submitTaskResult<T>(input: CibaTaskResultInput<T>): Promise<Record<string, unknown>> {
+    return this.request("/v1/apps/tasks/results", {
+      method: "POST",
+      body: JSON.stringify({
+        task_id: input.taskId,
+        client_message_id: input.clientMessageId,
+        status: input.status ?? "completed",
+        result: input.result,
+      }),
+    });
+  }
+
+  getTaskResults<T = unknown>(taskId: string): Promise<CibaTaskResults<T>> {
+    if (!taskId.trim() || taskId.length > 100) throw new Error("invalid_task_id");
+    return this.request(`/v1/apps/tasks/results?task_id=${encodeURIComponent(taskId)}`);
   }
 
   sendMessage<T>(input: CibaMessageInput<T>): Promise<Record<string, unknown>> {
