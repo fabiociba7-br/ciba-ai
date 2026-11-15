@@ -34,7 +34,7 @@ export interface AppProfileInput {
 
 export function validateAppProfile(input: AppProfileInput): {
   valid: true;
-  profile: Pick<AppIdentityProfile, "description" | "app_type" | "capabilities" | "contract_version">;
+  profile: Pick<AppIdentityProfile, "description" | "app_type" | "capabilities" | "task_types" | "contract_version">;
 } | { valid: false; error: string } {
   const description = input.description === undefined ? "" : input.description;
   const appType = input.app_type === undefined ? "other" : input.app_type;
