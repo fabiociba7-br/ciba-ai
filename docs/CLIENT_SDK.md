@@ -102,3 +102,8 @@ A resposta tipada `CibaAppIdentity` inclui o perfil do app autenticado, capacida
 - `acknowledgeMessages([messageId])`: confirma o processamento depois que o aplicativo consumir o resultado.
 
 O destino só pode responder a uma solicitação ativa originalmente encaminhada a ele. A resposta exige concessões direcionais inversas no escopo `task`; a consulta exige autenticação do proprietário pareado. O SDK não persiste resultados nem executa a consolidação semântica por conta própria.
+
+
+## Consolidação dos resultados de tarefas
+
+getTaskResults(taskId) continua retornando os resultados individuais e agora inclui consolidation, com status, contagens, fontes, consenso estrutural e indicação de divergência. O campo consensus_result só é preenchido quando existe uma única saída utilizável ou quando todas as saídas utilizáveis são estruturalmente idênticas. Em divergência, é null; o SDK não escolhe nem combina respostas por conta própria.
