@@ -13,7 +13,7 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
 }
 
-import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS } from "./policy";
+import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE } from "./policy";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -146,12 +146,13 @@ const reserveQuota = async (env: Env, appId: string, deviceId: string) => {
 const reserveMinuteRateLimit = async (env: Env, deviceId: string) => {
   const minute = new Date().toISOString().slice(0, 16);
   await env.DB.prepare(`
-    INSERT INTO minute_usage(minute, device_id, requests, updated_at)
-    VALUES(?, ?, 1, ?)
+    INSERT INTO minute_usage(minute, device_id, requests, request_limit, updated_at)
+    VALUES(?, ?, 1, ?, ?)
     ON CONFLICT(minute, device_id) DO UPDATE SET
       requests = minute_usage.requests + 1,
+      request_limit = excluded.request_limit,
       updated_at = excluded.updated_at
-  `).bind(minute, deviceId, nowIso()).run();
+  `).bind(minute, deviceId, MAX_REQUESTS_PER_MINUTE, nowIso()).run();
 };
 
 const usageFor = async (env: Env, appId: string, deviceId: string) => {
