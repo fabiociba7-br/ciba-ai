@@ -110,7 +110,7 @@ A resposta informa o dia UTC e os contadores disponíveis para os escopos global
 ## 6. Regras para repetição e conexão
 
 - Não repetir automaticamente uma chamada de chat após timeout sem avaliar o risco de duplicar a resposta e consumir outra cota.
-- Para HTTP 429, respeitar retry_after_seconds quando presente; para cota diária, aguardar o próximo dia UTC ou a orientação do app.
+- Para HTTP 429, respeitar o cabeçalho HTTP `Retry-After` e o campo `retry_after_seconds` quando presentes; para cota diária, aguardar a virada do próximo dia UTC.
 - Para HTTP 401, não entrar em loop de cadastro.
 - Para falhas de rede, usar backoff exponencial limitado e oferecer nova tentativa manual.
 - Nunca criar outro projeto ou outro vínculo OAuth como tentativa automática de corrigir erro do gateway.
