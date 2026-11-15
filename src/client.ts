@@ -32,6 +32,17 @@ export interface CibaInboxMessage<T = unknown> {
   expires_at: string;
 }
 
+export type CibaMemoryScope = "app" | "owner";
+
+export interface CibaMemoryInput {
+  scope: CibaMemoryScope;
+  key: string;
+  value: string;
+  consent: "curated";
+  sourceAppId?: string;
+  validHours?: number;
+}
+
 export interface CibaGrantInput {
   granteeAppId: string;
   sourceAppId?: string | null;
@@ -208,6 +219,31 @@ export class CibaClient {
         scope: input.scope,
         ...(input.validHours === undefined ? {} : { valid_hours: input.validHours }),
       }),
+    });
+  }
+
+  listMemory<T = Record<string, unknown>>(scope: CibaMemoryScope = "app", sourceAppId?: string): Promise<{ memories: T[]; maximum: number; scope: CibaMemoryScope }> {
+    const params = new URLSearchParams({ scope });
+    if (sourceAppId) params.set("source_app_id", sourceAppId);
+    return this.request(`/v1/owner/memory?${params.toString()}`);
+  }
+
+  saveMemory(input: CibaMemoryInput): Promise<Record<string, unknown>> {
+    return this.request("/v1/owner/memory", {
+      method: "POST",
+      body: JSON.stringify({
+        scope: input.scope, key: input.key, value: input.value, consent: input.consent,
+        ...(input.sourceAppId === undefined ? {} : { source_app_id: input.sourceAppId }),
+        ...(input.validHours === undefined ? {} : { valid_hours: input.validHours }),
+      }),
+    });
+  }
+
+  deleteMemory(memoryId: string, scope: CibaMemoryScope = "app", sourceAppId?: string): Promise<Record<string, unknown>> {
+    const params = new URLSearchParams({ scope });
+    if (sourceAppId) params.set("source_app_id", sourceAppId);
+    return this.request(`/v1/owner/memory?${params.toString()}`, {
+      method: "DELETE", body: JSON.stringify({ memory_id: memoryId }),
     });
   }
 
