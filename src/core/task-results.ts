@@ -83,9 +83,7 @@ export function consolidateTaskResults(
     ? null
     : distinct === 1;
   const divergentSourceIds = distinct > 1
-    ? successful
-      .filter((item) => outputGroups.get(canonicalJson(item.payload.result))?.appIds.length === 1)
-      .map((item) => item.source_app_id)
+    ? successful.map((item) => item.source_app_id)
     : [];
 
   return {
