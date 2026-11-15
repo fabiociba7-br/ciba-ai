@@ -61,7 +61,7 @@ Content-Type: application/json
 | `max_output_tokens` | número | Limite de tokens de saída (máximo efetivo 2.000) |
 | `maintenance_mode` | boolean | Bloqueia temporariamente chamadas de chat |
 
-Os valores salvos no D1 prevalecem sobre os valores padrão em `wrangler.toml`. A API valida os tipos e os limites antes de gravar. O endpoint público `/v1/config` não revela tokens administrativos, credenciais ou segredos.
+Os valores salvos no D1 prevalecem sobre os valores padrão em `wrangler.toml`. A API valida os tipos e os limites antes de gravar. Para preservar a meta de custo zero, a seleção de modelo fica restrita à lista de modelos explicitamente liberados no código; atualmente, somente `@cf/google/gemma-4-26b-a4b-it` é aceito. Não cadastrar modelos com cobrança por fora dessa lista. O endpoint público `/v1/config` não revela tokens administrativos, credenciais ou segredos.
 
 ## O que continuará sendo segredo ou provisionamento de infraestrutura
 
@@ -77,3 +77,8 @@ A lista de IDs Android permitidos (`ALLOWED_APP_IDS`) ainda é provisionada no a
 ## Aplicação da migration
 
 Antes de usar os endpoints administrativos, aplicar também a migration `0002_runtime_settings.sql` no D1. A migration ainda não foi aplicada remotamente porque o banco Cloudflare ainda não foi provisionado.
+
+
+## Retenção e limpeza automática
+
+Um Cron diário às 03:17 UTC remove registros de uso diário com mais de 35 dias e convites expirados e não utilizados com mais de 30 dias. O histórico de dispositivos é preservado para auditoria; tokens nunca são armazenados em texto puro.
