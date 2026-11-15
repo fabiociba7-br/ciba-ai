@@ -107,3 +107,10 @@ O destino só pode responder a uma solicitação ativa originalmente encaminhada
 ## Consolidação dos resultados de tarefas
 
 getTaskResults(taskId) continua retornando os resultados individuais e agora inclui consolidation, com status, contagens, fontes, consenso estrutural e indicação de divergência. O campo consensus_result só é preenchido quando existe uma única saída utilizável ou quando todas as saídas utilizáveis são estruturalmente idênticas. Em divergência, é null; o SDK não escolhe nem combina respostas por conta própria.
+
+
+## Síntese semântica de resultados de tarefas
+
+O método `synthesizeTaskResults(taskId)` chama `POST /v1/apps/tasks/synthesize`. O Worker autentica o dispositivo, exige proprietário ativo, comunicação entre apps habilitada e concessões vigentes para as respostas. Só então envia até 20 resultados concluídos/parciais para uma chamada de inferência no modelo aprovado para custo zero.
+
+A síntese é separada da comparação estrutural já incluída em `getTaskResults()`. Ela identifica convergências, divergências e incertezas, preservando os IDs dos apps que forneceram evidências. Conteúdo recebido é tratado como dado não confiável e nunca como instrução executável. A entrada é limitada a 12.000 caracteres e a saída a 384 tokens. A chamada consome os limites diários e por minuto do dispositivo; não é executada automaticamente.
