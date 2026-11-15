@@ -323,6 +323,41 @@ describe("Ciba AI owner-controlled app access grants", () => {
       credentials_returned: false,
       conversation_content_returned: false,
     });
+    const selfRevoke = await ownerRequest("/v1/owner/devices/revoke", "POST", {
+      device_id: device.device_id,
+    });
+    expect(selfRevoke.status).toBe(400);
+    expect(await selfRevoke.json()).toEqual({ error: "current_device_cannot_revoke" });
+
+    const secondInvitation = await adminRequest("/v1/admin/invitations", "POST", {
+      app_id: sourceApp, valid_hours: 1,
+    });
+    const secondDevice = await registerDevice(
+      (await secondInvitation.json() as { invitation_code: string }).invitation_code,
+      sourceApp,
+    );
+    const ownerId = (await ownerResponse.json().catch(() => ({})) as { owner_id?: string }).owner_id;
+    expect(ownerId).toBeDefined();
+    const secondPairing = await adminRequest("/v1/admin/owner-invitations", "POST", {
+      owner_id: ownerId, app_id: sourceApp,
+    });
+    expect(secondPairing.status).toBe(201);
+    const secondPairingCode = (await secondPairing.json() as { pairing_invitation_code: string }).pairing_invitation_code;
+    const secondPair = await request("/v1/owner/pair", {
+      method: "POST",
+      headers: { authorization: `Bearer ${secondDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ pairing_invitation_code: secondPairingCode }),
+    });
+    expect(secondPair.status).toBe(200);
+    const revokedDevice = await ownerRequest("/v1/owner/devices/revoke", "POST", {
+      device_id: secondDevice.device_id,
+    });
+    expect(revokedDevice.status).toBe(200);
+    expect(await revokedDevice.json()).toMatchObject({ revoked: true, device_id: secondDevice.device_id });
+    const revokedDeviceAccess = await request("/v1/owner/dashboard", {
+      headers: { authorization: `Bearer ${secondDevice.access_token}` },
+    });
+    expect(revokedDeviceAccess.status).toBe(401);
 
     const enabled = await ownerRequest("/v1/owner/settings", "POST", {
       settings: { app_messaging_enabled: true },
