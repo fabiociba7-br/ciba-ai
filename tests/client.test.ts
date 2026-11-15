@@ -79,6 +79,25 @@ describe("CibaClient", () => {
     });
   });
 
+  it("submits and retrieves correlated task results", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ submitted: true, duplicate: false }), { status: 201 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ task_id: "task-1", results: [], count: 0, maximum: 20 }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    await client.submitTaskResult({
+      taskId: "task-1", clientMessageId: "result-1",
+      status: "completed", result: { summary: "Concluído" },
+    });
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
+      task_id: "task-1", client_message_id: "result-1",
+      status: "completed", result: { summary: "Concluído" },
+    });
+    const results = await client.getTaskResults("task-1");
+    expect(results.task_id).toBe("task-1");
+    expect(fetcher.mock.calls[1][0]).toBe("https://private.example/v1/apps/tasks/results?task_id=task-1");
+    await expect(client.getTaskResults("")).rejects.toThrow("invalid_task_id");
+  });
+
   it("maps message and grant fields to the API contract", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ queued: true }), { status: 201 })
