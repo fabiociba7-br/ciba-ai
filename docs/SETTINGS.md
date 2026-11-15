@@ -195,3 +195,9 @@ O endpoint `GET /v1/owner/available-apps` lista somente apps habilitados. `POST 
 O painel mostra os códigos uma única vez, com ações para copiar e a data de expiração. Eles devem ser entregues apenas ao responsável pelo aplicativo por canal seguro. O processo ainda exige que o app implemente o registro, armazene seu token em armazenamento seguro e faça o pareamento; o painel não instala nem configura automaticamente o app.
 
 Esta funcionalidade não permite ao proprietário cadastrar novos aplicativos nem alterar o registro global. Um app precisa ser previamente cadastrado e habilitado pela administração. Nenhuma credencial administrativa é colocada no navegador.
+
+## Cadastro de identidade dos aplicativos
+
+O cadastro administrativo `POST /v1/admin/apps` aceita metadados de identidade: descrição (até 280 caracteres), tipo, capacidades declarativas conhecidas e versão semântica do contrato. A listagem administrativa retorna esses campos. O painel do proprietário mostra tipo, descrição e capacidades dos apps conectados. A consulta autenticada `GET /v1/apps/identity` é destinada aos próprios aplicativos e lista apenas outros apps habilitados com dispositivos ativos ligados ao mesmo proprietário.
+
+As capacidades não são permissões nem ferramentas executáveis. Concessões existentes e controles do proprietário continuam sendo a única base para acesso cruzado; nenhum comando é executado a partir desses metadados.
