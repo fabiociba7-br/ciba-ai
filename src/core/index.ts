@@ -12,3 +12,6 @@ export type { CibaRole, ChatTurn, ModelProvider, OrchestrationResult } from "./t
 
 export { buildWorkingContext, canAccessMemory, validateCuratedMemory } from "./memory";
 export type { MemoryAccessRequest, MemoryConsent, MemoryGrant, MemoryPermission, MemoryRecord, MemoryScope, MemoryStore } from "./memory";
+
+export { canRelayAppMessage, validateAppMessageEnvelope } from "./messaging";
+export type { AppMessageAccessRequest, AppMessageEnvelope, AppMessageGrant, AppMessagePermission, AppMessageScope } from "./messaging";
