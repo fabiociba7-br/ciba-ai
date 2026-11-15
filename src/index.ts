@@ -1,3 +1,4 @@
+import { GARCIA_DASHBOARD_HTML } from "./dashboard";
 export interface Env {
   DB: D1Database;
   AI: {
@@ -1282,6 +1283,16 @@ const handleAcknowledgeAppMessages = async (request: Request, env: Env) => {
 const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+  if (url.pathname === "/dashboard" && request.method === "GET") {
+    return new Response(GARCIA_DASHBOARD_HTML, {
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        "permissions-policy": "camera=(), microphone=(), geolocation=()",
+      },
+    });
+  }
   if (url.pathname === "/v1/admin/devices" && request.method === "GET") {
     return handleAdminDevices(request, env);
   }
