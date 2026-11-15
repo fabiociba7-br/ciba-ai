@@ -9,7 +9,7 @@ export default defineConfig({
         wrangler: { configPath: "./wrangler.test.toml" },
         miniflare: {
           bindings: {
-            ADMIN_TOKEN: "integration-test-admin-token",
+            ADMIN_TOKEN: "integration-test-admin-token-0123456789abcdef",
             TEST_MIGRATIONS: migrations,
           },
         },
