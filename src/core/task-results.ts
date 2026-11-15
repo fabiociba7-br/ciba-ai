@@ -34,7 +34,10 @@ export interface TaskConsolidation {
 /** Stable JSON representation used only for exact structural comparison.
  * It does not infer meaning, rank quality, or merge conflicting content. */
 function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (value === null || typeof value !== "object") {
+    const primitive = JSON.stringify(value);
+    return primitive === undefined ? "undefined" : primitive;
+  }
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   const record = value as Record<string, unknown>;
   return `{${Object.keys(record).sort().map((key) =>
