@@ -78,6 +78,35 @@ describe("Ciba AI Worker integration", () => {
     expect(settingsResponse.status).toBe(200);
 
     const secondDevice = await registerDevice(await createInvitation());
+    const oversizedMessage = await request("/v1/ai/chat", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${secondDevice.access_token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ messages: [{ role: "user", content: "x".repeat(6_001) }] }),
+    });
+    expect(oversizedMessage.status).toBe(400);
+    expect(await oversizedMessage.json()).toEqual({ error: "invalid_message" });
+
+    const oversizedConversation = await request("/v1/ai/chat", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${secondDevice.access_token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ messages: [
+        { role: "user", content: "x".repeat(6_000) },
+        { role: "assistant", content: "x".repeat(6_000) },
+        { role: "user", content: "x" },
+      ] }),
+    });
+    expect(oversizedConversation.status).toBe(413);
+    expect(await oversizedConversation.json()).toEqual({
+      error: "prompt_too_large",
+      max_input_chars: 12_000,
+    });
+
     const testDb = (env as unknown as { DB: D1Database }).DB;
     await testDb.prepare(
       "INSERT INTO runtime_settings(setting_key, setting_value, updated_at) VALUES(?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = excluded.updated_at"
