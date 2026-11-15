@@ -492,6 +492,51 @@ const handleAdminSettings = async (request: Request, env: Env) => {
   return json({ saved: entries.map(([key]) => key), settings: await readRuntimeSettings(env) });
 };
 
+const handleAdminAiOverview = async (request: Request, env: Env) => {
+  const authError = await authorizeAdmin(request, env);
+  if (authError) return authError;
+
+  const settings = await readRuntimeSettings(env);
+  const config = publicConfig(settings, env);
+  const modelConfigured = Boolean(config.model);
+  const aiActive = config.ai_enabled && !config.maintenance_mode;
+
+  return json({
+    service: "ciba-ai",
+    mode: "single-pass",
+    ai: {
+      enabled: config.ai_enabled,
+      active: aiActive,
+      maintenance_mode: config.maintenance_mode,
+      provider: "cloudflare-workers-ai",
+      model: config.model,
+      configured: modelConfigured
+    },
+    agents: listAgents(),
+    extensions: {
+      ensemble: {
+        implemented: true,
+        enabled: false,
+        note: "Requires independent providers and explicit server-side budget configuration."
+      },
+      provider_registry: {
+        implemented: true,
+        openai_compatible_adapter_available: true,
+        additional_providers_configured: false
+      },
+      memory: {
+        mode: "request_context_only",
+        persistent: false
+      },
+      tools: {
+        contracts_defined: true,
+        execution_enabled: false
+      }
+    },
+    limits: config.limits
+  });
+};
+
 const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
@@ -504,7 +549,7 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   if (url.pathname === "/v1/admin/apps" && (request.method === "GET" || request.method === "POST")) {
     return handleAdminApps(request, env);
   }
-  if (url.pathname === "/v1/admin/settings" && (request.method === "GET" || request.method === "POST")) {
+  if (url.pathname === "/v1/admin/ai/overview" && request.method === "GET") {\n    return handleAdminAiOverview(request, env);\n  }\n  if (url.pathname === "/v1/admin/settings" && (request.method === "GET" || request.method === "POST")) {
     return handleAdminSettings(request, env);
   }
   if (url.pathname === "/v1/config" && request.method === "GET") {
