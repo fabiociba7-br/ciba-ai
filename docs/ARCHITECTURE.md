@@ -27,3 +27,12 @@ Consulte UNIFIED_INTELLIGENCE.md e OPEN_SOURCE_SELECTION.md para a estratégia d
 3. Implementar revogação e painel administrativo protegido.
 4. Adicionar atestação de integridade para Android quando disponível.
 5. Avaliar inferência local opcional (MLC LLM) como capacidade complementar, nunca como dependência do gateway.
+
+
+## Comunicação privada entre aplicativos
+
+Os aplicativos Ciba não devem confiar diretamente uns nos outros. O Ciba AI será o intermediário central de tarefas e mensagens, preservando a identidade do proprietário e dos dois aplicativos envolvidos.
+
+O contrato em `src/core/messaging.ts` define envelopes com identificador de mensagem e tarefa, proprietário, aplicativo de origem e destino, escopo (`task` ou `context`), conteúdo e expiração. A autorização exige uma concessão que corresponda exatamente ao proprietário, ao aplicativo solicitante, à origem, ao destino, à permissão (envio/recebimento), ao escopo e à validade. O encaminhamento para o mesmo aplicativo é recusado.
+
+**Estado desta etapa:** foram criados contratos, validação de envelope e testes automatizados. Ainda não existe endpoint de relay, fila, entrega entre apps, persistência de mensagens ou interface para conceder permissões. Não há troca de dados ativa. O gateway atual autentica dispositivos vinculados a um único `app_id`, mas ainda não possui identidade central autenticada do proprietário; por isso, não seria seguro ativar o relay agora. A próxima implementação precisa estabelecer essa identidade e o gerenciamento de concessões antes de habilitar entrega real.
