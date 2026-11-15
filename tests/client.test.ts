@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { CibaApiError, CibaClient } from "../src/client";
+import { CibaApiError, CibaClient, GARCIA_APP_CONTRACT_VERSION } from "../src/client";
 
 describe("CibaClient", () => {
+  it("exports the integration contract version", () => {
+    expect(GARCIA_APP_CONTRACT_VERSION).toBe("1.0.0");
+  });
   it("uses the latest token callback and sends chat through the shared API", async () => {
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
       new Response(JSON.stringify({
