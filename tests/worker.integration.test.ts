@@ -668,6 +668,9 @@ describe("Ciba AI private app-to-app message relay", () => {
         source_app_id: targetApp,
         payload: {
           protocol: "garcia.task.result",
+          contract: "garcia-app",
+          contract_version: "1.0.0",
+          task_id: dispatchBody.route.task_id,
           status: "completed",
           result: { summary: "Resumo concluído", items: 3 },
         },
