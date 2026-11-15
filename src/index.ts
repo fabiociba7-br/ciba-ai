@@ -2040,7 +2040,10 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   if (url.pathname === "/v1/owner/access-grants" && (request.method === "GET" || request.method === "POST")) {
     return handleOwnerAccessGrants(request, env);
   }
-  if (url.pathname === "/v1/owner/memory/retrieve" && request.method === "POST") {\n    return handleMemoryRetrieve(request, env);\n  }\n  if (url.pathname === "/v1/owner/memory" && ["GET", "POST", "DELETE"].includes(request.method)) {
+  if (url.pathname === "/v1/owner/memory/retrieve" && request.method === "POST") {
+    return handleMemoryRetrieve(request, env);
+  }
+  if (url.pathname === "/v1/owner/memory" && ["GET", "POST", "DELETE"].includes(request.method)) {
     return handleOwnerMemory(request, env, url);
   }
   if (url.pathname === "/v1/owner/devices/revoke" && request.method === "POST") {
