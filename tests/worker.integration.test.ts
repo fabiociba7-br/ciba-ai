@@ -84,7 +84,7 @@ describe("Ciba AI Worker integration", () => {
         authorization: `Bearer ${secondDevice.access_token}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ messages: [{ role: "user", content: "x".repeat(6_001) }] }),
+      body: JSON.stringify({ messages: [{ role: "user", content: "x".repeat(1_501) }] }),
     });
     expect(oversizedMessage.status).toBe(400);
     expect(await oversizedMessage.json()).toEqual({ error: "invalid_message" });
@@ -96,15 +96,15 @@ describe("Ciba AI Worker integration", () => {
         "content-type": "application/json",
       },
       body: JSON.stringify({ messages: [
-        { role: "user", content: "x".repeat(6_000) },
-        { role: "assistant", content: "x".repeat(6_000) },
+        { role: "user", content: "x".repeat(1_500) },
+        { role: "assistant", content: "x".repeat(1_500) },
         { role: "user", content: "x" },
       ] }),
     });
     expect(oversizedConversation.status).toBe(413);
     expect(await oversizedConversation.json()).toEqual({
       error: "prompt_too_large",
-      max_input_chars: 12_000,
+      max_input_chars: 3_000,
     });
 
     const testDb = (env as unknown as { DB: D1Database }).DB;
