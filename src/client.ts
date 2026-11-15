@@ -127,6 +127,10 @@ export class CibaClient {
     return body as T;
   }
 
+  getAppIdentity<T = Record<string, unknown>>(): Promise<T> {
+    return this.request<T>("/v1/apps/identity");
+  }
+
   getStatus<T = Record<string, unknown>>(): Promise<T> {
     return this.request<T>("/v1/status", {}, false);
   }
