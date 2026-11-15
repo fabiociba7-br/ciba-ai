@@ -6,7 +6,6 @@ const worker = {
   fetch: (request: Request) => workerModule.fetch(
     request,
     env as unknown as Env,
-    {} as ExecutionContext,
   ),
 };
 const adminToken = "integration-test-admin-token";
