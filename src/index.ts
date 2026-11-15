@@ -217,7 +217,7 @@ const handleChat = async (request: Request, env: Env) => {
     ...messages,
   ];
 
-  const result = await env.AI.run(model, { messages: inputMessages, max_tokens: maxTokens });
+  const result = await env.AI.run(model, { messages: inputMessages, max_completion_tokens: maxTokens });
   const output = result as { response?: unknown; [key: string]: unknown };
   await env.DB.prepare(
     "UPDATE devices SET last_seen_at = ? WHERE device_id = ?"
