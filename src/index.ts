@@ -456,6 +456,57 @@ const getActiveOwnerForDevice = async (env: Env, ownerId: string | null) => {
   ).bind(ownerId).first<{ owner_id: string }>();
 };
 
+
+type OwnerFeatureSettings = { memory_enabled: boolean; app_messaging_enabled: boolean };
+
+const readOwnerFeatureSettings = async (env: Env, ownerId: string): Promise<OwnerFeatureSettings> => {
+  const row = await env.DB.prepare(
+    "SELECT memory_enabled, app_messaging_enabled FROM owner_settings WHERE owner_id = ?"
+  ).bind(ownerId).first<{ memory_enabled: number; app_messaging_enabled: number }>();
+  return {
+    memory_enabled: row?.memory_enabled === 1,
+    app_messaging_enabled: row?.app_messaging_enabled === 1,
+  };
+};
+
+const handleOwnerSettings = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+
+  if (request.method === "GET") {
+    return json({ settings: await readOwnerFeatureSettings(env, owner.owner_id) });
+  }
+
+  const body = await readJson(request, 2_000);
+  const settings = body.settings;
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    return json({ error: "invalid_owner_settings" }, 400);
+  }
+  const values = settings as Record<string, unknown>;
+  const keys = Object.keys(values);
+  if (!keys.length || keys.some((key) => !["memory_enabled", "app_messaging_enabled"].includes(key)) ||
+      keys.some((key) => typeof values[key] !== "boolean")) {
+    return json({ error: "invalid_owner_settings" }, 400);
+  }
+  const current = await readOwnerFeatureSettings(env, owner.owner_id);
+  const next = {
+    memory_enabled: values.memory_enabled === undefined ? current.memory_enabled : values.memory_enabled as boolean,
+    app_messaging_enabled: values.app_messaging_enabled === undefined ? current.app_messaging_enabled : values.app_messaging_enabled as boolean,
+  };
+  await env.DB.prepare(`
+    INSERT INTO owner_settings(owner_id, memory_enabled, app_messaging_enabled, updated_at)
+    VALUES(?, ?, ?, ?)
+    ON CONFLICT(owner_id) DO UPDATE SET
+      memory_enabled = excluded.memory_enabled,
+      app_messaging_enabled = excluded.app_messaging_enabled,
+      updated_at = excluded.updated_at
+  `).bind(owner.owner_id, next.memory_enabled ? 1 : 0, next.app_messaging_enabled ? 1 : 0, nowIso()).run();
+
+  return json({ updated: true, settings: next });
+};
+
 const handleOwnerAccessGrants = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
@@ -473,6 +524,7 @@ const handleOwnerAccessGrants = async (request: Request, env: Env) => {
   }
 
   const body = await readJson(request, 8_000);
+  const featureSettings = await readOwnerFeatureSettings(env, owner.owner_id);
   const granteeAppId = typeof body.grantee_app_id === "string" ? body.grantee_app_id.trim() : "";
   const sourceAppId = typeof body.source_app_id === "string" ? body.source_app_id.trim() : null;
   const destinationAppId = typeof body.destination_app_id === "string" ? body.destination_app_id.trim() : null;
@@ -487,6 +539,12 @@ const handleOwnerAccessGrants = async (request: Request, env: Env) => {
     !(await isAppAllowed(env, granteeAppId))
   ) return json({ error: "invalid_grant_fields" }, 400);
   const permission = rawPermission as "send" | "receive" | "memory_read" | "memory_write";
+  if ((permission === "send" || permission === "receive") && !featureSettings.app_messaging_enabled) {
+    return json({ error: "app_messaging_disabled" }, 403);
+  }
+  if ((permission === "memory_read" || permission === "memory_write") && !featureSettings.memory_enabled) {
+    return json({ error: "memory_disabled" }, 403);
+  }
   const scope = rawScope as "task" | "context" | "app_memory" | "owner_memory";
 
   if (permission === "send" || permission === "receive") {
@@ -548,6 +606,8 @@ const handleOwnerMemory = async (request: Request, env: Env, url: URL) => {
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
 
+  const featureSettings = await readOwnerFeatureSettings(env, owner.owner_id);
+  if (!featureSettings.memory_enabled) return json({ error: "memory_disabled" }, 403);
   const scope = url.searchParams.get("scope") || "app";
   const sourceAppId = url.searchParams.get("source_app_id") || device.app_id;
   if (scope !== "app" && scope !== "owner") return json({ error: "invalid_memory_scope" }, 400);
@@ -960,6 +1020,9 @@ const handleSendAppMessage = async (request: Request, env: Env) => {
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   if (!(await isAppAllowed(env, device.app_id))) return json({ error: "source_app_disabled" }, 403);
+  if (!(await readOwnerFeatureSettings(env, owner.owner_id)).app_messaging_enabled) {
+    return json({ error: "app_messaging_disabled" }, 403);
+  }
 
   const body = await readJson(request, 12_000);
   const destinationAppId = typeof body.destination_app_id === "string" ? body.destination_app_id.trim() : "";
@@ -1060,6 +1123,9 @@ const handleAppMessageInbox = async (request: Request, env: Env) => {
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   if (!(await isAppAllowed(env, device.app_id))) return json({ error: "destination_app_disabled" }, 403);
+  if (!(await readOwnerFeatureSettings(env, owner.owner_id)).app_messaging_enabled) {
+    return json({ error: "app_messaging_disabled" }, 403);
+  }
 
   const url = new URL(request.url);
   const requestedLimit = Number(url.searchParams.get("limit") || 20);
@@ -1115,6 +1181,9 @@ const handleAcknowledgeAppMessages = async (request: Request, env: Env) => {
   if (!device) return json({ error: "unauthorized" }, 401);
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
+  if (!(await readOwnerFeatureSettings(env, owner.owner_id)).app_messaging_enabled) {
+    return json({ error: "app_messaging_disabled" }, 403);
+  }
   const body = await readJson(request, 8_000);
   if (!Array.isArray(body.message_ids) || body.message_ids.length < 1 || body.message_ids.length > 50) {
     return json({ error: "invalid_message_ids", maximum: 50 }, 400);
@@ -1205,6 +1274,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/owner/pair" && request.method === "POST") {
     return handlePairOwner(request, env);
+  }
+  if (url.pathname === "/v1/owner/settings" && (request.method === "GET" || request.method === "POST")) {
+    return handleOwnerSettings(request, env);
   }
   if (url.pathname === "/v1/owner/access-grants" && (request.method === "GET" || request.method === "POST")) {
     return handleOwnerAccessGrants(request, env);
