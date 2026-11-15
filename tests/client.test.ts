@@ -99,6 +99,31 @@ describe("CibaClient", () => {
     await expect(client.getTaskResults("")).rejects.toThrow("invalid_task_id");
   });
 
+  it("prepares a quote-backed memory candidate without saving it", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      candidate: { key: "response_style", value: "Prefiro respostas diretas", evidence_excerpt: "Prefiro respostas diretas", source_role: "user", requires_confirmation: true, persisted: false },
+      scope: "app", source_app_id: "com.ciba.app", next_step: "Confirmar e salvar explicitamente",
+      stored: false, inference_calls: 0,
+    }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const result = await client.prepareMemoryCandidate({
+      sourceText: "Prefiro respostas diretas e sem rodeios.",
+      key: "response_style",
+      value: "Prefiro respostas diretas",
+    });
+    expect(result.stored).toBe(false);
+    expect(result.candidate.requires_confirmation).toBe(true);
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/owner/memory/candidates");
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
+      source_role: "user",
+      source_text: "Prefiro respostas diretas e sem rodeios.",
+      key: "response_style",
+      value: "Prefiro respostas diretas",
+      scope: "app",
+    });
+    await expect(client.prepareMemoryCandidate({ sourceText: "x", key: "k", value: "x" })).rejects.toThrow("invalid_memory_candidate_source");
+  });
+
   it("retrieves relevant curated memory without an inference call", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
       query: "estilo de resposta",
