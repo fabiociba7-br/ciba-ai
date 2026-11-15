@@ -50,11 +50,11 @@ const allowedApps = (env: Env) =>
   new Set((env.ALLOWED_APP_IDS || "").split(",").map((s) => s.trim()).filter(Boolean));
 
 const isAppAllowed = async (env: Env, appId: string): Promise<boolean> => {
-  if (allowedApps(env).has(appId)) return true;
   const row = await env.DB.prepare(
-    "SELECT app_id FROM app_registry WHERE app_id = ? AND enabled = 1"
-  ).bind(appId).first<{ app_id: string }>();
-  return Boolean(row);
+    "SELECT enabled FROM app_registry WHERE app_id = ?"
+  ).bind(appId).first<{ enabled: number }>();
+  if (row) return row.enabled === 1;
+  return allowedApps(env).has(appId);
 };
 
 const adminAuthorized = (request: Request, env: Env) =>
