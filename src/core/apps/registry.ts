@@ -46,7 +46,7 @@ export function validateAppProfile(input: AppProfileInput): {
     return { valid: false, error: "invalid_app_capabilities" };
   }
   if (typeof contractVersion !== "string" ||
-      !/^\\d+\\.\\d+\\.\\d+$/.test(contractVersion)) {
+      !/^[0-9]+[.][0-9]+[.][0-9]+$/.test(contractVersion)) {
     return { valid: false, error: "invalid_app_contract_version" };
   }
 
