@@ -19,6 +19,7 @@ import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistr
 import { validateCuratedMemory } from "./core/memory";
 import { validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./core/apps/registry";
 import { isAppTaskType, selectTaskRoute } from "./core/task-coordinator";
+import { consolidateTaskResults, type TaskResultRecord } from "./core/task-results";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -1569,7 +1570,8 @@ const handleTaskResults = async (request: Request, env: Env) => {
     try { payload = JSON.parse(row.payload_json); } catch { payload = null; }
     return { message_id: row.message_id, source_app_id: row.source_app_id, task_id: row.task_id, payload, created_at: row.created_at, expires_at: row.expires_at };
   });
-  return json({ task_id: taskId, results, count: results.length, maximum: 20 });
+  const consolidation = consolidateTaskResults(taskId, results as TaskResultRecord[]);
+  return json({ task_id: taskId, results, count: results.length, maximum: 20, consolidation });
 };
 
 const handleSendAppMessage = async (request: Request, env: Env) => {
