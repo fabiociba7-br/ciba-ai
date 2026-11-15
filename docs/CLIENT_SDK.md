@@ -65,3 +65,7 @@ const dashboard = await client.getOwnerDashboard();
 ```
 
 The endpoint is `GET /v1/owner/dashboard`. It requires a paired device token and returns the current AI mode/model status, owner feature flags, connected apps, safe device metadata, and access grants. It does not return credentials, token hashes, or conversation contents.
+
+## Revogar dispositivo do proprietário
+
+O método `revokeOwnerDevice(deviceId)` chama `POST /v1/owner/devices/revoke`. A operação exige um dispositivo pareado e revoga somente outro dispositivo pertencente ao mesmo proprietário. A sessão autenticada atual não pode revogar a si própria.
