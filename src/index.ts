@@ -286,6 +286,28 @@ const handleChat = async (request: Request, env: Env) => {
   });
 };
 
+const handleAdminDevices = async (request: Request, env: Env) => {
+  if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+  const url = new URL(request.url);
+  const appId = url.searchParams.get("app_id");
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 100, 1), 500);
+  const rows = appId
+    ? await env.DB.prepare("SELECT device_id, app_id, created_at, last_seen_at, revoked_at FROM devices WHERE app_id = ? ORDER BY created_at DESC LIMIT ?").bind(appId, limit).all()
+    : await env.DB.prepare("SELECT device_id, app_id, created_at, last_seen_at, revoked_at FROM devices ORDER BY created_at DESC LIMIT ?").bind(limit).all();
+  return json({ devices: rows.results || [] });
+};
+
+const handleAdminInvitations = async (request: Request, env: Env) => {
+  if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+  const url = new URL(request.url);
+  const appId = url.searchParams.get("app_id");
+  const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 100, 1), 500);
+  const rows = appId
+    ? await env.DB.prepare("SELECT app_id, created_at, expires_at, used_at, consumed_device_id FROM invitations WHERE app_id = ? ORDER BY created_at DESC LIMIT ?").bind(appId, limit).all()
+    : await env.DB.prepare("SELECT app_id, created_at, expires_at, used_at, consumed_device_id FROM invitations ORDER BY created_at DESC LIMIT ?").bind(limit).all();
+  return json({ invitations: rows.results || [] });
+};
+
 const handleAdminApps = async (request: Request, env: Env) => {
   if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
   if (request.method === "GET") {
@@ -349,7 +371,7 @@ const handleAdminSettings = async (request: Request, env: Env) => {
 const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
-  if (url.pathname === "/v1/admin/apps" && (request.method === "GET" || request.method === "POST")) {
+  if (url.pathname === "/v1/admin/devices" && request.method === "GET") {\n    return handleAdminDevices(request, env);\n  }\n  if (url.pathname === "/v1/admin/invitations" && request.method === "GET") {\n    return handleAdminInvitations(request, env);\n  }\n  if (url.pathname === "/v1/admin/apps" && (request.method === "GET" || request.method === "POST")) {
     return handleAdminApps(request, env);
   }
   if (url.pathname === "/v1/admin/settings" && (request.method === "GET" || request.method === "POST")) {
