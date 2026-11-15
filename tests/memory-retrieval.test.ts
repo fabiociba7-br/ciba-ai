@@ -45,7 +45,7 @@ describe("curated memory retrieval ranking", () => {
 
 
 describe("bounded chat memory context", () => {
-  const record = (overrides: Partial<MemorySearchRecord> = {}): RankedMemory => ({
+  const record = (overrides: Partial<RankedMemory> = {}): RankedMemory => ({
     memory_id: "memory-1", scope: "app", source_app_id: "com.ciba.test",
     memory_key: "response_style", value: "Prefere respostas objetivas.",
     created_by_app_id: "com.ciba.test", updated_at: "2026-11-15T00:00:00.000Z",
