@@ -81,8 +81,8 @@ Resposta de sucesso contém model e response. O cliente deve aceitar response co
 
 Regras atuais:
 - até 20 mensagens por requisição;
-- até 12.000 caracteres por mensagem;
-- até 30.000 caracteres somados;
+- até 6.000 caracteres por mensagem;
+- até 12.000 caracteres somados;
 - até 12 chamadas por minuto por dispositivo;
 - cotas diárias globais, por aplicativo e por dispositivo.
 
@@ -123,3 +123,6 @@ A resposta informa o dia UTC e os contadores disponíveis para os escopos global
 - Definir a política de distribuição dos convites.
 - Testar cadastro, armazenamento seguro, revogação, cotas e inferência em ambiente real.
 - Avaliar atestação de integridade do app; o campo app_id sozinho não comprova que o APK é oficial.
+
+
+O Worker aplica também tetos globais de segurança: 500 requisições/dia, 200 por app/dia, 40 por dispositivo/dia e até 700 tokens de saída. Esses valores podem ser reduzidos pela administração, mas não aumentados pela API de configurações.
