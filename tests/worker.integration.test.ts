@@ -332,3 +332,125 @@ describe("Ciba AI owner-controlled app access grants", () => {
     expect(denied.status).toBe(403);
   });
 });
+
+
+describe("Ciba AI private app-to-app message relay", () => {
+  it("delivers only with paired owner identity and matching send/receive grants", async () => {
+    const sourceApp = "com.ciba.relay.source";
+    const targetApp = "com.ciba.relay.target";
+    for (const [appId, displayName] of [[sourceApp, "Relay Source"], [targetApp, "Relay Target"]]) {
+      const response = await adminRequest("/v1/admin/apps", "POST", {
+        app_id: appId, display_name: displayName, enabled: true,
+      });
+      expect(response.status).toBe(200);
+    }
+
+    const sourceInvite = await adminRequest("/v1/admin/invitations", "POST", { app_id: sourceApp, valid_hours: 1 });
+    const sourceCode = (await sourceInvite.json() as { invitation_code: string }).invitation_code;
+    const sourceDevice = await registerDevice(sourceCode, sourceApp);
+    const ownerResponse = await adminRequest("/v1/admin/owners", "POST", { app_id: sourceApp });
+    const ownerCode = (await ownerResponse.json() as { pairing_invitation_code: string }).pairing_invitation_code;
+    const pair = (token: string, code: string) => request("/v1/owner/pair", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ pairing_invitation_code: code }),
+    });
+    expect((await pair(sourceDevice.access_token, ownerCode)).status).toBe(200);
+
+    const ownerBody = await ownerResponse.json() as { owner_id: string };
+    const targetInvite = await adminRequest("/v1/admin/invitations", "POST", { app_id: targetApp, valid_hours: 1 });
+    const targetCode = (await targetInvite.json() as { invitation_code: string }).invitation_code;
+    const targetDevice = await registerDevice(targetCode, targetApp);
+    const targetPairInvite = await adminRequest("/v1/admin/owner-invitations", "POST", {
+      owner_id: ownerBody.owner_id, app_id: targetApp,
+    });
+    const targetPairCode = (await targetPairInvite.json() as { pairing_invitation_code: string }).pairing_invitation_code;
+    expect((await pair(targetDevice.access_token, targetPairCode)).status).toBe(200);
+
+    const grant = (token: string, grantee: string, permission: "send" | "receive") =>
+      request("/v1/owner/access-grants", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          grantee_app_id: grantee,
+          source_app_id: sourceApp,
+          destination_app_id: targetApp,
+          permission,
+          scope: "task",
+          valid_hours: 24,
+        }),
+      });
+    const sendGrant = await grant(sourceDevice.access_token, sourceApp, "send");
+    const receiveGrant = await grant(sourceDevice.access_token, targetApp, "receive");
+    expect(sendGrant.status).toBe(201);
+    expect(receiveGrant.status).toBe(201);
+    const receiveGrantId = (await receiveGrant.json() as { grant: { grant_id: string } }).grant.grant_id;
+
+    const send = (clientMessageId: string) => request("/v1/apps/messages", {
+      method: "POST",
+      headers: { authorization: `Bearer ${sourceDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        destination_app_id: targetApp,
+        client_message_id: clientMessageId,
+        task_id: "task-relay-1",
+        scope: "task",
+        payload: { instruction: "summarize", data: "private task data" },
+      }),
+    });
+    const queued = await send("source-msg-001");
+    expect(queued.status).toBe(201);
+    const duplicate = await send("source-msg-001");
+    expect(duplicate.status).toBe(200);
+    expect((await duplicate.json() as { duplicate: boolean }).duplicate).toBe(true);
+
+    const inbox = () => request("/v1/apps/messages/inbox", {
+      headers: { authorization: `Bearer ${targetDevice.access_token}` },
+    });
+    const received = await inbox();
+    expect(received.status).toBe(200);
+    const inboxBody = await received.json() as { messages: Array<{ message_id: string; payload: { data: string } }> };
+    expect(inboxBody.messages).toHaveLength(1);
+    expect(inboxBody.messages[0].payload.data).toBe("private task data");
+
+    const messageId = inboxBody.messages[0].message_id;
+    const acknowledged = await request("/v1/apps/messages/ack", {
+      method: "POST",
+      headers: { authorization: `Bearer ${targetDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ message_ids: [messageId] }),
+    });
+    expect(acknowledged.status).toBe(200);
+    expect((await acknowledged.json() as { acknowledged: number }).acknowledged).toBe(1);
+    expect((await (await inbox()).json() as { messages: unknown[] }).messages).toHaveLength(0);
+
+    const queuedAfterRevoke = await send("source-msg-002");
+    expect(queuedAfterRevoke.status).toBe(201);
+    const revoked = await request("/v1/owner/access-grants/revoke", {
+      method: "POST",
+      headers: { authorization: `Bearer ${sourceDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ grant_id: receiveGrantId }),
+    });
+    expect(revoked.status).toBe(200);
+    expect((await (await inbox()).json() as { messages: unknown[] }).messages).toHaveLength(0);
+  });
+
+  it("rejects unpaired devices and messages without both sides' grants", async () => {
+    const sourceApp = "com.ciba.relay.denied.source";
+    const targetApp = "com.ciba.relay.denied.target";
+    for (const appId of [sourceApp, targetApp]) {
+      await adminRequest("/v1/admin/apps", "POST", { app_id: appId, display_name: appId, enabled: true });
+    }
+    const sourceInvite = await adminRequest("/v1/admin/invitations", "POST", { app_id: sourceApp, valid_hours: 1 });
+    const sourceCode = (await sourceInvite.json() as { invitation_code: string }).invitation_code;
+    const source = await registerDevice(sourceCode, sourceApp);
+    const denied = await request("/v1/apps/messages", {
+      method: "POST",
+      headers: { authorization: `Bearer ${source.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        destination_app_id: targetApp, client_message_id: "no-grant",
+        task_id: "task-denied", scope: "task", payload: { secret: "no" },
+      }),
+    });
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toEqual({ error: "active_owner_required" });
+  });
+});
