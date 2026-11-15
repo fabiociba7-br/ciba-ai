@@ -6,7 +6,10 @@ Gateway privado de IA compartilhada para aplicativos da família Ciba.
 
 - Um único backend compartilhado por Zupi, GEIVIA e futuros aplicativos Ciba.
 - Acesso controlado por convites e tokens individuais de dispositivo.
-- Inferência inicial pela Cloudflare Workers AI.
+- Núcleo Ciba Core com roteamento por especialidade e identidade unificada.
+- Provider atual Cloudflare Workers AI e adapter preparado para endpoints OpenAI-compatible auto-hospedados.
+- Perfis especialistas selecionados sem chamadas adicionais no modo econômico single-pass.
+- Memória limitada ao contexto enviado; conversas não são persistidas pelo gateway.
 - Sem fallback pago, cobrança automática ou uso de credenciais Google do mantenedor.
 - Limites diários por dispositivo, aplicativo e instalação.
 - Não persistir o conteúdo das conversas.
