@@ -37,9 +37,17 @@ Foi adicionada uma primitiva opt-in de ensemble multi-modelo (`src/core/ensemble
 
 A primitiva de ensemble possui testes automatizados para modo desligado, diversidade de modelos, aprovação de custo zero, limites de entrada e orçamento agregado. A CI executa esses testes; não foi feita execução manual nesta etapa. A ativação no produto deverá ocorrer somente após inventário dos modelos e licenças, medição de latência/qualidade/contexto/consumo, limites por provider, secrets exclusivamente no servidor, avaliação de custo e controle administrativo explícito. O fluxo público continua em `single-pass`: não há ainda dois modelos distintos configurados, e o modo de colaboração não foi ativado.
 
-## Memória
+## Memória privada e comunicação entre apps
 
-A implementação atual usa somente o histórico limitado enviado na requisição e não persiste conteúdo. O contrato de memória futura exige opt-in explícito, separação por usuário e aplicativo, minimização, retenção configurável, exportação e exclusão. Ainda não há armazenamento persistente implementado nem chave de criptografia provisionada.
+O Ciba AI é uma inteligência privada do proprietário e dos aplicativos autorizados por ele. A arquitetura de memória separa três níveis:
+
+1. **Memória do proprietário:** contexto central, disponível a um aplicativo somente quando houver uma concessão explícita do proprietário.
+2. **Memória do aplicativo:** dados isolados por proprietário e `appId`; o aplicativo dono pode acessar seu próprio escopo, mas outros aplicativos não recebem acesso automaticamente.
+3. **Memória compartilhada entre apps:** um aplicativo pode receber acesso de leitura ou escrita ao escopo de outro aplicativo somente por uma concessão específica, que pode expirar.
+
+A base de política em `src/core/memory.ts` define escopos, concessões, permissões, validade, contrato de armazenamento e validação de itens curados. A validação rejeita alguns padrões óbvios de credenciais, mas não é um detector geral de dados sensíveis. O conteúdo precisa ser curado explicitamente; conversas brutas não são transformadas em memória automaticamente.
+
+**Estado efetivo:** o fluxo de chat ainda usa apenas o contexto limitado da requisição atual. Não existe memória persistente, identidade única do proprietário, interface de concessões, API de compartilhamento ou comunicação entre apps ativa. Os contratos desta etapa são fundação técnica, não uma funcionalidade já disponível em produção. A próxima implementação deverá autenticar o proprietário, permitir que ele autorize os aplicativos, criar armazenamento persistente com exportação/exclusão e encaminhar mensagens entre apps pelo Ciba AI com escopos e auditoria. Nenhum dado de um app poderá ser repassado a outro por padrão.
 
 ## Ferramentas e MCP
 
