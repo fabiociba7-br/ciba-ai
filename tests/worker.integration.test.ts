@@ -778,6 +778,18 @@ describe("Ciba AI curated private memory", () => {
     expect(listBody.memories).toHaveLength(1);
     expect(listBody.memories[0].memory_id).toBe(savedBody.memory_id);
 
+    const ownSearch = await ownerRequest("/v1/owner/memory/retrieve", "POST", {
+      query: "estilo de resposta", limit: 5,
+    });
+    expect(ownSearch.status).toBe(200);
+    const ownSearchBody = await ownSearch.json() as {
+      memories: Array<{ memory_id: string; scope: string }>;
+      inference_calls: number;
+    };
+    expect(ownSearchBody.memories.map((memory) => memory.memory_id)).toContain(savedBody.memory_id);
+    expect(ownSearchBody.memories.every((memory) => memory.scope === "app")).toBe(true);
+    expect(ownSearchBody.inference_calls).toBe(0);
+
     const noConsent = await ownerRequest("/v1/owner/memory?scope=app", "POST", {
       key: "no_consent", value: "Não deve salvar.", consent: "disabled",
     });
@@ -806,6 +818,15 @@ describe("Ciba AI curated private memory", () => {
     });
     expect(savedOwner.status).toBe(201);
     const ownerList = await ownerRequest("/v1/owner/memory?scope=owner");
+    const sharedSearch = await ownerRequest("/v1/owner/memory/retrieve", "POST", {
+      query: "memória central explícita", limit: 10,
+    });
+    expect(sharedSearch.status).toBe(200);
+    const sharedSearchBody = await sharedSearch.json() as {
+      memories: Array<{ memory_id: string; scope: string }>;
+    };
+    expect(sharedSearchBody.memories.some((memory) => memory.scope === "owner")).toBe(true);
+
     expect(ownerList.status).toBe(200);
 
     const deleted = await ownerRequest("/v1/owner/memory?scope=app", "DELETE", {
