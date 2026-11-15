@@ -285,6 +285,14 @@ describe("Ciba AI owner-controlled app access grants", () => {
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
 
+    const defaultSettings = await ownerRequest("/v1/owner/settings", "GET");
+    expect((await defaultSettings.json() as { settings: { memory_enabled: boolean; app_messaging_enabled: boolean } }).settings)
+      .toEqual({ memory_enabled: false, app_messaging_enabled: false });
+    const enabled = await ownerRequest("/v1/owner/settings", "POST", {
+      settings: { app_messaging_enabled: true },
+    });
+    expect(enabled.status).toBe(200);
+
     const created = await ownerRequest("/v1/owner/access-grants", "POST", {
       grantee_app_id: sourceApp,
       source_app_id: sourceApp,
@@ -366,6 +374,13 @@ describe("Ciba AI private app-to-app message relay", () => {
     });
     const targetPairCode = (await targetPairInvite.json() as { pairing_invitation_code: string }).pairing_invitation_code;
     expect((await pair(targetDevice.access_token, targetPairCode)).status).toBe(200);
+
+    const enableMessaging = await request("/v1/owner/settings", {
+      method: "POST",
+      headers: { authorization: `Bearer ${sourceDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ settings: { app_messaging_enabled: true } }),
+    });
+    expect(enableMessaging.status).toBe(200);
 
     const grant = (token: string, grantee: string, permission: "send" | "receive") =>
       request("/v1/owner/access-grants", {
@@ -485,6 +500,16 @@ describe("Ciba AI curated private memory", () => {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
+
+    const defaults = await ownerRequest("/v1/owner/settings");
+    expect((await defaults.json() as { settings: { memory_enabled: boolean; app_messaging_enabled: boolean } }).settings)
+      .toEqual({ memory_enabled: false, app_messaging_enabled: false });
+    const blockedMemory = await ownerRequest("/v1/owner/memory?scope=app");
+    expect(blockedMemory.status).toBe(403);
+    const enabled = await ownerRequest("/v1/owner/settings", "POST", {
+      settings: { memory_enabled: true },
+    });
+    expect(enabled.status).toBe(200);
 
     const saved = await ownerRequest("/v1/owner/memory?scope=app", "POST", {
       key: "response_style", value: "Prefere respostas diretas.", consent: "curated",
