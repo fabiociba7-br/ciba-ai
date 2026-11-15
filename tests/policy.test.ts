@@ -45,13 +45,13 @@ describe("policy: administrative authentication throttling", () => {
 
 describe("policy: hard usage ceilings", () => {
   it("keeps global, app, device and output ceilings conservative", () => {
-    expect(MAX_DAILY_GLOBAL_LIMIT).toBe(500);
-    expect(MAX_DAILY_APP_LIMIT).toBe(200);
-    expect(MAX_DAILY_DEVICE_LIMIT).toBe(40);
-    expect(MAX_OUTPUT_TOKENS).toBe(700);
+    expect(MAX_DAILY_GLOBAL_LIMIT).toBe(50);
+    expect(MAX_DAILY_APP_LIMIT).toBe(25);
+    expect(MAX_DAILY_DEVICE_LIMIT).toBe(10);
+    expect(MAX_OUTPUT_TOKENS).toBe(512);
   });
   it("caps individual and aggregate input sizes", () => {
-    expect(MAX_MESSAGE_CHARS).toBe(6_000);
-    expect(MAX_TOTAL_INPUT_CHARS).toBe(12_000);
+    expect(MAX_MESSAGE_CHARS).toBe(1_500);
+    expect(MAX_TOTAL_INPUT_CHARS).toBe(3_000);
   });
 });
