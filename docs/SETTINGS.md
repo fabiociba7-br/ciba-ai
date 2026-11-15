@@ -42,10 +42,10 @@ Content-Type: application/json
   "settings": {
     "ai_enabled": true,
     "ai_model": "@cf/google/gemma-4-26b-a4b-it",
-    "daily_global_limit": 500,
-    "daily_app_limit": 200,
-    "daily_device_limit": 40,
-    "max_output_tokens": 700,
+    "daily_global_limit": 50,
+    "daily_app_limit": 25,
+    "daily_device_limit": 10,
+    "max_output_tokens": 512,
     "maintenance_mode": false
   }
 }
@@ -105,7 +105,7 @@ A administração pode reduzir os limites, mas não ultrapassar os tetos definid
 | Requisições por app por dia | 25 |
 | Requisições por dispositivo por dia | 10 |
 | Tokens máximos de saída por resposta | 512 |
-| Caracteres por mensagem | 6.000 |
-| Caracteres somados por requisição | 12.000 |
+| Caracteres por mensagem | 1.500 |
+| Caracteres somados por requisição | 3.000 |
 
 Esses tetos reduzem o risco de consumo acidental, mas **não garantem** um valor máximo de Neurons nem substituem o painel de consumo e os limites da Cloudflare. A quantidade de Neurons depende do modelo e do conteúdo efetivamente processado.
