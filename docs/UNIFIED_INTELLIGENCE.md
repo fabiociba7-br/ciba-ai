@@ -47,7 +47,7 @@ O Ciba AI é uma inteligência privada do proprietário e dos aplicativos autori
 
 A base de política em `src/core/memory.ts` define escopos, concessões, permissões, validade, contrato de armazenamento e validação de itens curados. A validação rejeita alguns padrões óbvios de credenciais, mas não é um detector geral de dados sensíveis. O conteúdo precisa ser curado explicitamente; conversas brutas não são transformadas em memória automaticamente.
 
-**Estado efetivo:** o fluxo de chat ainda usa apenas o contexto limitado da requisição atual e não persiste prompts nem respostas. A identidade privada do proprietário, o pareamento e a API de concessões estão implementados no código, mas dependem das migrations e do deploy para funcionar no ambiente real. O relay de mensagens agora tem fila D1, endpoints de envio/caixa de entrada/confirmação e exige concessões ativas de envio e recebimento para o mesmo proprietário, origem, destino e escopo. O relay também depende da migration 0009 e de deploy; portanto, ainda não está ativo em produção. Não existe memória persistente. Nenhum dado de um app é repassado a outro por padrão.
+**Estado efetivo:** o fluxo de chat ainda usa apenas o contexto limitado da requisição atual e não persiste prompts nem respostas. A memória persistente curada tem migration, API de leitura/gravação/exclusão e recuperação contextual determinística; seu uso em ambiente real depende das migrations 0007–0011 e do deploy, ainda não realizados. O relay de mensagens também depende da migration 0009 e de deploy; portanto, não está ativo em produção. Nenhum dado de um app é repassado a outro por padrão.
 
 ## Consolidação de tarefas entre aplicativos
 
