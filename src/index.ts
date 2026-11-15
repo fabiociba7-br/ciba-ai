@@ -155,7 +155,12 @@ const readJson = async (request: Request, maxBytes = 40_000): Promise<Record<str
   if (declared > maxBytes) throw new Error("body_too_large");
   const raw = await request.text();
   if (new TextEncoder().encode(raw).byteLength > maxBytes) throw new Error("body_too_large");
-  const parsed: unknown = JSON.parse(raw);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("invalid_json");
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid_json");
   return parsed as Record<string, unknown>;
 };
