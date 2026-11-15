@@ -14,7 +14,7 @@ export interface Env {
 }
 
 import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_DAILY_GLOBAL_LIMIT, MAX_DAILY_APP_LIMIT, MAX_DAILY_DEVICE_LIMIT, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "./policy";
-import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents, canPairDevice } from "./core";
+import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents } from "./core"
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -545,8 +545,8 @@ const handleAdminDevices = async (request: Request, env: Env) => {
   const appId = url.searchParams.get("app_id");
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 100, 1), 500);
   const rows = appId
-    ? await env.DB.prepare("SELECT device_id, app_id, created_at, last_seen_at, revoked_at FROM devices WHERE app_id = ? ORDER BY created_at DESC LIMIT ?").bind(appId, limit).all()
-    : await env.DB.prepare("SELECT device_id, app_id, created_at, last_seen_at, revoked_at FROM devices ORDER BY created_at DESC LIMIT ?").bind(limit).all();
+    ? await env.DB.prepare("SELECT device_id, app_id, owner_id, created_at, last_seen_at, revoked_at FROM devices WHERE app_id = ? ORDER BY created_at DESC LIMIT ?").bind(appId, limit).all()
+    : await env.DB.prepare("SELECT device_id, app_id, owner_id, created_at, last_seen_at, revoked_at FROM devices ORDER BY created_at DESC LIMIT ?").bind(limit).all();
   return json({ devices: rows.results || [] });
 };
 
