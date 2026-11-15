@@ -15,6 +15,7 @@ export interface Env {
 
 import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_DAILY_GLOBAL_LIMIT, MAX_DAILY_APP_LIMIT, MAX_DAILY_DEVICE_LIMIT, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "./policy";
 import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents } from "./core";
+import { validateCuratedMemory } from "./core/memory";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -540,6 +541,136 @@ const handleOwnerAccessGrants = async (request: Request, env: Env) => {
   }, 201);
 };
 
+
+const handleOwnerMemory = async (request: Request, env: Env, url: URL) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+
+  const scope = url.searchParams.get("scope") || "app";
+  const sourceAppId = url.searchParams.get("source_app_id") || device.app_id;
+  if (scope !== "app" && scope !== "owner") return json({ error: "invalid_memory_scope" }, 400);
+  if (scope === "app" && (!isValidAppId(sourceAppId) || !(await isAppAllowed(env, sourceAppId)))) {
+    return json({ error: "invalid_memory_app" }, 400);
+  }
+  if (scope === "owner" && url.searchParams.has("source_app_id")) {
+    return json({ error: "owner_memory_has_no_source_app" }, 400);
+  }
+
+  const isOwnAppMemory = scope === "app" && sourceAppId === device.app_id;
+  const permission = request.method === "GET" ? "memory_read" : "memory_write";
+  if (!isOwnAppMemory) {
+    const grant = await env.DB.prepare(`
+      SELECT grant_id FROM app_access_grants
+      WHERE owner_id = ? AND grantee_app_id = ? AND permission = ?
+        AND scope = ? AND source_app_id IS ? AND destination_app_id IS NULL
+        AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)
+      LIMIT 1
+    `).bind(
+      owner.owner_id, device.app_id, permission,
+      scope === "owner" ? "owner_memory" : "app_memory",
+      scope === "owner" ? null : sourceAppId, nowIso()
+    ).first<{ grant_id: string }>();
+    if (!grant) return json({ error: "memory_access_not_granted" }, 403);
+  }
+
+  if (request.method === "GET") {
+    const rows = scope === "owner"
+      ? await env.DB.prepare(`
+          SELECT memory_id, scope, memory_key, value, created_by_app_id,
+            created_at, updated_at, expires_at
+          FROM memory_records
+          WHERE owner_id = ? AND scope = 'owner' AND deleted_at IS NULL
+            AND (expires_at IS NULL OR expires_at > ?)
+          ORDER BY updated_at DESC LIMIT 200
+        `).bind(owner.owner_id, nowIso()).all()
+      : await env.DB.prepare(`
+          SELECT memory_id, scope, memory_key, value, created_by_app_id,
+            created_at, updated_at, expires_at
+          FROM memory_records
+          WHERE owner_id = ? AND scope = 'app' AND source_app_id = ?
+            AND deleted_at IS NULL AND (expires_at IS NULL OR expires_at > ?)
+          ORDER BY updated_at DESC LIMIT 200
+        `).bind(owner.owner_id, sourceAppId, nowIso()).all();
+    return json({ memories: rows.results || [], maximum: 200, scope, source_app_id: scope === "app" ? sourceAppId : null });
+  }
+
+  const body = await readJson(request, 4_000);
+  if (request.method === "POST") {
+    const key = typeof body.key === "string" ? body.key.trim() : "";
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(key)) {
+      return json({ error: "invalid_memory_key" }, 400);
+    }
+    let value: string;
+    try {
+      value = validateCuratedMemory({
+        consent: body.consent === "curated" ? "curated" : "disabled",
+        value: typeof body.value === "string" ? body.value : "",
+        maxCharacters: 500,
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "invalid_memory_value";
+      return json({ error: code }, 400);
+    }
+    const validHours = body.valid_hours;
+    if (validHours !== undefined &&
+      (typeof validHours !== "number" || !Number.isInteger(validHours) || validHours < 1 || validHours > 8760)) {
+      return json({ error: "invalid_memory_valid_hours", minimum: 1, maximum: 8760 }, 400);
+    }
+    const timestamp = nowIso();
+    const expiresAt = validHours === undefined
+      ? null : new Date(Date.now() + validHours * 60 * 60 * 1000).toISOString();
+    const storedSourceAppId = scope === "owner" ? null : sourceAppId;
+    const existing = scope === "owner"
+      ? await env.DB.prepare(`
+          SELECT memory_id FROM memory_records
+          WHERE owner_id = ? AND scope = 'owner' AND memory_key = ? AND deleted_at IS NULL
+        `).bind(owner.owner_id, key).first<{ memory_id: string }>()
+      : await env.DB.prepare(`
+          SELECT memory_id FROM memory_records
+          WHERE owner_id = ? AND scope = 'app' AND source_app_id = ?
+            AND memory_key = ? AND deleted_at IS NULL
+        `).bind(owner.owner_id, sourceAppId, key).first<{ memory_id: string }>();
+    if (existing) {
+      await env.DB.prepare(`
+        UPDATE memory_records SET value = ?, updated_at = ?, expires_at = ?
+        WHERE memory_id = ? AND owner_id = ? AND deleted_at IS NULL
+      `).bind(value, timestamp, expiresAt, existing.memory_id, owner.owner_id).run();
+      return json({ saved: true, updated: true, memory_id: existing.memory_id, scope, source_app_id: storedSourceAppId });
+    }
+    const count = scope === "owner"
+      ? await env.DB.prepare("SELECT COUNT(*) AS total FROM memory_records WHERE owner_id = ? AND scope = 'owner' AND deleted_at IS NULL")
+          .bind(owner.owner_id).first<{ total: number }>()
+      : await env.DB.prepare("SELECT COUNT(*) AS total FROM memory_records WHERE owner_id = ? AND scope = 'app' AND source_app_id = ? AND deleted_at IS NULL")
+          .bind(owner.owner_id, sourceAppId).first<{ total: number }>();
+    if ((count?.total || 0) >= 200) return json({ error: "memory_limit_reached", maximum: 200 }, 409);
+    const memoryId = crypto.randomUUID();
+    await env.DB.prepare(`
+      INSERT INTO memory_records(
+        memory_id, owner_id, scope, source_app_id, memory_key, value,
+        consent, created_by_app_id, created_at, updated_at, expires_at
+      ) VALUES(?, ?, ?, ?, ?, ?, 'curated', ?, ?, ?, ?)
+    `).bind(memoryId, owner.owner_id, scope, storedSourceAppId, key, value,
+      device.app_id, timestamp, timestamp, expiresAt).run();
+    return json({ saved: true, updated: false, memory_id: memoryId, scope, source_app_id: storedSourceAppId }, 201);
+  }
+
+  if (request.method === "DELETE") {
+    const memoryId = typeof body.memory_id === "string" ? body.memory_id.trim() : "";
+    if (!memoryId || memoryId.length > 100) return json({ error: "invalid_memory_id" }, 400);
+    const result = await env.DB.prepare(`
+      UPDATE memory_records SET deleted_at = ?, updated_at = ?
+      WHERE memory_id = ? AND owner_id = ? AND scope = ?
+        AND source_app_id IS ? AND deleted_at IS NULL
+    `).bind(nowIso(), nowIso(), memoryId, owner.owner_id, scope, scope === "owner" ? null : sourceAppId).run();
+    return result.meta.changes === 1
+      ? json({ deleted: true, memory_id: memoryId })
+      : json({ error: "memory_not_found" }, 404);
+  }
+  return json({ error: "method_not_allowed" }, 405);
+};
+
 const handleRevokeOwnerAccessGrant = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
@@ -1057,7 +1188,7 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
       multi_model_ensemble_available: true,
       provider_registry_available: true,
       openai_compatible_adapter_available: true,
-      persistent_memory_enabled: false,
+      persistent_memory_enabled: true,
       external_tools_enabled: false,
       tool_contracts_available: true,
     });
@@ -1076,6 +1207,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/owner/access-grants" && (request.method === "GET" || request.method === "POST")) {
     return handleOwnerAccessGrants(request, env);
+  }
+  if (url.pathname === "/v1/owner/memory" && ["GET", "POST", "DELETE"].includes(request.method)) {
+    return handleOwnerMemory(request, env, url);
   }
   if (url.pathname === "/v1/owner/access-grants/revoke" && request.method === "POST") {
     return handleRevokeOwnerAccessGrant(request, env);
