@@ -22,7 +22,7 @@ A unificação inicial é feita na camada de software. Não há fusão dos pesos
 
 Os perfis especialistas atuais são instruções especializadas selecionadas pelo roteador e executadas pelo mesmo modelo em uma chamada. Eles não são seis modelos independentes. O endpoint de capacidades deixa explícito que o modo atual é single-pass.
 
-Foi adicionada uma primitiva opt-in de ensemble multi-modelo (`src/core/ensemble.ts`): ela aceita membros com providers/modelos diferentes, limita a três chamadas de especialistas e uma chamada de síntese, reúne resultados bem-sucedidos e retorna os participantes usados. Ela permanece fora do fluxo público. O registro de providers (`src/core/providers/registry.ts`) agora cataloga modelos, valida papéis e limites, e só seleciona modelos marcados como aprovados para custo zero. O fluxo de chat usa esse registro para resolver o provider Cloudflare e o modelo atualmente permitido; o overview administrativo mostra o catálogo efetivamente configurado. O adapter OpenAI-compatible continua preparado, mas não conectado nem configurado. Não há providers externos configurados, credenciais, orçamento por provider nem autorização para encaminhar dados a terceiros. Portanto, a colaboração real entre modelos permanece desativada.
+Foi adicionada uma primitiva opt-in de ensemble multi-modelo (`src/core/ensemble.ts`): ela exige ao menos duas combinações distintas de provider/modelo, aprovação explícita de custo zero para cada modelo, limita a três chamadas de especialistas e uma chamada de síntese, valida o tamanho da entrada e dos relatórios, e aplica um orçamento agregado máximo de 2.048 tokens de saída solicitados por execução. Falhas individuais de especialistas podem ser isoladas, mas a síntese só ocorre se ao menos um relatório for concluído. Ela permanece fora do fluxo público. O registro de providers (`src/core/providers/registry.ts`) agora cataloga modelos, valida papéis e limites, e só seleciona modelos marcados como aprovados para custo zero. O fluxo de chat usa esse registro para resolver o provider Cloudflare e o modelo atualmente permitido; o overview administrativo mostra o catálogo efetivamente configurado. O adapter OpenAI-compatible continua preparado, mas não conectado nem configurado. Não há providers externos configurados, credenciais, orçamento por provider nem autorização para encaminhar dados a terceiros. Portanto, a colaboração real entre modelos permanece desativada.
 
 ## Fluxo atual
 
@@ -35,7 +35,7 @@ Foi adicionada uma primitiva opt-in de ensemble multi-modelo (`src/core/ensemble
 
 ## Próxima evolução multi-modelo
 
-A ativação deverá ocorrer somente após inventário dos modelos e licenças, medição de latência/qualidade/contexto/consumo, limites por provider, secrets exclusivamente no servidor, avaliação de segurança e custo, fallback desligado por padrão e controle administrativo para ligar/desligar cada provider.
+A primitiva de ensemble possui testes automatizados para modo desligado, diversidade de modelos, aprovação de custo zero, limites de entrada e orçamento agregado. A CI executa esses testes; não foi feita execução manual nesta etapa. A ativação no produto deverá ocorrer somente após inventário dos modelos e licenças, medição de latência/qualidade/contexto/consumo, limites por provider, secrets exclusivamente no servidor, avaliação de custo e controle administrativo explícito. O fluxo público continua em `single-pass`: não há ainda dois modelos distintos configurados, e o modo de colaboração não foi ativado.
 
 ## Memória
 
