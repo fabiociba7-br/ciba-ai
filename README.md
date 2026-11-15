@@ -75,6 +75,7 @@ O nome do modelo é configurado em `AI_MODEL`. Antes de produção, confirme no 
 - `GET /v1/status`
 - `GET /v1/config` (configuração pública para os aplicativos)
 - `GET /v1/models`
+- `GET /v1/ai/capabilities`
 - `POST /v1/auth/register`
 - `POST /v1/ai/chat`
 - `GET /v1/usage`
