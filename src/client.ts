@@ -264,6 +264,12 @@ export class CibaClient {
     });
   }
 
+  revokeOwnerDevice(deviceId: string): Promise<Record<string, unknown>> {
+    return this.request("/v1/owner/devices/revoke", {
+      method: "POST",
+      body: JSON.stringify({ device_id: deviceId }),
+    });
+  }
   revokeAccessGrant(grantId: string): Promise<Record<string, unknown>> {
     return this.request("/v1/owner/access-grants/revoke", {
       method: "POST",
