@@ -153,3 +153,10 @@ Retries de envio devem preservar client_message_id para evitar duplicidade lógi
 Implementados no repositório: Worker/API, cliente TypeScript comum, registro e pareamento por convites, concessões explícitas, fila JSON entre apps, memória curada, controles do proprietário e painel privado.
 
 Ainda necessários antes de operação real: provisionar D1 e binding AI, aplicar as migrations no ambiente, configurar segredos/variáveis no provedor, publicar o Worker e integrar cada aplicativo individualmente. Nenhum desses passos é executado por esta etapa. O backend não deve ser considerado operacional só porque o código e os testes de CI existem.
+
+
+## 11. Identidade e capacidades declaradas dos aplicativos
+
+O administrador cadastra, em `POST /v1/admin/apps`, os campos `description`, `app_type`, `capabilities` e `contract_version`. Tipos aceitos: `assistant`, `utility`, `productivity`, `creative`, `mobility` e `other`. As capacidades são uma lista fechada e descritiva: assistant, automation, calendar, contacts, documents, finance, media, mobility, notes, productivity, research e smart_home.
+
+Um dispositivo autenticado consulta `GET /v1/apps/identity` para obter seu perfil e a lista de apps habilitados com dispositivos ativos pareados ao mesmo proprietário. O endpoint também informa explicitamente que as capacidades são apenas descritivas, que o acesso cruzado exige concessões e que Garcia não executa ações dos aplicativos. Essa resposta não revela tokens, hashes ou conteúdo de conversas.
