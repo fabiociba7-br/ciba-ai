@@ -49,7 +49,7 @@ A revogação só afeta uma concessão pertencente ao proprietário autenticado.
 
 - As rotas e o armazenamento entram em vigor somente depois de aplicar as migrations 0007 e 0008 e publicar o Worker; isso ainda não foi feito.
 - Não há interface visual de gerenciamento nesta etapa; os endpoints são a API para uma futura tela de configurações.
-- O relay privado está implementado no código e exige concessões ativas de envio e recebimento. A migration 0009 ainda precisa ser aplicada e o Worker publicado antes de qualquer troca de mensagens em produção. A memória persistente continua desativada.
+- O relay privado está implementado no código e exige concessões ativas de envio e recebimento. A migration 0009 ainda precisa ser aplicada e o Worker publicado antes de qualquer troca de mensagens em produção. A memória persistente foi implementada no código, mas a migration 0010 ainda não foi aplicada e o Worker não foi publicado.
 - O proprietário pode administrar as permissões a partir de qualquer dispositivo ativo que esteja pareado à sua identidade privada.
 
 
@@ -64,3 +64,13 @@ A rota autenticada `/v1/owner/memory` permite listar, salvar/atualizar por chave
 O corpo de gravação exige `consent: "curated"`, chave de até 80 caracteres e valor de até 500 caracteres. A validade opcional vai de 1 a 8.760 horas; sem validade, o registro não expira automaticamente. Cada escopo tem limite de 200 registros. A exclusão é lógica e impede novas leituras; a rotina de limpeza remove registros expirados/excluídos após o período de retenção.
 
 O sistema não grava conversas, prompts ou respostas automaticamente. O consentimento explícito é exigido em cada gravação. O validador bloqueia alguns padrões óbvios de credenciais, mas não substitui a avaliação do usuário sobre o conteúdo.
+
+### Operações de memória
+
+- Listar memória do app autenticado: `GET /v1/owner/memory?scope=app`.
+- Listar memória de outro app (com concessão `memory_read`): `GET /v1/owner/memory?scope=app&source_app_id=com.ciba.origem`.
+- Listar memória central (com concessão `owner_memory`): `GET /v1/owner/memory?scope=owner`.
+- Salvar/atualizar: `POST /v1/owner/memory?scope=app` ou `?scope=owner`, com corpo `{"key":"preferencia","value":"Respostas diretas","consent":"curated"}`.
+- Excluir: `DELETE /v1/owner/memory?scope=app` ou `?scope=owner`, com corpo `{"memory_id":"..."}`.
+
+Para memória de outro app, incluir `source_app_id` na query string em todas as operações. O servidor não aceita `owner_id` do cliente. O escopo é determinado pela query string e a origem do registro nunca é escolhida por um campo no corpo.
