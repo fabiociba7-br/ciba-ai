@@ -4,7 +4,9 @@ O Ciba AI separa configurações operacionais de segredos. As configurações ed
 
 ## Cadastro de aplicativos pela API
 
-- `GET /v1/admin/apps`: lista os aplicativos registrados.\n- `GET /v1/admin/devices`: lista dispositivos, sem expor hashes ou tokens. Aceita `app_id` e `limit` como filtros.\n- `GET /v1/admin/invitations`: lista metadados de convites, sem expor códigos. Aceita `app_id` e `limit` como filtros.
+- `GET /v1/admin/apps`: lista os aplicativos registrados.
+- `GET /v1/admin/devices`: lista dispositivos, sem expor hashes ou tokens. Aceita `app_id` e `limit` como filtros.
+- `GET /v1/admin/invitations`: lista metadados de convites, sem expor códigos. Aceita `app_id` e `limit` como filtros.
 - `POST /v1/admin/apps`: cadastra ou atualiza um aplicativo permitido.
 
 Exemplo de cadastro:
