@@ -1,6 +1,5 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://garcia.invalid/schemas/app-message-v1.schema.json",
   "title": "Garcia App Message v1",
   "description": "Request body accepted by POST /v1/apps/messages. Payload is data only and must never be executed as code.",
   "type": "object",
