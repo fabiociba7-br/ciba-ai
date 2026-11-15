@@ -14,7 +14,7 @@ export interface Env {
 }
 
 import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_DAILY_GLOBAL_LIMIT, MAX_DAILY_APP_LIMIT, MAX_DAILY_DEVICE_LIMIT, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "./policy";
-import { runCibaOrchestrator, CloudflareWorkersAIProvider, listAgents } from "./core";
+import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents } from "./core";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -127,6 +127,18 @@ const publicConfig = (settings: Record<string, string>, env: Env) => ({
     max_output_tokens: Math.min(getLimit(settings.max_output_tokens || env.MAX_OUTPUT_TOKENS, MAX_OUTPUT_TOKENS), MAX_OUTPUT_TOKENS),
   },
 });
+
+const createRuntimeProviderRegistry = (env: Env, model: string | null, maxOutputTokens: number) => {
+  const provider = new CloudflareWorkersAIProvider(env.AI);
+  const roles = ["general", "reasoning", "research", "coding", "creative", "verification"] as const;
+  return createProviderRegistry([provider], model ? [{
+    providerId: provider.id,
+    modelId: model,
+    roles: [...roles],
+    maxOutputTokens,
+    zeroCostApproved: ZERO_COST_MODELS.has(model),
+  }] : []);
+};
 
 const corsHeaders = (request: Request, env: Env): HeadersInit => {
   const origin = request.headers.get("Origin") || "";
@@ -376,11 +388,16 @@ const handleChat = async (request: Request, env: Env) => {
   const model = resolveModel(settings.ai_model, env.AI_MODEL);
   if (!model) return json({ error: "ai_model_not_available" }, 503);
   const maxTokens = Math.min(getLimit(settings.max_output_tokens || env.MAX_OUTPUT_TOKENS, MAX_OUTPUT_TOKENS), MAX_OUTPUT_TOKENS);
+  const registry = createRuntimeProviderRegistry(env, model, maxTokens);
+  const registeredModel = registry.select("general", "cloudflare-workers-ai");
+  const provider = registeredModel ? registry.get(registeredModel.providerId) : undefined;
+  if (!registeredModel || !provider) return json({ error: "ai_provider_not_available" }, 503);
+
   const orchestration = await runCibaOrchestrator({
     messages,
-    model,
-    maxOutputTokens: maxTokens,
-    provider: new CloudflareWorkersAIProvider(env.AI),
+    model: registeredModel.modelId,
+    maxOutputTokens: Math.min(maxTokens, registeredModel.maxOutputTokens),
+    provider,
   });
   await env.DB.prepare(
     "UPDATE devices SET last_seen_at = ? WHERE device_id = ?"
@@ -500,6 +517,7 @@ const handleAdminAiOverview = async (request: Request, env: Env) => {
   const config = publicConfig(settings, env);
   const modelConfigured = Boolean(config.model);
   const aiActive = config.ai_enabled && !config.maintenance_mode;
+  const registry = createRuntimeProviderRegistry(env, config.model, config.limits.max_output_tokens);
 
   return json({
     service: "ciba-ai",
@@ -513,6 +531,8 @@ const handleAdminAiOverview = async (request: Request, env: Env) => {
       configured: modelConfigured
     },
     agents: listAgents(),
+    providers: registry.list(),
+    models: registry.listModels(),
     extensions: {
       ensemble: {
         implemented: true,
