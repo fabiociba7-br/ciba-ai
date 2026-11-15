@@ -109,3 +109,7 @@ A fila privada foi implementada em `migrations/0009_private_app_message_queue.sq
 ## Cliente comum para os aplicativos
 
 O SDK TypeScript em `src/client.ts` padroniza chamadas ao status, configuração, capacidades, chat, pareamento do proprietário, mensagens entre apps e concessões de acesso. Cada app fornece seu token sob demanda por uma função de callback, mantendo o armazenamento seguro sob responsabilidade da plataforma. O cliente não aceita `owner_id` fornecido pelo app e não substitui as verificações do Worker. A biblioteca está pronta para reutilização em projetos TypeScript; integrações nativas Kotlin/Swift e integração automática nos apps ainda não foram feitas. Consulte `docs/CLIENT_SDK.md`.
+
+## Memória privada persistente (etapa 12)
+
+A migration `0010_private_memory_records.sql` e a API `/v1/owner/memory` adicionam armazenamento curado separado por aplicativo e por proprietário. Leitura e gravação de memória de outro app ou da memória central exigem concessões ativas e específicas. A identidade do proprietário e do app vem do dispositivo autenticado; o cliente não escolhe o proprietário. Conversas completas não são armazenadas automaticamente. A migration ainda não foi aplicada e o Worker não foi publicado.
