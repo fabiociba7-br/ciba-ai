@@ -61,10 +61,10 @@ O nome do modelo é configurado em `AI_MODEL`. Antes de produção, confirme no 
 |---|---|
 | `AI_MODEL` | Identificador do modelo Workers AI |
 | `ALLOWED_APP_IDS` | IDs de apps Ciba separados por vírgula |
-| `DAILY_GLOBAL_LIMIT` | Requisições globais/dia |
-| `DAILY_APP_LIMIT` | Requisições por app/dia |
-| `DAILY_DEVICE_LIMIT` | Requisições por dispositivo/dia |
-| `MAX_OUTPUT_TOKENS` | Limite de saída solicitado ao modelo |
+| `DAILY_GLOBAL_LIMIT` | Requisições globais/dia (teto 50) |
+| `DAILY_APP_LIMIT` | Requisições por app/dia (teto 25) |
+| `DAILY_DEVICE_LIMIT` | Requisições por dispositivo/dia (teto 10) |
+| `MAX_OUTPUT_TOKENS` | Limite de saída solicitado ao modelo (teto 512) |
 | `ADMIN_TOKEN` | Segredo para operações administrativas |
 
 ## Rotas
