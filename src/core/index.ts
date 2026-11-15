@@ -22,5 +22,5 @@ export type { OwnerBoundDevice, OwnerIdentity, OwnerPairingInvitation, OwnerStat
 export { canUseAppAccessGrant } from "./access-grants";
 export type { AppAccessGrant, AppAccessPermission, AppAccessRequest, AppAccessScope } from "./access-grants";
 
-export { APP_TYPES, APP_CAPABILITIES, validateAppProfile, parseStoredAppCapabilities } from "./apps/registry";
-export type { AppType, AppCapability, AppIdentityProfile, AppProfileInput } from "./apps/registry";
+export { APP_TYPES, APP_CAPABILITIES, APP_TASK_TYPES, validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./apps/registry";
+export type { AppType, AppCapability, AppTaskType, AppIdentityProfile, AppProfileInput } from "./apps/registry";
