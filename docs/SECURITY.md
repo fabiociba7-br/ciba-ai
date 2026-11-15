@@ -43,3 +43,8 @@ As cotas deste Worker são limites internos de aplicação. Elas não substituem
 O código limita o gateway a 50 chamadas globais por dia, 25 por app, 10 por dispositivo, 512 tokens de saída e 3.000 caracteres de entrada por requisição. A configuração administrativa só pode reduzir esses limites. Isso é uma trava operacional, não uma garantia de que o consumo ficará sempre abaixo da franquia de Neurons: a unidade de cobrança depende dos tokens processados pelo modelo. Acompanhar o painel Workers AI é obrigatório.
 
 Para preservar a política de custo zero, manter a conta no Workers Free. A Cloudflare informa uma franquia de 10.000 Neurons por dia; no Workers Free, novas operações falham ao atingir o limite. No Workers Paid, o excedente é cobrado. Não ativar o plano pago ou créditos pré-pagos sem autorização expressa.
+
+
+## Limite de corpo HTTP
+
+O Worker verifica o `Content-Length` quando disponível e também conta os bytes durante a leitura do stream. Requisições acima do limite são canceladas antes de o corpo inteiro ser acumulado em memória e recebem HTTP 413. Isso protege os endpoints JSON contra payloads grandes enviados sem um `Content-Length` confiável.
