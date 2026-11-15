@@ -10,7 +10,7 @@ describe("CibaClient", () => {
       new Response(JSON.stringify({ identity: { app_id: "com.ciba.app" }, connected_apps: [] }), { status: 200 })
     );
     const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
-    const result = await client.getAppIdentity<{ identity: { app_id: string } }>();
+    const result = await client.getAppIdentity();
     expect(result.identity.app_id).toBe("com.ciba.app");
     expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/apps/identity");
     expect(new Headers(fetcher.mock.calls[0][1]?.headers).get("authorization")).toBe("Bearer device-token");
