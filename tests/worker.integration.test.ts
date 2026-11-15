@@ -181,3 +181,28 @@ describe("Ciba AI response security headers", () => {
     expect(invalidJson.headers.get("x-frame-options")).toBe("DENY");
   });
 });
+
+
+describe("Ciba AI administrative safety ceilings", () => {
+  it("rejects runtime limits that exceed the zero-cost safety ceilings", async () => {
+    const globalLimit = await adminRequest("/v1/admin/settings", "POST", {
+      settings: { daily_global_limit: 501 },
+    });
+    expect(globalLimit.status).toBe(400);
+    expect(await globalLimit.json()).toEqual({
+      error: "setting_exceeds_safety_ceiling",
+      key: "daily_global_limit",
+      maximum: 500,
+    });
+
+    const outputLimit = await adminRequest("/v1/admin/settings", "POST", {
+      settings: { max_output_tokens: 701 },
+    });
+    expect(outputLimit.status).toBe(400);
+    expect(await outputLimit.json()).toEqual({
+      error: "setting_exceeds_safety_ceiling",
+      key: "max_output_tokens",
+      maximum: 700,
+    });
+  });
+});
