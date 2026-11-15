@@ -263,9 +263,14 @@ describe("Ciba AI owner-controlled app access grants", () => {
   it("creates, lists and revokes scoped grants only from a paired owner device", async () => {
     const sourceApp = "com.ciba.grants.source";
     const targetApp = "com.ciba.grants.target";
-    for (const [appId, displayName] of [[sourceApp, "Grant Source"], [targetApp, "Grant Target"]]) {
+    for (const [appId, displayName, appType, capabilities] of [
+      [sourceApp, "Grant Source", "assistant", ["assistant", "productivity"]],
+      [targetApp, "Grant Target", "productivity", ["notes", "calendar"]],
+    ] as const) {
       const response = await adminRequest("/v1/admin/apps", "POST", {
         app_id: appId, display_name: displayName, enabled: true,
+        description: displayName + " integration test app",
+        app_type: appType, capabilities, contract_version: "1.0.0",
       });
       expect(response.status).toBe(200);
     }
@@ -476,6 +481,42 @@ describe("Ciba AI private app-to-app message relay", () => {
     });
     const targetPairCode = (await targetPairInvite.json() as { pairing_invitation_code: string }).pairing_invitation_code;
     expect((await pair(targetDevice.access_token, targetPairCode)).status).toBe(200);
+
+    const sourceIdentityResponse = await request("/v1/apps/identity", {
+      headers: { authorization: `Bearer ${sourceDevice.access_token}` },
+    });
+    expect(sourceIdentityResponse.status).toBe(200);
+    const sourceIdentity = await sourceIdentityResponse.json() as {
+      contract: string;
+      contract_version: string;
+      identity: { app_id: string; app_type: string; capabilities: string[] };
+      connected_apps: Array<{ app_id: string; capabilities: string[] }>;
+      capability_semantics: { descriptive_only: boolean; grants_required_for_cross_app_access: boolean; app_actions_executable_by_garcia: boolean };
+    };
+    expect(sourceIdentity.contract).toBe("garcia-app");
+    expect(sourceIdentity.contract_version).toBe("1.0.0");
+    expect(sourceIdentity.identity).toMatchObject({
+      app_id: sourceApp, app_type: "assistant", capabilities: ["assistant", "productivity"],
+    });
+    expect(sourceIdentity.connected_apps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ app_id: targetApp, capabilities: ["notes", "calendar"] }),
+    ]));
+    expect(sourceIdentity.capability_semantics).toEqual({
+      descriptive_only: true,
+      grants_required_for_cross_app_access: true,
+      app_actions_executable_by_garcia: false,
+    });
+
+    const unauthenticatedIdentity = await request("/v1/apps/identity");
+    expect(unauthenticatedIdentity.status).toBe(401);
+
+    const invalidProfile = await adminRequest("/v1/admin/apps", "POST", {
+      app_id: "com.ciba.invalid.profile",
+      display_name: "Invalid Profile",
+      capabilities: ["execute_shell"],
+    });
+    expect(invalidProfile.status).toBe(400);
+    expect(await invalidProfile.json()).toEqual({ error: "invalid_app_capabilities" });
 
     const enableMessaging = await request("/v1/owner/settings", {
       method: "POST",
