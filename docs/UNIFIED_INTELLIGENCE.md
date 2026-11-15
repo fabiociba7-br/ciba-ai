@@ -83,3 +83,10 @@ A licença de cada modelo é independente da licença do framework. Antes de dis
 - Ollama em localhost do usuário não é acessível pelo Worker Cloudflare; seria necessário endpoint privado/rede segura ou agente local.
 - Não existe treinamento, fine-tuning ou fusão de pesos nesta entrega.
 - Nenhum deploy Cloudflare foi realizado.
+
+
+## Concessões de acesso entre apps — fundação
+
+A migration `0008_explicit_app_access_grants.sql` prepara concessões persistentes com uma linha por permissão e escopo. O contrato em `src/core/access-grants.ts` exige correspondência exata de proprietário, app solicitante, par de apps quando aplicável, permissão e escopo; expiração e revogação são verificadas com negação por padrão. As permissões são separadas para envio, recebimento, leitura e escrita de memória. A memória de um app e a memória do proprietário são escopos distintos.
+
+Esta entrega é somente a fundação de esquema e política. Não cria concessões por si só, não ativa compartilhamento, não persiste mensagens nem memória e não disponibiliza endpoint de gerenciamento. A próxima etapa deverá fornecer um controle autenticado do proprietário para criar, consultar e revogar concessões antes de implementar o relay entre apps.
