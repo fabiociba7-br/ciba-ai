@@ -17,6 +17,7 @@ export async function runCibaOrchestrator(input: {
   model: string;
   maxOutputTokens: number;
   provider: ModelProvider;
+  memoryContext?: string;
 }): Promise<OrchestrationResult> {
   const selectedAgent = routeTask(input.messages);
   const profile = AGENTS[selectedAgent];
@@ -25,7 +26,7 @@ export async function runCibaOrchestrator(input: {
     model: input.model,
     maxOutputTokens: input.maxOutputTokens,
     messages: [
-      { role: "system", content: `${IDENTITY}\nEspecialista selecionado: ${profile.description}.\nDiretrizes: ${profile.instructions}` },
+      { role: "system", content: [`${IDENTITY}\nEspecialista selecionado: ${profile.description}.\nDiretrizes: ${profile.instructions}`, input.memoryContext || ""].filter(Boolean).join("\n\n") },
       ...context
     ]
   });
