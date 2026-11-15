@@ -49,6 +49,34 @@ const utcDay = () => new Date().toISOString().slice(0, 10);
 const allowedApps = (env: Env) =>
   new Set((env.ALLOWED_APP_IDS || "").split(",").map((s) => s.trim()).filter(Boolean));
 
+const adminAuthorized = (request: Request, env: Env) =>
+  Boolean(env.ADMIN_TOKEN) && request.headers.get("authorization") === `Bearer ${env.ADMIN_TOKEN}`;
+
+const readRuntimeSettings = async (env: Env): Promise<Record<string, string>> => {
+  const rows = await env.DB.prepare("SELECT setting_key, setting_value FROM runtime_settings").all<{
+    setting_key: string; setting_value: string;
+  }>();
+  return Object.fromEntries((rows.results || []).map((row) => [row.setting_key, row.setting_value]));
+};
+
+const CONFIG_KEYS = new Set([
+  "ai_enabled", "ai_model", "daily_global_limit", "daily_app_limit",
+  "daily_device_limit", "max_output_tokens", "maintenance_mode",
+]);
+
+const publicConfig = (settings: Record<string, string>, env: Env) => ({
+  service: "ciba-ai",
+  ai_enabled: settings.ai_enabled !== "false" && Boolean(env.AI_MODEL),
+  model: settings.ai_model || env.AI_MODEL || null,
+  maintenance_mode: settings.maintenance_mode === "true",
+  limits: {
+    global_daily: getLimit(settings.daily_global_limit || env.DAILY_GLOBAL_LIMIT, 500),
+    app_daily: getLimit(settings.daily_app_limit || env.DAILY_APP_LIMIT, 200),
+    device_daily: getLimit(settings.daily_device_limit || env.DAILY_DEVICE_LIMIT, 40),
+    max_output_tokens: Math.min(getLimit(settings.max_output_tokens || env.MAX_OUTPUT_TOKENS, 700), 2000),
+  },
+});
+
 const corsHeaders = (request: Request, env: Env): HeadersInit => {
   const origin = request.headers.get("Origin") || "";
   const allowed = (env.ALLOWED_ORIGINS || "*").split(",").map((s) => s.trim());
@@ -161,7 +189,7 @@ const handleRegister = async (request: Request, env: Env) => {
 };
 
 const handleCreateInvitation = async (request: Request, env: Env) => {
-  if (!env.ADMIN_TOKEN || request.headers.get("authorization") !== `Bearer ${env.ADMIN_TOKEN}`) {
+  if (!adminAuthorized(request, env)) {
     return json({ error: "unauthorized" }, 401);
   }
   const body = await readJson(request, 4_000);
@@ -181,7 +209,7 @@ const handleCreateInvitation = async (request: Request, env: Env) => {
 };
 
 const handleRevokeDevice = async (request: Request, env: Env) => {
-  if (!env.ADMIN_TOKEN || request.headers.get("authorization") !== `Bearer ${env.ADMIN_TOKEN}`) {
+  if (!adminAuthorized(request, env)) {
     return json({ error: "unauthorized" }, 401);
   }
   const body = await readJson(request, 4_000);
@@ -244,10 +272,49 @@ const handleChat = async (request: Request, env: Env) => {
   });
 };
 
+const handleAdminSettings = async (request: Request, env: Env) => {
+  if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+  if (request.method === "GET") {
+    return json({ settings: await readRuntimeSettings(env), configurable_keys: [...CONFIG_KEYS] });
+  }
+  const body = await readJson(request, 8_000);
+  const values = body.settings;
+  if (!values || typeof values !== "object" || Array.isArray(values)) {
+    return json({ error: "invalid_settings" }, 400);
+  }
+  const entries = Object.entries(values as Record<string, unknown>);
+  if (entries.length === 0 || entries.length > CONFIG_KEYS.size) {
+    return json({ error: "invalid_settings" }, 400);
+  }
+  const statements = [];
+  for (const [key, value] of entries) {
+    if (!CONFIG_KEYS.has(key) || !["string", "boolean", "number"].includes(typeof value)) {
+      return json({ error: "invalid_setting", key }, 400);
+    }
+    const normalized = String(value).trim();
+    if (!normalized || normalized.length > 300) return json({ error: "invalid_setting", key }, 400);
+    if (key === "ai_model" && !/^@[a-z0-9._/-]{3,180}$/i.test(normalized)) {
+      return json({ error: "invalid_ai_model" }, 400);
+    }
+    if (["daily_global_limit", "daily_app_limit", "daily_device_limit", "max_output_tokens"].includes(key)) {
+      const n = Number(normalized);
+      if (!Number.isSafeInteger(n) || n < 1 || n > 100000) return json({ error: "invalid_numeric_setting", key }, 400);
+    }
+    if (["ai_enabled", "maintenance_mode"].includes(key) && !["true", "false"].includes(normalized)) {
+      return json({ error: "invalid_boolean_setting", key }, 400);
+    }
+    statements.push(env.DB.prepare(
+      "INSERT INTO runtime_settings(setting_key, setting_value, updated_at) VALUES(?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = excluded.updated_at"
+    ).bind(key, normalized, nowIso()));
+  }
+  await env.DB.batch(statements);
+  return json({ saved: entries.map(([key]) => key), settings: await readRuntimeSettings(env) });
+};
+
 const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
-  if (url.pathname === "/v1/status" && request.method === "GET") {
+  if (url.pathname === "/v1/admin/settings" && (request.method === "GET" || request.method === "POST")) {\n    return handleAdminSettings(request, env);\n  }\n  if (url.pathname === "/v1/config" && request.method === "GET") {\n    const settings = await readRuntimeSettings(env);\n    return json(publicConfig(settings, env));\n  }\n  if (url.pathname === "/v1/status" && request.method === "GET") {
     await env.DB.prepare("SELECT 1").first();
     return json({
       service: "ciba-ai",
