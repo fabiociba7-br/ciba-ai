@@ -144,3 +144,19 @@ Cada proprietário pode controlar as capacidades privadas por `GET /v1/owner/set
 ```
 
 Ambas as opções começam em `false`. Com memória desligada, as rotas de memória e a criação de concessões de memória retornam HTTP 403. Com comunicação desligada, envio, caixa de entrada, confirmação de mensagens e criação de concessões de comunicação retornam HTTP 403. Desligar não apaga dados nem revoga concessões; apenas bloqueia a capacidade até que seja reativada. A administração não aceita chaves arbitrárias nem segredos nesse endpoint. A migration `0011_owner_feature_settings.sql` precisa ser aplicada antes do uso.
+
+
+## Painel privado Garcia — API de visão geral
+
+O endpoint `GET /v1/owner/dashboard` reúne os dados necessários para a tela inicial do painel Garcia. Exige um dispositivo autenticado e pareado com um proprietário ativo; não aceita `owner_id` enviado pelo cliente.
+
+A resposta inclui:
+- estado real da inteligência, provedor/modelo atualmente configurado e modo de execução;
+- indicação explícita de que a execução multi-modelo e ferramentas externas continuam desativadas;
+- controles privados de memória e comunicação;
+- aplicativos que possuem dispositivos vinculados ao proprietário, quantidade de dispositivos ativos e último acesso;
+- inventário limitado de dispositivos e concessões de acesso.
+
+O inventário nunca retorna tokens, hashes de tokens, credenciais ou conteúdo de conversas. Os dispositivos são limitados a 100 e as concessões a 200 registros mais recentes. O endpoint é somente leitura; alterações continuam usando as rotas específicas de configurações, concessões e revogação.
+
+**Escopo desta etapa:** API de dados do painel e método correspondente no SDK. A interface visual ainda não foi criada nem publicada. Nenhuma migration foi aplicada e nenhum deploy foi realizado.
