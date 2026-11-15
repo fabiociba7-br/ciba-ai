@@ -1,0 +1,22 @@
+name = "ciba-ai"
+main = "src/index.ts"
+compatibility_date = "2026-11-15"
+workers_dev = true
+
+[vars]
+AI_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+ALLOWED_APP_IDS = "com.ciba.zupi,com.ciba.geivia"
+DAILY_GLOBAL_LIMIT = "500"
+DAILY_APP_LIMIT = "200"
+DAILY_DEVICE_LIMIT = "40"
+MAX_OUTPUT_TOKENS = "700"
+ALLOWED_ORIGINS = "*"
+
+[ai]
+binding = "AI"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ciba-ai-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
