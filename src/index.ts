@@ -74,10 +74,15 @@ const CONFIG_KEYS = new Set([
   "daily_device_limit", "max_output_tokens", "maintenance_mode",
 ]);
 
+const configuredModel = (settings: Record<string, string>, env: Env) => {
+  const candidate = settings.ai_model || env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it";
+  return ZERO_COST_MODELS.has(candidate) ? candidate : null;
+};
+
 const publicConfig = (settings: Record<string, string>, env: Env) => ({
   service: "ciba-ai",
-  ai_enabled: settings.ai_enabled !== "false" && Boolean(settings.ai_model || env.AI_MODEL),
-  model: settings.ai_model || env.AI_MODEL || null,
+  ai_enabled: settings.ai_enabled !== "false" && Boolean(configuredModel(settings, env)),
+  model: configuredModel(settings, env),
   maintenance_mode: settings.maintenance_mode === "true",
   limits: {
     global_daily: getLimit(settings.daily_global_limit || env.DAILY_GLOBAL_LIMIT, 500),
@@ -146,6 +151,17 @@ const reserveQuota = async (env: Env, appId: string, deviceId: string) => {
     day, `app:${appId}`, appLimit, timestamp,
     day, `device:${deviceId}`, deviceLimit, timestamp
   ).run();
+};
+
+const reserveMinuteRateLimit = async (env: Env, deviceId: string) => {
+  const minute = new Date().toISOString().slice(0, 16);
+  await env.DB.prepare(`
+    INSERT INTO minute_usage(minute, device_id, requests, updated_at)
+    VALUES(?, ?, 1, ?)
+    ON CONFLICT(minute, device_id) DO UPDATE SET
+      requests = minute_usage.requests + 1,
+      updated_at = excluded.updated_at
+  `).bind(minute, deviceId, nowIso()).run();
 };
 
 const usageFor = async (env: Env, appId: string, deviceId: string) => {
@@ -238,6 +254,16 @@ const handleChat = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
 
+  try {
+    await reserveMinuteRateLimit(env, device.device_id);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "";
+    if (reason.includes("request_rate_exceeded")) {
+      return json({ error: "rate_limit_exceeded", retry_after_seconds: 60 }, 429);
+    }
+    throw error;
+  }
+
   const settings = await readRuntimeSettings(env);
   if (settings.maintenance_mode === "true") return json({ error: "maintenance_mode" }, 503);
   if (settings.ai_enabled === "false") return json({ error: "ai_disabled" }, 503);
@@ -267,7 +293,8 @@ const handleChat = async (request: Request, env: Env) => {
     throw error;
   }
 
-  const model = settings.ai_model || env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it";
+  const model = configuredModel(settings, env);
+  if (!model) return json({ error: "ai_model_not_available" }, 503);
   const maxTokens = Math.min(getLimit(settings.max_output_tokens || env.MAX_OUTPUT_TOKENS, 700), 2_000);
   const inputMessages = [
     { role: "system", content: "Você é o assistente de IA dos aplicativos Ciba. Responda em português quando o usuário escrever em português. Seja claro, útil e seguro." },
@@ -394,7 +421,7 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
       service: "ciba-ai",
       status: "ready",
       database: "connected",
-      ai_enabled: settings.ai_enabled !== "false" && Boolean(settings.ai_model || env.AI_MODEL),
+      ai_enabled: settings.ai_enabled !== "false" && Boolean(configuredModel(settings, env)),
       maintenance_mode: settings.maintenance_mode === "true",
       inference: "cloudflare-workers-ai",
     });
@@ -430,6 +457,7 @@ export default {
     const invitationCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     await env.DB.batch([
       env.DB.prepare("DELETE FROM daily_usage WHERE day < ?").bind(usageCutoff),
+      env.DB.prepare("DELETE FROM minute_usage WHERE minute < ?").bind(new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16)),
       env.DB.prepare("DELETE FROM invitations WHERE expires_at < ? AND used_at IS NULL").bind(invitationCutoff),
     ]);
   },
