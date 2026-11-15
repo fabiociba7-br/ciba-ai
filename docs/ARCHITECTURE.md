@@ -36,3 +36,12 @@ Os aplicativos Ciba não devem confiar diretamente uns nos outros. O Ciba AI ser
 O contrato em `src/core/messaging.ts` define envelopes com identificador de mensagem e tarefa, proprietário, aplicativo de origem e destino, escopo (`task` ou `context`), conteúdo e expiração. A autorização exige uma concessão que corresponda exatamente ao proprietário, ao aplicativo solicitante, à origem, ao destino, à permissão (envio/recebimento), ao escopo e à validade. O encaminhamento para o mesmo aplicativo é recusado.
 
 **Estado desta etapa:** foram criados contratos, validação de envelope e testes automatizados. Ainda não existe endpoint de relay, fila, entrega entre apps, persistência de mensagens ou interface para conceder permissões. Não há troca de dados ativa. O gateway atual autentica dispositivos vinculados a um único `app_id`, mas ainda não possui identidade central autenticada do proprietário; por isso, não seria seguro ativar o relay agora. A próxima implementação precisa estabelecer essa identidade e o gerenciamento de concessões antes de habilitar entrega real.
+
+
+## Identidade privada do proprietário
+
+A migration `0007_private_owner_identity.sql` prepara uma identidade opaca de proprietário, convites de pareamento de uso único armazenados por hash e o vínculo opcional de cada dispositivo a um proprietário. Os dispositivos existentes permanecem sem proprietário associado; a migration não os vincula automaticamente.
+
+As políticas em `src/core/owner.ts` exigem proprietário ativo, convite não consumido, aplicativo correspondente e prazo válido. O acesso do proprietário é derivado do registro do dispositivo autenticado; um `ownerId` enviado pelo cliente não constitui prova de identidade. Dispositivos sem vínculo ou revogados falham por padrão.
+
+**Limite desta etapa:** a migration e as políticas estão no repositório, mas ainda não há endpoints para criar proprietários, emitir/consumir convites ou associar dispositivos. A migration não foi aplicada a banco local ou remoto. Não existe login público nem sessão de proprietário ativa. O pareamento real só deve ser implementado com consumo atômico do convite e autenticação do dispositivo já existente.
