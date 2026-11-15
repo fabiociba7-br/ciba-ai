@@ -99,6 +99,22 @@ describe("CibaClient", () => {
     await expect(client.getTaskResults("")).rejects.toThrow("invalid_task_id");
   });
 
+  it("retrieves relevant curated memory without an inference call", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      query: "estilo de resposta",
+      memories: [{ memory_id: "memory-1", memory_key: "response_style", value: "Prefere respostas diretas." }],
+      returned: 1, searched_records: 3, retrieval: "deterministic-keyword",
+      inference_calls: 0, shared_memory_requires_explicit_grant: true,
+    }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const result = await client.retrieveMemory("estilo de resposta", 5);
+    expect(result.inference_calls).toBe(0);
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/owner/memory/retrieve");
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ query: "estilo de resposta", limit: 5 });
+    await expect(client.retrieveMemory("x")).rejects.toThrow("invalid_memory_query");
+    await expect(client.retrieveMemory("teste", 21)).rejects.toThrow("invalid_memory_limit");
+  });
+
   it("requests bounded semantic synthesis for correlated task results", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
       task_id: "task-1", synthesis: "As fontes concordam no essencial.",
