@@ -157,3 +157,13 @@ describe("Ciba AI browser-origin policy", () => {
     expect(preflight.headers.get("access-control-allow-origin")).toBeNull();
   });
 });
+
+
+describe("Ciba AI response security headers", () => {
+  it("sets baseline browser security headers on API responses", async () => {
+    const response = await request("/v1/status");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("x-frame-options")).toBe("DENY");
+  });
+});
