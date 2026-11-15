@@ -349,7 +349,8 @@ describe("Ciba AI private app-to-app message relay", () => {
     const sourceCode = (await sourceInvite.json() as { invitation_code: string }).invitation_code;
     const sourceDevice = await registerDevice(sourceCode, sourceApp);
     const ownerResponse = await adminRequest("/v1/admin/owners", "POST", { app_id: sourceApp });
-    const ownerCode = (await ownerResponse.json() as { pairing_invitation_code: string }).pairing_invitation_code;
+    const ownerDetails = await ownerResponse.json() as { owner_id: string; pairing_invitation_code: string };
+    const ownerCode = ownerDetails.pairing_invitation_code;
     const pair = (token: string, code: string) => request("/v1/owner/pair", {
       method: "POST",
       headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
@@ -357,12 +358,11 @@ describe("Ciba AI private app-to-app message relay", () => {
     });
     expect((await pair(sourceDevice.access_token, ownerCode)).status).toBe(200);
 
-    const ownerBody = await ownerResponse.json() as { owner_id: string };
     const targetInvite = await adminRequest("/v1/admin/invitations", "POST", { app_id: targetApp, valid_hours: 1 });
     const targetCode = (await targetInvite.json() as { invitation_code: string }).invitation_code;
     const targetDevice = await registerDevice(targetCode, targetApp);
     const targetPairInvite = await adminRequest("/v1/admin/owner-invitations", "POST", {
-      owner_id: ownerBody.owner_id, app_id: targetApp,
+      owner_id: ownerDetails.owner_id, app_id: targetApp,
     });
     const targetPairCode = (await targetPairInvite.json() as { pairing_invitation_code: string }).pairing_invitation_code;
     expect((await pair(targetDevice.access_token, targetPairCode)).status).toBe(200);
