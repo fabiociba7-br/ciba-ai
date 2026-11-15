@@ -149,7 +149,7 @@ const corsHeaders = (request: Request, env: Env): HeadersInit => {
     : null;
   return {
     ...(allowOrigin ? { "access-control-allow-origin": allowOrigin } : {}),
-    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
     "access-control-allow-headers": "authorization,content-type",
     "access-control-max-age": "86400",
     "vary": "Origin",
