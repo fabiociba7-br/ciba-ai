@@ -593,6 +593,46 @@ describe("Ciba AI private app-to-app message relay", () => {
     expect((await acknowledged.json() as { acknowledged: number }).acknowledged).toBe(1);
     expect((await (await inbox()).json() as { messages: unknown[] }).messages).toHaveLength(0);
 
+    const dispatched = await request("/v1/apps/tasks/dispatch", {
+      method: "POST",
+      headers: { authorization: `Bearer ${sourceDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        task_type: "summarize",
+        instruction: "Resuma os pontos principais do texto.",
+        client_message_id: "coordinator-task-001",
+        context: { source: "integration-test" },
+      }),
+    });
+    expect(dispatched.status).toBe(201);
+    const dispatchBody = await dispatched.json() as {
+      dispatched: boolean;
+      route: { task_id: string; destination_app_id: string; destination_display_name: string; task_type: string };
+    };
+    expect(dispatchBody.dispatched).toBe(true);
+    expect(dispatchBody.route).toMatchObject({
+      destination_app_id: targetApp, destination_display_name: "Relay Target", task_type: "summarize",
+    });
+    const taskInbox = await inbox();
+    const taskInboxBody = await taskInbox.json() as {
+      messages: Array<{ message_id: string; task_id: string; payload: { protocol: string; task_type: string; instruction: string; context: { source: string } } }>;
+    };
+    expect(taskInboxBody.messages).toHaveLength(1);
+    expect(taskInboxBody.messages[0]).toMatchObject({
+      task_id: dispatchBody.route.task_id,
+      payload: {
+        protocol: "garcia.task.request",
+        task_type: "summarize",
+        instruction: "Resuma os pontos principais do texto.",
+        context: { source: "integration-test" },
+      },
+    });
+    const taskAck = await request("/v1/apps/messages/ack", {
+      method: "POST",
+      headers: { authorization: `Bearer ${targetDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ message_ids: [taskInboxBody.messages[0].message_id] }),
+    });
+    expect(taskAck.status).toBe(200);
+
     const queuedAfterRevoke = await send("source-msg-002");
     expect(queuedAfterRevoke.status).toBe(201);
     const revoked = await request("/v1/owner/access-grants/revoke", {
