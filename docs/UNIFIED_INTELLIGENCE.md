@@ -113,3 +113,7 @@ O SDK TypeScript em `src/client.ts` padroniza chamadas ao status, configuração
 ## Memória privada persistente (etapa 12)
 
 A migration `0010_private_memory_records.sql` e a API `/v1/owner/memory` adicionam armazenamento curado separado por aplicativo e por proprietário. Leitura e gravação de memória de outro app ou da memória central exigem concessões ativas e específicas. A identidade do proprietário e do app vem do dispositivo autenticado; o cliente não escolhe o proprietário. Conversas completas não são armazenadas automaticamente. A migration ainda não foi aplicada e o Worker não foi publicado.
+
+## Controles do proprietário
+
+As capacidades de memória persistente e comunicação entre aplicativos agora têm interruptores independentes por proprietário. Ambos começam desativados e só podem ser alterados por dispositivos pareados. As verificações são feitas no servidor em cada rota; não dependem da interface do aplicativo. Desativar uma capacidade bloqueia seu uso sem apagar registros ou revogar concessões existentes. Consulte `docs/SETTINGS.md`.
