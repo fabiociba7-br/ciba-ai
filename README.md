@@ -10,6 +10,8 @@ Gateway privado de IA compartilhada para aplicativos da família Ciba.
 - Provider atual Cloudflare Workers AI e adapter preparado para endpoints OpenAI-compatible auto-hospedados.
 - Perfis especialistas selecionados sem chamadas adicionais no modo econômico single-pass.
 - Memória limitada ao contexto enviado; conversas não são persistidas pelo gateway.
+- Primitiva opt-in de ensemble para até três especialistas independentes e uma síntese, ainda desativada sem providers configurados.
+- Registro de providers e contratos tipados para futuras ferramentas controladas.
 - Sem fallback pago, cobrança automática ou uso de credenciais Google do mantenedor.
 - Limites diários por dispositivo, aplicativo e instalação.
 - Não persistir o conteúdo das conversas.
