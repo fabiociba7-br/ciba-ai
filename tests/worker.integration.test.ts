@@ -655,7 +655,8 @@ describe("Ciba AI private app-to-app message relay", () => {
         result: { summary: "Resumo concluído", items: 3 },
       }),
     });
-    expect(submittedResult.status).toBe(201);
+    const submittedResultBody = await submittedResult.clone().json();
+    expect(submittedResult.status, JSON.stringify(submittedResultBody)).toBe(201);
     const taskResults = await request(`/v1/apps/tasks/results?task_id=${encodeURIComponent(dispatchBody.route.task_id)}`, {
       headers: { authorization: `Bearer ${sourceDevice.access_token}` },
     });
