@@ -18,7 +18,7 @@ export class CloudflareWorkersAIProvider implements ModelProvider {
     const result = raw as { response?: unknown };
     const text = typeof result?.response === "string"
       ? result.response
-      : JSON.stringify(raw);
+      : (JSON.stringify(raw) ?? "");
     return { text, raw, provider: this.id, model: request.model };
   }
 }
