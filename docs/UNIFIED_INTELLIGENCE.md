@@ -90,3 +90,10 @@ A licença de cada modelo é independente da licença do framework. Antes de dis
 A migration `0008_explicit_app_access_grants.sql` prepara concessões persistentes com uma linha por permissão e escopo. O contrato em `src/core/access-grants.ts` exige correspondência exata de proprietário, app solicitante, par de apps quando aplicável, permissão e escopo; expiração e revogação são verificadas com negação por padrão. As permissões são separadas para envio, recebimento, leitura e escrita de memória. A memória de um app e a memória do proprietário são escopos distintos.
 
 Esta entrega é somente a fundação de esquema e política. Não cria concessões por si só, não ativa compartilhamento, não persiste mensagens nem memória e não disponibiliza endpoint de gerenciamento. A próxima etapa deverá fornecer um controle autenticado do proprietário para criar, consultar e revogar concessões antes de implementar o relay entre apps.
+
+
+## API privada de gerenciamento de concessões
+
+Dispositivos pareados a um proprietário ativo agora podem administrar as concessões por `GET/POST /v1/owner/access-grants` e revogar por `POST /v1/owner/access-grants/revoke`. O gateway deriva a identidade do proprietário do token autenticado e limita a validade de cada concessão a no máximo 8.760 horas (padrão de 720). O controle é por permissão e aplicativo, não por acesso irrestrito. Os endpoints foram documentados em `docs/ACCESS_GRANTS.md`.
+
+A API não ativa o relay nem a memória persistente. A migration 0008 ainda precisa ser aplicada e o Worker publicado antes que os endpoints possam ser usados em um ambiente real. Não há tela visual de gerenciamento nesta etapa.
