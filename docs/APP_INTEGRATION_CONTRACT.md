@@ -1,0 +1,155 @@
+# Contrato de integração dos aplicativos Garcia
+
+**Contrato:** garcia-app  
+**Versão:** 1.0.0  
+**Estado:** contrato documental alinhado às rotas implementadas no Worker. Não significa que o serviço esteja publicado.
+
+Este documento é a referência comum para qualquer aplicativo autorizado a usar Garcia. O aplicativo mantém sua interface e seus dados locais; Garcia fornece identidade autenticada do dispositivo, inteligência central e, quando habilitada e autorizada, memória curada e transporte de mensagens entre aplicativos.
+
+## 1. Regras fundamentais
+
+1. Cada aplicativo usa seu próprio app_id estável (no Android, o applicationId real).
+2. O app só pode se conectar se estiver previamente cadastrado e habilitado pelo administrador.
+3. O proprietário gera no painel dois convites de uso único: registro e pareamento. Ambos expiram em 24 horas.
+4. O token de dispositivo é segredo. Armazene-o no armazenamento seguro da plataforma; nunca em código-fonte, logs, analytics, notificações ou preferências sem proteção.
+5. O servidor deriva owner_id e app_id do token autenticado. O cliente nunca escolhe nem envia esses identificadores como prova de identidade.
+6. Cada app tem seu próprio token e identidade. Não compartilhe um token de dispositivo entre aplicativos.
+7. O proprietário precisa ativar a capacidade correspondente e conceder permissões explícitas antes da comunicação entre apps ou do acesso cruzado à memória.
+8. Payloads recebidos são dados não confiáveis. Nunca os execute como código, SQL, comandos, instruções de sistema ou ações sensíveis sem validação e autorização locais.
+9. Use HTTPS em qualquer ambiente remoto. HTTP só é permitido pelo SDK em localhost para desenvolvimento.
+10. Não armazene o histórico completo de conversas por padrão.
+
+## 2. Descoberta e compatibilidade
+
+Base URL: URL HTTPS do Worker Garcia, sem barra final.
+
+- GET /v1/status: diagnóstico do serviço e banco.
+- GET /v1/config: configuração pública e limites.
+- GET /v1/ai/capabilities: capacidades declaradas e estado real da inteligência.
+- GET /v1/models: modelo configurado.
+
+A resposta de capacidades atual informa mode: "single-pass", multi_model_fanout_enabled: false, external_tools_enabled: false. Não assuma que uma capacidade marcada como disponível está ativada em produção. A API não publica hoje um endpoint separado de negociação de versão; garcia-app@1.0.0 é a versão deste contrato e do SDK correspondente.
+
+## 3. Primeiro vínculo do dispositivo
+
+No painel privado Garcia, escolha um aplicativo habilitado em **Conectar novo aplicativo**. O painel apresenta uma vez:
+
+- registration_invitation_code: usado para registrar o dispositivo.
+- pairing_invitation_code: usado para associá-lo ao proprietário.
+
+Fluxo recomendado:
+
+1. O aplicativo recebe os dois códigos por um canal seguro e confiável.
+2. Chama registerDevice(appId, registrationCode).
+3. Guarda imediatamente o access_token retornado no armazenamento seguro da plataforma.
+4. Cria/usa CibaClient com callback que recupera o token seguro.
+5. Chama pairOwner(pairingCode).
+6. Descarta os códigos de convite após o pareamento.
+
+O código de registro e o código de pareamento são de uso único. Não os embuta no APK, bundle web ou repositório. O token de dispositivo retornado no registro é exibido apenas nessa resposta; se for perdido, revogue o dispositivo e registre outro.
+
+## 4. Cliente oficial comum
+
+O código compartilhado está em src/client.ts. Pode ser importado diretamente pelo projeto ou adaptado para o empacotamento da plataforma. Não há ainda pacote publicado nem SDK nativo Kotlin/Swift.
+
+~~~ts
+import { CibaClient } from "./src/client";
+
+const client = new CibaClient({
+  baseUrl: "https://SEU-WORKER",
+  getAccessToken: () => secureStorage.get("garcia_device_token"),
+});
+~~~
+
+O callback é consultado em cada chamada autenticada. O SDK não persiste tokens por conta própria. A implementação de secureStorage pertence ao app e deve usar o cofre seguro da plataforma.
+
+## 5. Superfície HTTP v1
+
+| Operação | Método e rota | Autenticação | Observação |
+|---|---|---|---|
+| Capacidades | GET /v1/ai/capabilities | Pública | Estado de recursos |
+| Registrar dispositivo | POST /v1/auth/register | Convite | Retorna token uma vez |
+| Parear proprietário | POST /v1/owner/pair | Token de dispositivo | Vincula ao proprietário do convite |
+| Conversar com Garcia | POST /v1/ai/chat | Token de dispositivo | Até 20 mensagens; até 1.500 caracteres por mensagem e 3.000 no total |
+| Enviar mensagem a outro app | POST /v1/apps/messages | Token de dispositivo | Requer recurso ativado e concessões send/receive |
+| Consultar caixa de entrada | GET /v1/apps/messages/inbox?limit=20 | Token de dispositivo | Limite máximo 50 |
+| Confirmar recebimento | POST /v1/apps/messages/ack | Token de dispositivo | Até 50 IDs por chamada |
+| Listar concessões | GET /v1/owner/access-grants | Token pareado | Painel/proprietário |
+| Consultar memória | GET /v1/owner/memory?scope=app | Token pareado | Recurso memória deve estar ativo |
+
+O SDK oferece métodos correspondentes para chat, mensagens, caixa de entrada, confirmação, memória e concessões. Para operações administrativas do proprietário, use o painel; não coloque ADMIN_TOKEN em aplicativos clientes.
+
+## 6. Contrato de mensagens entre aplicativos
+
+A mensagem é um envelope JSON. O pedido de envio contém:
+
+~~~json
+{
+  "destination_app_id": "com.exemplo.destino",
+  "client_message_id": "id-unico-gerado-pelo-app",
+  "task_id": "tarefa-123",
+  "scope": "task",
+  "payload": {
+    "type": "example.request",
+    "version": 1,
+    "data": {}
+  },
+  "ttl_hours": 24
+}
+~~~
+
+Regras atuais do servidor:
+
+- scope é task ou context.
+- payload deve ser um objeto JSON e pode ter no máximo 8.000 caracteres serializados.
+- client_message_id e task_id são obrigatórios, com no máximo 100 caracteres.
+- ttl_hours é inteiro de 1 a 72; padrão 24.
+- O servidor limita mensagens pendentes por proprietário e app de destino.
+- A chave idempotente é proprietário + app de origem + client_message_id. Reutilize o mesmo ID em retries da mesma operação.
+- O app de destino recebe message_id, origem, destino, tarefa, escopo, payload, criação e expiração.
+- Após processar e persistir o resultado necessário, o app confirma com acknowledgeMessages([message_id]).
+
+O formato interno do payload é definido pelos apps participantes. Use type e version em cada payload, valide os campos e ignore tipos/versões desconhecidos. Não existe execução automática de payload pelo Garcia.
+
+## 7. Permissões e capacidades
+
+Antes de enviar mensagens, o proprietário deve:
+
+1. Ativar **Comunicação entre apps** no painel (ou app_messaging_enabled na API de configurações).
+2. Criar concessão send para o app de origem, com origem, destino e escopo exatos.
+3. Criar concessão receive para o app de destino, com a mesma origem, destino e escopo.
+
+Para memória compartilhada, o proprietário deve ativar **Memória privada** e conceder memory_read e/ou memory_write no escopo apropriado. Memória do próprio app permanece isolada; acesso a outro app ou à memória central exige concessão explícita. Desativar um recurso bloqueia seu uso, mas não apaga registros nem revoga concessões.
+
+## 8. Tratamento de erros
+
+O SDK lança CibaApiError com status, code e details.
+
+| HTTP | Tratamento recomendado |
+|---|---|
+| 400 | Corrigir o formato/campos; não repetir sem alteração |
+| 401 | Token inválido/ausente ou convite inválido; solicitar novo vínculo conforme o caso |
+| 403 | App desabilitado, proprietário inativo, capacidade desligada ou concessão ausente |
+| 409 | Dispositivo já pareado, convite reutilizado ou conflito de vínculo |
+| 413 | Reduzir o payload |
+| 429 | Respeitar Retry-After ou retry_after_seconds; aplicar backoff |
+| 503 | Serviço/modelo indisponível ou manutenção; não criar loops de retry |
+
+Retries de envio devem preservar client_message_id para evitar duplicidade lógica. Não repita indefinidamente.
+
+## 9. Privacidade, segurança e limites
+
+- Não enviar senhas, tokens, chaves privadas, dados financeiros completos ou informações sensíveis em payloads.
+- Pedir consentimento explícito antes de salvar memória curada.
+- Não registrar conteúdo integral de conversas em logs.
+- Limpar códigos de convite após uso e proteger o token do dispositivo.
+- Validar origem, destino, tipo e versão do payload antes de qualquer ação.
+- Aplicar confirmação humana para ações externas, destrutivas, financeiras ou irreversíveis.
+- Tratar respostas do modelo e mensagens de outros apps como conteúdo não confiável.
+- Respeitar limites diários e por minuto publicados pelo serviço.
+
+## 10. Estado de implementação
+
+Implementados no repositório: Worker/API, cliente TypeScript comum, registro e pareamento por convites, concessões explícitas, fila JSON entre apps, memória curada, controles do proprietário e painel privado.
+
+Ainda necessários antes de operação real: provisionar D1 e binding AI, aplicar as migrations no ambiente, configurar segredos/variáveis no provedor, publicar o Worker e integrar cada aplicativo individualmente. Nenhum desses passos é executado por esta etapa. O backend não deve ser considerado operacional só porque o código e os testes de CI existem.
