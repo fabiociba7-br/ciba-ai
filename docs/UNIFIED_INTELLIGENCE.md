@@ -104,3 +104,8 @@ A API não ativa o relay nem a memória persistente. A migration 0008 ainda prec
 A fila privada foi implementada em `migrations/0009_private_app_message_queue.sql`. Os endpoints são `POST /v1/apps/messages`, `GET /v1/apps/messages/inbox` e `POST /v1/apps/messages/ack`. O envio exige permissões `send` e `receive` ativas para o mesmo proprietário, origem, destino e escopo. A caixa de entrada deriva o app e o proprietário do dispositivo autenticado e revalida as concessões em cada leitura. Mensagens têm chave de idempotência, payload JSON limitado, validade máxima de 72 horas e limite de 100 pendentes por app de destino. A fila transporta dados; não executa instruções nem ferramentas.
 
 **Estado de ativação:** código e testes estão no GitHub, mas a migration 0009 não foi aplicada e não houve deploy. O relay ainda não está ativo em produção. Consulte `docs/APP_MESSAGE_RELAY.md`.
+
+
+## Cliente comum para os aplicativos
+
+O SDK TypeScript em `src/client.ts` padroniza chamadas ao status, configuração, capacidades, chat, pareamento do proprietário, mensagens entre apps e concessões de acesso. Cada app fornece seu token sob demanda por uma função de callback, mantendo o armazenamento seguro sob responsabilidade da plataforma. O cliente não aceita `owner_id` fornecido pelo app e não substitui as verificações do Worker. A biblioteca está pronta para reutilização em projetos TypeScript; integrações nativas Kotlin/Swift e integração automática nos apps ainda não foram feitas. Consulte `docs/CLIENT_SDK.md`.
