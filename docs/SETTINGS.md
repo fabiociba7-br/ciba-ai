@@ -60,7 +60,7 @@ Content-Type: application/json
 | `daily_global_limit` | número | Limite diário global de requisições |
 | `daily_app_limit` | número | Limite diário por aplicativo |
 | `daily_device_limit` | número | Limite diário por dispositivo |
-| `max_output_tokens` | número | Limite de tokens de saída (máximo efetivo 2.000) |
+| `max_output_tokens` | número | Limite de tokens de saída (máximo 700) |
 | `maintenance_mode` | boolean | Bloqueia temporariamente chamadas de chat |
 
 Os valores salvos no D1 prevalecem sobre os valores padrão em `wrangler.toml`. A API valida os tipos e os limites antes de gravar. Para preservar a meta de custo zero, a seleção de modelo fica restrita à lista de modelos explicitamente liberados no código; atualmente, somente `@cf/google/gemma-4-26b-a4b-it` é aceito. Não cadastrar modelos com cobrança por fora dessa lista. O endpoint público `/v1/config` não revela tokens administrativos, credenciais ou segredos.
@@ -93,3 +93,19 @@ O endpoint de chat aceita até 12 chamadas por dispositivo em cada minuto UTC. O
 ## Validação efetiva do modelo
 
 A allowlist de modelos é verificada novamente no momento da inferência. Atualmente, somente `@cf/google/gemma-4-26b-a4b-it` é aceito. Se a variável de ambiente ou a configuração persistida apontar para outro modelo, a inferência é bloqueada em vez de executar um modelo potencialmente pago.
+
+
+## Tetos de segurança que não podem ser aumentados pela tela
+
+A administração pode reduzir os limites, mas não ultrapassar os tetos definidos no código:
+
+| Controle | Teto |
+|---|---:|
+| Requisições globais por dia | 500 |
+| Requisições por app por dia | 200 |
+| Requisições por dispositivo por dia | 40 |
+| Tokens máximos de saída por resposta | 700 |
+| Caracteres por mensagem | 6.000 |
+| Caracteres somados por requisição | 12.000 |
+
+Esses tetos reduzem o risco de consumo acidental, mas **não garantem** um valor máximo de Neurons nem substituem o painel de consumo e os limites da Cloudflare. A quantidade de Neurons depende do modelo e do conteúdo efetivamente processado.
