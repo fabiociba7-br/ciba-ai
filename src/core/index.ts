@@ -15,3 +15,6 @@ export type { MemoryAccessRequest, MemoryConsent, MemoryGrant, MemoryPermission,
 
 export { canRelayAppMessage, validateAppMessageEnvelope } from "./messaging";
 export type { AppMessageAccessRequest, AppMessageEnvelope, AppMessageGrant, AppMessagePermission, AppMessageScope } from "./messaging";
+
+export { canDeviceActForOwner, canUseOwnerPairingInvitation } from "./owner";
+export type { OwnerBoundDevice, OwnerIdentity, OwnerPairingInvitation, OwnerStatus } from "./owner";
