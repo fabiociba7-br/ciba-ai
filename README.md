@@ -24,6 +24,9 @@ A base do Worker, autenticação por dispositivo, cotas, administração, API de
 
 ## Arquitetura
 
+A camada de inteligência unificada está descrita em [UNIFIED_INTELLIGENCE.md](docs/UNIFIED_INTELLIGENCE.md), e a seleção de projetos open source em [OPEN_SOURCE_SELECTION.md](docs/OPEN_SOURCE_SELECTION.md). O núcleo atual usa um único modelo por chamada e seleciona um perfil especialista; não afirma executar vários modelos independentes. O adapter para providers OpenAI-compatible está preparado, mas ainda não conectado nem configurado.
+
+
 ```
 App Ciba
   |-- POST /v1/auth/register  (convite de uso único)
