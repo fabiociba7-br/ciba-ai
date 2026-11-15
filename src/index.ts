@@ -180,6 +180,21 @@ const handleCreateInvitation = async (request: Request, env: Env) => {
   return json({ invitation_code: code, app_id: appId, expires_at: expiresAt }, 201);
 };
 
+const handleRevokeDevice = async (request: Request, env: Env) => {
+  if (!env.ADMIN_TOKEN || request.headers.get("authorization") !== `Bearer ${env.ADMIN_TOKEN}`) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const body = await readJson(request, 4_000);
+  const deviceId = typeof body.device_id === "string" ? body.device_id.trim() : "";
+  if (!deviceId || deviceId.length > 100) return json({ error: "invalid_device_id" }, 400);
+  const result = await env.DB.prepare(
+    "UPDATE devices SET revoked_at = ? WHERE device_id = ? AND revoked_at IS NULL"
+  ).bind(nowIso(), deviceId).run();
+  return result.meta.changes === 1
+    ? json({ revoked: true, device_id: deviceId })
+    : json({ error: "device_not_found_or_already_revoked" }, 404);
+};
+
 const handleChat = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
@@ -233,7 +248,14 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
   if (url.pathname === "/v1/status" && request.method === "GET") {
-    return json({ service: "ciba-ai", status: "online", inference: "cloudflare-workers-ai" });
+    await env.DB.prepare("SELECT 1").first();
+    return json({
+      service: "ciba-ai",
+      status: "ready",
+      database: "connected",
+      ai_enabled: Boolean(env.AI_MODEL),
+      inference: "cloudflare-workers-ai",
+    });
   }
   if (url.pathname === "/v1/models" && request.method === "GET") {
     return json({ models: env.AI_MODEL ? [env.AI_MODEL] : [], configured: Boolean(env.AI_MODEL) });
@@ -243,6 +265,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/admin/invitations" && request.method === "POST") {
     return handleCreateInvitation(request, env);
+  }
+  if (url.pathname === "/v1/admin/devices/revoke" && request.method === "POST") {
+    return handleRevokeDevice(request, env);
   }
   if (url.pathname === "/v1/ai/chat" && request.method === "POST") {
     return handleChat(request, env);
