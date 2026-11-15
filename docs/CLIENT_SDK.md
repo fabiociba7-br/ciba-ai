@@ -28,6 +28,7 @@ const inbox = await client.getInbox();
 - IA central: `chat(messages)`.
 - Comunicação entre apps: `sendMessage()`, `getInbox()`, `acknowledgeMessages()`.
 - Autorizações: `listAccessGrants()`, `createAccessGrant()`, `revokeAccessGrant()`.
+- Memória curada: `listMemory()`, `saveMemory()` e `deleteMemory()`. Use `scope: "app"` para memória do app ou `scope: "owner"` para memória central; a memória de outro app exige `sourceAppId` e concessão ativa.
 
 ## Segurança e integração
 
@@ -44,3 +45,7 @@ const inbox = await client.getInbox();
 Falhas HTTP geram `CibaApiError` com `status`, `code` e `details`. O aplicativo pode tratar, por exemplo, `401` (token ausente/inválido), `403` (permissão negada), `429` (limite) e `503` (serviço indisponível).
 
 O cliente é uma camada reutilizável; a API remota ainda depende das migrations e do deploy pendentes para funcionar em produção.
+
+## Memória curada
+
+`saveMemory({ scope: "app", key: "style", value: "Respostas diretas", consent: "curated" })` grava uma entrada na memória do app autenticado. Para a memória central, use `scope: "owner"`; para outro app, informe `sourceAppId` e obtenha previamente as concessões `memory_read`/`memory_write` apropriadas. A API exige consentimento explícito em cada gravação e não salva histórico de chat.
