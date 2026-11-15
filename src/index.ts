@@ -537,7 +537,12 @@ const handleAdminAiOverview = async (request: Request, env: Env) => {
       ensemble: {
         implemented: true,
         enabled: false,
-        note: "Requires independent providers and explicit server-side budget configuration."
+        public_chat_enabled: false,
+        requires_distinct_models: true,
+        requires_zero_cost_approval: true,
+        max_agent_calls: 3,
+        max_total_output_tokens: 2048,
+        note: "Requires distinct server-configured models, explicit zero-cost approval and an administrator-controlled budget."
       },
       provider_registry: {
         implemented: true,
