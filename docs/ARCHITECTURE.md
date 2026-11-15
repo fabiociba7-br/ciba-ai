@@ -88,3 +88,8 @@ A migration `0011_owner_feature_settings.sql` cria preferências por proprietár
 ## Identidade e reconhecimento dos aplicativos
 
 A migration `0012_app_identity_profiles.sql` adiciona descrição, tipo, capacidades declarativas, tipos de tarefa e versão do contrato ao cadastro administrativo `app_registry`. Os valores aceitos são validados por `src/core/apps/registry.ts`; IDs desconhecidos, duplicatas e listas excessivas são recusados. O endpoint autenticado `GET /v1/apps/identity` deriva o app e o dispositivo do token e mostra os outros apps habilitados com dispositivos ativos pareados ao mesmo proprietário. Metadados de capacidade e tarefa são apenas descritivos, não concedem acesso e não disparam execução de comandos.
+
+
+## Coordenador de tarefas
+
+`src/core/task-coordinator.ts` aplica seleção determinística e fail-closed: compara o tipo solicitado com tipos declarados, exige concessões direcionais para o mesmo par de apps e não desempata candidatos múltiplos. `POST /v1/apps/tasks/dispatch` deriva remetente e proprietário do dispositivo autenticado, limita instrução/contexto, aplica TTL e idempotência e grava o pedido na fila de mensagens já existente. Não há execução remota de ferramentas, nem inferência de que o destino completou a tarefa. A resposta deve retornar como mensagem correlacionada pelo mesmo `task_id` e requer concessões inversas.
