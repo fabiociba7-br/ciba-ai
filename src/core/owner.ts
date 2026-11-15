@@ -63,3 +63,19 @@ export function canDeviceActForOwner(
     (device.revokedAt === undefined || device.revokedAt === null)
   );
 }
+
+/** Pairing requires an authenticated, active, unlinked device for the invited app. */
+export function canPairDevice(
+  device: OwnerBoundDevice | null,
+  invitation: OwnerPairingInvitation,
+  owner: OwnerIdentity | null,
+  now = Date.now()
+): boolean {
+  return Boolean(
+    device &&
+    device.ownerId === null &&
+    (device.revokedAt === undefined || device.revokedAt === null) &&
+    device.appId === invitation.appId &&
+    canUseOwnerPairingInvitation(invitation, owner, device.appId, now)
+  );
+}
