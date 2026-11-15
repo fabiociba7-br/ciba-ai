@@ -5,6 +5,36 @@ export type CibaMessageScope = "task" | "context";
 export type CibaGrantPermission = "send" | "receive" | "memory_read" | "memory_write";
 export type CibaGrantScope = CibaMessageScope | "app_memory" | "owner_memory";
 
+export interface CibaAppIdentity {
+  contract: "garcia-app";
+  contract_version: string;
+  identity: {
+    app_id: string;
+    display_name: string;
+    enabled: boolean;
+    description: string;
+    app_type: string;
+    capabilities: string[];
+    task_types: string[];
+  };
+  device: { device_id: string; owner_linked: boolean };
+  connected_apps: Array<{
+    app_id: string;
+    display_name: string;
+    description: string;
+    app_type: string;
+    capabilities: string[];
+    task_types: string[];
+    contract_version: string;
+    active_device_count: number;
+  }>;
+  capability_semantics: {
+    descriptive_only: true;
+    grants_required_for_cross_app_access: true;
+    app_actions_executable_by_garcia: false;
+  };
+}
+
 export interface CibaClientOptions {
   /** Base URL of the private Ciba AI Worker, e.g. https://api.example.com */
   baseUrl: string;
@@ -127,8 +157,8 @@ export class CibaClient {
     return body as T;
   }
 
-  getAppIdentity<T = Record<string, unknown>>(): Promise<T> {
-    return this.request<T>("/v1/apps/identity");
+  getAppIdentity(): Promise<CibaAppIdentity> {
+    return this.request<CibaAppIdentity>("/v1/apps/identity");
   }
 
   getStatus<T = Record<string, unknown>>(): Promise<T> {
