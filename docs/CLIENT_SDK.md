@@ -54,3 +54,14 @@ O cliente é uma camada reutilizável; a API remota ainda depende das migrations
 ## Configurações privadas do proprietário
 
 `getOwnerSettings()` consulta as capacidades do proprietário autenticado. `updateOwnerSettings({ memory_enabled: true, app_messaging_enabled: false })` altera somente as opções fornecidas. Ambas começam desligadas. A autorização é verificada pelo Worker em cada operação, não apenas pelo SDK. A migration 0011 precisa estar aplicada no ambiente.
+
+
+## Garcia owner dashboard
+
+Use `getOwnerDashboard()` to retrieve the authenticated owner's consolidated dashboard data:
+
+```ts
+const dashboard = await client.getOwnerDashboard();
+```
+
+The endpoint is `GET /v1/owner/dashboard`. It requires a paired device token and returns the current AI mode/model status, owner feature flags, connected apps, safe device metadata, and access grants. It does not return credentials, token hashes, or conversation contents.
