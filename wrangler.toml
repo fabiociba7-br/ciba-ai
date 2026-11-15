@@ -4,8 +4,9 @@ compatibility_date = "2026-11-15"
 workers_dev = true
 
 [vars]
-AI_MODEL = "@cf/meta/llama-3.1-8b-instruct"
-ALLOWED_APP_IDS = "com.ciba.zupi,com.ciba.geivia"
+AI_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+# Keep empty until the real Android application IDs are confirmed.
+ALLOWED_APP_IDS = ""
 DAILY_GLOBAL_LIMIT = "500"
 DAILY_APP_LIMIT = "200"
 DAILY_DEVICE_LIMIT = "40"
