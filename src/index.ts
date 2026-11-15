@@ -425,6 +425,14 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
 };
 
 export default {
+  async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    const usageCutoff = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const invitationCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM daily_usage WHERE day < ?").bind(usageCutoff),
+      env.DB.prepare("DELETE FROM invitations WHERE expires_at < ? AND used_at IS NULL").bind(invitationCutoff),
+    ]);
+  },
   async fetch(request: Request, env: Env): Promise<Response> {
     const cors = corsHeaders(request, env);
     try {
