@@ -63,3 +63,10 @@ O módulo `src/core/access-grants.ts` contém a política pura de validação, c
 **Estado atual:** existem endpoints autenticados por dispositivo pareado para criar, listar e revogar concessões. O gateway deriva o proprietário do registro do dispositivo, exige proprietário ativo, valida os aplicativos envolvidos e registra qual dispositivo criou a concessão. A validade padrão é de 720 horas, limitada a 8.760 horas. A API não aceita um ownerId fornecido pelo cliente. Consulte `ACCESS_GRANTS.md` para os payloads.
 
 **Limite desta etapa:** as migrations ainda não foram aplicadas e não houve deploy. As concessões não estão conectadas ao relay de mensagens nem à memória persistente; não há troca de dados ativa nem interface visual de configurações.
+
+
+## Relay privado de mensagens
+
+A etapa de relay adiciona a fila `app_messages` e os endpoints autenticados `POST /v1/apps/messages`, `GET /v1/apps/messages/inbox` e `POST /v1/apps/messages/ack`. O envio exige concessões ativas `send` e `receive` para o mesmo proprietário, origem, destino e escopo. O recebimento revalida ambas as concessões; revogação ou expiração impede novas entregas. Cada mensagem tem chave de idempotência, payload limitado a 8.000 caracteres, validade máxima de 72 horas e limite de 100 pendentes por app de destino e proprietário. A fila só transporta JSON; não executa comandos nem ferramentas.
+
+**Estado:** código, migration e testes estão no repositório. A migration 0009 não foi aplicada e não houve deploy; portanto, a comunicação não está ativa em produção.
