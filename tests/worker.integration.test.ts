@@ -329,6 +329,37 @@ describe("Ciba AI owner-controlled app access grants", () => {
     });
     expect(selfRevoke.status).toBe(400);
     expect(await selfRevoke.json()).toEqual({ error: "current_device_cannot_revoke" });
+    const availableApps = await ownerRequest("/v1/owner/available-apps", "GET");
+    expect(availableApps.status).toBe(200);
+    expect((await availableApps.json() as { apps: Array<{ app_id: string }> }).apps.map((app) => app.app_id))
+      .toContain(targetApp);
+    const appConnection = await ownerRequest("/v1/owner/apps/connect", "POST", { app_id: targetApp });
+    expect(appConnection.status).toBe(201);
+    const connectionCodes = await appConnection.json() as {
+      app_id: string; registration_invitation_code: string; pairing_invitation_code: string; expires_at: string;
+    };
+    expect(connectionCodes.app_id).toBe(targetApp);
+    expect(connectionCodes.registration_invitation_code).toHaveLength(32);
+    expect(connectionCodes.pairing_invitation_code).toHaveLength(32);
+    expect(connectionCodes.expires_at).toBeTruthy();
+    const connectedAppDevice = await registerDevice(connectionCodes.registration_invitation_code, targetApp);
+    const connectedAppPairing = await request("/v1/owner/pair", {
+      method: "POST",
+      headers: { authorization: `Bearer ${connectedAppDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ pairing_invitation_code: connectionCodes.pairing_invitation_code }),
+    });
+    expect(connectedAppPairing.status).toBe(200);
+    const connectedDashboard = await ownerRequest("/v1/owner/dashboard", "GET");
+    expect((await connectedDashboard.json() as { connected_apps: Array<{ app_id: string }> }).connected_apps)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ app_id: targetApp })]));
+    const replayedPairing = await request("/v1/owner/pair", {
+      method: "POST",
+      headers: { authorization: `Bearer ${connectedAppDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ pairing_invitation_code: connectionCodes.pairing_invitation_code }),
+    });
+    expect(replayedPairing.status).toBe(409);
+    const invalidAppConnection = await ownerRequest("/v1/owner/apps/connect", "POST", { app_id: "com.ciba.not-registered" });
+    expect(invalidAppConnection.status).toBe(400);
 
     const secondInvitation = await adminRequest("/v1/admin/invitations", "POST", {
       app_id: sourceApp, valid_hours: 1,
