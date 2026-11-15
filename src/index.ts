@@ -55,7 +55,9 @@ const isAppAllowed = async (env: Env, appId: string): Promise<boolean> => {
 };
 
 const authorizeAdmin = async (request: Request, env: Env): Promise<Response | null> => {
-  if (!env.ADMIN_TOKEN) return json({ error: "unauthorized" }, 401);
+  if (!env.ADMIN_TOKEN || env.ADMIN_TOKEN.length < 32) {
+    return json({ error: "admin_auth_not_configured" }, 503);
+  }
 
   const authorization = request.headers.get("authorization") || "";
   const supplied = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
