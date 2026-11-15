@@ -204,6 +204,22 @@ export class CibaClient {
     });
   }
 
+  listAvailableApps<T = Record<string, unknown>>(): Promise<{ apps: T[] }> {
+    return this.request("/v1/owner/available-apps");
+  }
+
+  createAppConnectionInvitation(appId: string): Promise<{
+    app_id: string;
+    registration_invitation_code: string;
+    pairing_invitation_code: string;
+    expires_at: string;
+    note: string;
+  }> {
+    return this.request("/v1/owner/apps/connect", {
+      method: "POST",
+      body: JSON.stringify({ app_id: appId }),
+    });
+  }
   getOwnerDashboard<T = Record<string, unknown>>(): Promise<T> {
     return this.request("/v1/owner/dashboard");
   }
