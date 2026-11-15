@@ -204,6 +204,10 @@ export class CibaClient {
     });
   }
 
+  getOwnerDashboard<T = Record<string, unknown>>(): Promise<T> {
+    return this.request("/v1/owner/dashboard");
+  }
+
   getOwnerSettings<T = Record<string, unknown>>(): Promise<{ settings: T }> {
     return this.request("/v1/owner/settings");
   }
