@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import workerModule, { type Env } from "../src/index";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 const worker = {
   fetch: (request: Request) => workerModule.fetch(
@@ -78,10 +78,9 @@ describe("Ciba AI Worker integration", () => {
     expect(settingsResponse.status).toBe(200);
 
     const secondDevice = await registerDevice(await createInvitation());
-    const ai = (env as unknown as {
-      AI: { run: (model: string, input: Record<string, unknown>) => Promise<unknown> };
-    }).AI;
-    const aiRun = vi.spyOn(ai, "run").mockResolvedValue({ response: "Resposta de teste" });
+    await env.DB.prepare(
+      "INSERT INTO runtime_settings(setting_key, setting_value, updated_at) VALUES(?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = excluded.updated_at"
+    ).bind("ai_model", "not-an-allowed-model", new Date().toISOString()).run();
 
     const chat = () => request("/v1/ai/chat", {
       method: "POST",
@@ -93,14 +92,12 @@ describe("Ciba AI Worker integration", () => {
     });
 
     const firstChat = await chat();
-    expect(firstChat.status).toBe(200);
-    expect((await firstChat.json() as { response: string }).response).toBe("Resposta de teste");
+    expect(firstChat.status).toBe(503);
+    expect(await firstChat.json()).toEqual({ error: "ai_model_not_available" });
 
     const overQuotaChat = await chat();
     expect(overQuotaChat.status).toBe(429);
     expect(await overQuotaChat.json()).toEqual({ error: "daily_quota_exceeded" });
-    expect(aiRun).toHaveBeenCalledTimes(1);
-    aiRun.mockRestore();
 
     const status = await request("/v1/status");
     expect(status.status).toBe(200);
