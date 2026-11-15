@@ -67,6 +67,8 @@ const readRuntimeSettings = async (env: Env): Promise<Record<string, string>> =>
   return Object.fromEntries((rows.results || []).map((row) => [row.setting_key, row.setting_value]));
 };
 
+const ZERO_COST_MODELS = new Set(["@cf/google/gemma-4-26b-a4b-it"]);
+
 const CONFIG_KEYS = new Set([
   "ai_enabled", "ai_model", "daily_global_limit", "daily_app_limit",
   "daily_device_limit", "max_output_tokens", "maintenance_mode",
@@ -326,7 +328,7 @@ const handleAdminSettings = async (request: Request, env: Env) => {
     }
     const normalized = String(value).trim();
     if (!normalized || normalized.length > 300) return json({ error: "invalid_setting", key }, 400);
-    if (key === "ai_model" && !/^@[a-z0-9._/-]{3,180}$/i.test(normalized)) {
+    if (key === "ai_model" && !ZERO_COST_MODELS.has(normalized)) {
       return json({ error: "invalid_ai_model" }, 400);
     }
     if (["daily_global_limit", "daily_app_limit", "daily_device_limit", "max_output_tokens"].includes(key)) {
