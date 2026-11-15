@@ -3,7 +3,7 @@ import { CibaApiError, CibaClient } from "../src/client";
 
 describe("CibaClient", () => {
   it("uses the latest token callback and sends chat through the shared API", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
       new Response(JSON.stringify({
         model: "model",
         response: "Olá",
@@ -73,7 +73,7 @@ describe("CibaClient", () => {
   });
 
   it("surfaces structured API errors and rejects insecure remote URLs", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
       new Response(JSON.stringify({ error: "message_access_not_granted" }), { status: 403 })
     );
     const client = new CibaClient({
