@@ -5,6 +5,7 @@ export interface EnsembleMember {
   role: Exclude<CibaRole, "general">;
   model: string;
   provider: ModelProvider;
+  zeroCostApproved: boolean;
 }
 
 export interface EnsemblePlan {
@@ -12,6 +13,7 @@ export interface EnsemblePlan {
   members: EnsembleMember[];
   synthesisProvider: ModelProvider;
   synthesisModel: string;
+  synthesisZeroCostApproved: boolean;
   maxAgentCalls: number;
   maxOutputTokens: number;
   /** Aggregate requested output-token budget across experts and synthesis. */
@@ -43,6 +45,7 @@ export async function runMultiModelEnsemble(input: {
   const { plan } = input;
   if (!plan.enabled) throw new Error("multi_model_disabled");
   if (!plan.synthesisProvider.enabled) throw new Error("synthesis_provider_disabled");
+  if (plan.synthesisZeroCostApproved !== true) throw new Error("synthesis_model_not_zero_cost_approved");
   if (!/^[a-z0-9][a-z0-9-]{1,63}$/.test(plan.synthesisProvider.id) ||
       !plan.synthesisModel.trim() || plan.synthesisModel.length > 200) {
     throw new Error("invalid_synthesis_model");
@@ -69,7 +72,7 @@ export async function runMultiModelEnsemble(input: {
 
   const memberKeys = new Set<string>();
   for (const member of plan.members) {
-    if (!member.provider.enabled ||
+    if (!member.provider.enabled || member.zeroCostApproved !== true ||
         !/^[a-z0-9][a-z0-9-]{1,63}$/.test(member.provider.id) ||
         !member.model.trim() || member.model.length > 200 ||
         !Object.prototype.hasOwnProperty.call(AGENTS, member.role) || member.role === "general") {
