@@ -1464,7 +1464,13 @@ const handleSubmitTaskResult = async (request: Request, env: Env) => {
     hasMessageGrant(env, owner.owner_id, device.app_id, device.app_id, sourceAppId, "send", "task", timestamp),
     hasMessageGrant(env, owner.owner_id, sourceAppId, sourceAppId, device.app_id, "receive", "task", timestamp),
   ]);
-  if (!sendAllowed || !receiveAllowed) return json({ error: "task_result_access_not_granted" }, 403);
+  if (!sendAllowed || !receiveAllowed) return json({
+    error: "task_result_access_not_granted",
+    missing_permissions: [
+      ...(!sendAllowed ? ["send"] : []),
+      ...(!receiveAllowed ? ["receive"] : []),
+    ],
+  }, 403);
 
   const payload = {
     protocol: "garcia.task.result",
