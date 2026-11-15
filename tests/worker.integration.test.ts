@@ -136,3 +136,24 @@ describe("Ciba AI administrative authentication", () => {
     });
   });
 });
+
+
+describe("Ciba AI browser-origin policy", () => {
+  it("does not grant CORS access to origins unless explicitly configured", async () => {
+    const response = await worker.fetch(new Request("https://ciba-ai.test/v1/status", {
+      headers: { Origin: "https://untrusted.example" },
+    }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("access-control-allow-origin")).toBeNull();
+
+    const preflight = await worker.fetch(new Request("https://ciba-ai.test/v1/admin/apps", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://untrusted.example",
+        "Access-Control-Request-Method": "GET",
+      },
+    }));
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get("access-control-allow-origin")).toBeNull();
+  });
+});
