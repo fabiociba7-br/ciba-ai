@@ -748,7 +748,16 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   if (url.pathname === "/v1/auth/register" && request.method === "POST") {
     return handleRegister(request, env);
   }
-  if (url.pathname === "/v1/admin/owners" && request.method === "POST") {\n    return handleCreateOwner(request, env);\n  }\n  if (url.pathname === "/v1/admin/owner-invitations" && request.method === "POST") {\n    return handleCreateOwnerInvitation(request, env);\n  }\n  if (url.pathname === "/v1/owner/pair" && request.method === "POST") {\n    return handlePairOwner(request, env);\n  }\n  if (url.pathname === "/v1/admin/invitations" && request.method === "POST") {
+  if (url.pathname === "/v1/admin/owners" && request.method === "POST") {
+    return handleCreateOwner(request, env);
+  }
+  if (url.pathname === "/v1/admin/owner-invitations" && request.method === "POST") {
+    return handleCreateOwnerInvitation(request, env);
+  }
+  if (url.pathname === "/v1/owner/pair" && request.method === "POST") {
+    return handlePairOwner(request, env);
+  }
+  if (url.pathname === "/v1/admin/invitations" && request.method === "POST") {
     return handleCreateInvitation(request, env);
   }
   if (url.pathname === "/v1/admin/devices/revoke" && request.method === "POST") {
