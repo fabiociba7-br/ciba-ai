@@ -56,3 +56,11 @@ A revogação só afeta uma concessão pertencente ao proprietário autenticado.
 ## Relay de mensagens
 
 A API de relay foi adicionada em `docs/APP_MESSAGE_RELAY.md`. O envio exige as concessões `send` e `receive` para o mesmo par de apps e escopo. A leitura revalida as permissões, e a confirmação só afeta mensagens destinadas ao app autenticado. A migration 0009 e o deploy ainda estão pendentes.
+
+## Memória privada persistente
+
+A rota autenticada `/v1/owner/memory` permite listar, salvar/atualizar por chave e excluir memórias selecionadas. O escopo padrão é `app` e usa a memória do aplicativo autenticado. Para ler ou alterar a memória de outro app, o app solicitante precisa de uma concessão ativa `memory_read` ou `memory_write` com escopo `app_memory`. A memória central usa `scope=owner` e exige concessão `owner_memory` correspondente.
+
+O corpo de gravação exige `consent: "curated"`, chave de até 80 caracteres e valor de até 500 caracteres. A validade opcional vai de 1 a 8.760 horas; sem validade, o registro não expira automaticamente. Cada escopo tem limite de 200 registros. A exclusão é lógica e impede novas leituras; a rotina de limpeza remove registros expirados/excluídos após o período de retenção.
+
+O sistema não grava conversas, prompts ou respostas automaticamente. O consentimento explícito é exigido em cada gravação. O validador bloqueia alguns padrões óbvios de credenciais, mas não substitui a avaliação do usuário sobre o conteúdo.
