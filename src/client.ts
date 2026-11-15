@@ -415,7 +415,7 @@ export class CibaClient {
     return this.request(`/v1/owner/memory?${params.toString()}`);
   }
 
-  retrieveMemory<T = Record<string, unknown>>(query: string, limit = 10): Promise<{
+  async retrieveMemory<T = Record<string, unknown>>(query: string, limit = 10): Promise<{
     query: string;
     memories: T[];
     returned: number;
