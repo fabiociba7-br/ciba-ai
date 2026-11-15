@@ -191,3 +191,10 @@ O aplicativo destinatário responde pelo endpoint autenticado `POST /v1/apps/tas
 O aplicativo que iniciou a tarefa consulta `GET /v1/apps/tasks/results?task_id=...` ou `getTaskResults(taskId)`. A resposta contém resultados correlacionados pelo mesmo identificador, status, app respondente e horários. Os resultados continuam sujeitos à validade da mensagem e às concessões atuais. A consulta não confirma nem apaga as mensagens; após processar o resultado, o app deve confirmar o `message_id` com `acknowledgeMessages()`. Use um `client_message_id` estável em tentativas repetidas.
 
 Garcia transporta e correlaciona os resultados, mas a interpretação e a redação da resposta final continuam sob responsabilidade do app solicitante. Não trate um status `completed` como verificação independente da qualidade do conteúdo.
+
+
+## 14. Síntese semântica opcional
+
+Depois de consultar os resultados e verificar que chegaram respostas suficientes, o app de origem pode chamar `POST /v1/apps/tasks/synthesize` com `{ "task_id": "..." }` ou usar `synthesizeTaskResults(taskId)` no SDK. A resposta contém um texto consolidado, fontes identificadas, modelo e metadados de uma única chamada de inferência.
+
+A rota exige dispositivo autenticado e pareado a proprietário ativo, app habilitado, comunicação entre apps ligada e resultados ainda disponíveis com as concessões direcionais vigentes. Usa apenas o modelo resolvido pela política de custo zero; entrada máxima de 12.000 caracteres, até 20 fontes e saída máxima de 384 tokens. A chamada conta nos limites de uso. Resultados de apps são dados não confiáveis: instruções contidas neles não são seguidas. A síntese não executa ações, não ativa ensemble e não altera o chat normal. Preserve a lista de fontes e apresente incertezas ou contradições sem tratá-las como fatos verificados.
