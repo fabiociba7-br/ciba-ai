@@ -288,7 +288,7 @@ export class CibaClient {
     });
   }
 
-  getTaskResults<T = unknown>(taskId: string): Promise<CibaTaskResults<T>> {
+  async getTaskResults<T = unknown>(taskId: string): Promise<CibaTaskResults<T>> {
     if (!taskId.trim() || taskId.length > 100) throw new Error("invalid_task_id");
     return this.request(`/v1/apps/tasks/results?task_id=${encodeURIComponent(taskId)}`);
   }
