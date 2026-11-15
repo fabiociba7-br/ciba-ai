@@ -208,6 +208,14 @@ describe("Ciba AI response security headers", () => {
     expect(invalidJson.headers.get("x-content-type-options")).toBe("nosniff");
     expect(invalidJson.headers.get("referrer-policy")).toBe("no-referrer");
     expect(invalidJson.headers.get("x-frame-options")).toBe("DENY");
+
+    const oversizedBody = await request("/v1/auth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ app_id: "com.ciba.test", invitation_code: "x".repeat(9_000) }),
+    });
+    expect(oversizedBody.status).toBe(413);
+    expect(await oversizedBody.json()).toEqual({ error: "body_too_large" });
   });
 });
 
