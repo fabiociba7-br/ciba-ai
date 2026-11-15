@@ -2,7 +2,13 @@
 
 O Ciba AI separa configurações operacionais de segredos. As configurações editáveis ficam na tabela D1 `runtime_settings` e poderão ser controladas por uma futura tela **Configurações** nos aplicativos ou num painel administrativo.
 
-## Visão geral administrativa da IA\n\n- `GET /v1/admin/ai/overview`: visão protegida para uma futura tela administrativa. Retorna o modelo efetivo, estado da IA, perfis especialistas, limites e quais extensões estão apenas preparadas. Exige `Authorization: Bearer ADMIN_TOKEN`. Não retorna credenciais, tokens nem conteúdo de conversas.\n\nEsse endpoint distingue explicitamente o modo `single-pass` das extensões ainda desativadas: ensemble multi-modelo, memória persistente e execução de ferramentas.\n\n## Cadastro de aplicativos pela API
+## Visão geral administrativa da IA
+
+- `GET /v1/admin/ai/overview`: visão protegida para uma futura tela administrativa. Retorna o modelo efetivo, estado da IA, perfis especialistas, limites e quais extensões estão apenas preparadas. Exige `Authorization: Bearer ADMIN_TOKEN`. Não retorna credenciais, tokens nem conteúdo de conversas.
+
+Esse endpoint distingue explicitamente o modo `single-pass` das extensões ainda desativadas: ensemble multi-modelo, memória persistente e execução de ferramentas.
+
+## Cadastro de aplicativos pela API
 
 - `GET /v1/admin/apps`: lista os aplicativos registrados.
 - `GET /v1/admin/devices`: lista dispositivos, sem expor hashes ou tokens. Aceita `app_id` e `limit` como filtros.
