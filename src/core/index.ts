@@ -9,3 +9,6 @@ export { createProviderRegistry } from "./providers/registry";
 export type { ProviderRegistry, RegisteredModel } from "./providers/registry";
 export type { CibaToolDefinition, CibaToolRegistry, CibaToolRisk } from "./tools";
 export type { CibaRole, ChatTurn, ModelProvider, OrchestrationResult } from "./types";
+
+export { buildWorkingContext, canAccessMemory, validateCuratedMemory } from "./memory";
+export type { MemoryAccessRequest, MemoryConsent, MemoryGrant, MemoryPermission, MemoryRecord, MemoryScope, MemoryStore } from "./memory";
