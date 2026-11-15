@@ -490,6 +490,11 @@ describe("Ciba AI private app-to-app message relay", () => {
     const targetPairCode = (await targetPairInvite.json() as { pairing_invitation_code: string }).pairing_invitation_code;
     expect((await pair(targetDevice.access_token, targetPairCode)).status).toBe(200);
 
+    const partialProfileUpdate = await adminRequest("/v1/admin/apps", "POST", {
+      app_id: sourceApp, display_name: "Relay Source", enabled: true,
+    });
+    expect(partialProfileUpdate.status).toBe(200);
+
     const sourceIdentityResponse = await request("/v1/apps/identity", {
       headers: { authorization: `Bearer ${sourceDevice.access_token}` },
     });
