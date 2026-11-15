@@ -79,3 +79,9 @@ O resultado contém dois códigos de uso único, exibidos uma única vez e váli
 2. `pairing_invitation_code`: o novo app chama `pairOwner(pairingInvitationCode)` com o token recém-recebido, vinculando o dispositivo ao mesmo proprietário.
 
 Os códigos são armazenados apenas como hashes. O app deve armazenar o token de dispositivo em armazenamento seguro da plataforma. A geração dos convites não instala o app nem executa sua configuração automaticamente.
+
+## Centro de integração dos aplicativos Garcia
+
+O contrato comum está documentado em [APP_INTEGRATION_CONTRACT.md](./APP_INTEGRATION_CONTRACT.md), versão `garcia-app@1.0.0`. O schema JSON do transporte fica em `schemas/app-message-v1.schema.json` e um exemplo TypeScript completo em `examples/garcia-integration.ts`. O SDK exporta `GARCIA_APP_CONTRACT_VERSION` para identificar a versão contratual incorporada.
+
+Consulte o contrato antes de integrar um novo app. Ele descreve o vínculo por convites, armazenamento seguro do token, chat, mensagens, permissões, tratamento de erros e limites. O exemplo também é incluído no typecheck do CI.
