@@ -17,7 +17,7 @@ A franquia gratuita documentada pela Cloudflare é de 10.000 Neurons por dia, co
 
 ## Estado do projeto
 
-Esta é a primeira implementação no repositório. O CI de TypeScript passou. Ainda exige configuração da conta Cloudflare, criação do banco D1, definição dos segredos, confirmação dos package IDs Android e teste real de inferência antes de uso.
+A base do Worker, autenticação por dispositivo, cotas, administração e API de configurações está implementada. O CI valida o TypeScript. Ainda exige provisionamento da conta Cloudflare, criação do banco D1, aplicação das migrations, definição dos segredos, confirmação dos package IDs Android e teste real de inferência antes de uso.
 
 ## Arquitetura
 
@@ -70,11 +70,14 @@ O nome do modelo é configurado em `AI_MODEL`. Antes de produção, confirme no 
 ## Rotas
 
 - `GET /v1/status`
+- `GET /v1/config` (configuração pública para os aplicativos)
 - `GET /v1/models`
 - `POST /v1/auth/register`
 - `POST /v1/ai/chat`
 - `GET /v1/usage`
 - `POST /v1/admin/invitations`
 - `POST /v1/admin/devices/revoke`
+- `GET /v1/admin/settings`
+- `POST /v1/admin/settings`
 
-Consulte [SECURITY.md](docs/SECURITY.md) antes de disponibilizar convites ou distribuir os aplicativos.
+Consulte [SECURITY.md](docs/SECURITY.md) antes de disponibilizar convites ou distribuir os aplicativos. A futura tela Configurações deve usar a API descrita em [SETTINGS.md](docs/SETTINGS.md); segredos de infraestrutura nunca devem ser enviados ao cliente.
