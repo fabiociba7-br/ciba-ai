@@ -326,16 +326,20 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/status" && request.method === "GET") {
     await env.DB.prepare("SELECT 1").first();
+    const settings = await readRuntimeSettings(env);
     return json({
       service: "ciba-ai",
       status: "ready",
       database: "connected",
-      ai_enabled: Boolean(env.AI_MODEL),
+      ai_enabled: settings.ai_enabled !== "false" && Boolean(env.AI_MODEL),
+      maintenance_mode: settings.maintenance_mode === "true",
       inference: "cloudflare-workers-ai",
     });
   }
   if (url.pathname === "/v1/models" && request.method === "GET") {
-    return json({ models: env.AI_MODEL ? [env.AI_MODEL] : [], configured: Boolean(env.AI_MODEL) });
+    const settings = await readRuntimeSettings(env);
+    const model = settings.ai_model || env.AI_MODEL || null;
+    return json({ models: model ? [model] : [], configured: Boolean(model) });
   }
   if (url.pathname === "/v1/auth/register" && request.method === "POST") {
     return handleRegister(request, env);
