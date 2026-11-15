@@ -265,6 +265,19 @@ export default {
       return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
     } catch (error) {
       // Do not expose database errors, tokens, prompts, or provider internals.
+      const reason = error instanceof Error ? error.message : "";
+      if (reason === "body_too_large") {
+        const response = json({ error: "body_too_large" }, 413);
+        const headers = new Headers(response.headers);
+        new Headers(cors).forEach((value, key) => headers.set(key, value));
+        return new Response(response.body, { status: response.status, headers });
+      }
+      if (reason === "invalid_json") {
+        const response = json({ error: "invalid_json" }, 400);
+        const headers = new Headers(response.headers);
+        new Headers(cors).forEach((value, key) => headers.set(key, value));
+        return new Response(response.body, { status: response.status, headers });
+      }
       console.error("Ciba AI request failed", error instanceof Error ? error.name : "unknown");
       const response = json({ error: "internal_error" }, 500);
       const headers = new Headers(response.headers);
