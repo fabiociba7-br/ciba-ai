@@ -17,7 +17,7 @@ A franquia gratuita documentada pela Cloudflare é de 10.000 Neurons por dia, co
 
 ## Estado do projeto
 
-A base do Worker, autenticação por dispositivo, cotas, administração e API de configurações está implementada. O CI valida o TypeScript. Ainda exige provisionamento da conta Cloudflare, criação do banco D1, aplicação das migrations, definição dos segredos, confirmação dos package IDs Android e teste real de inferência antes de uso.
+A base do Worker, autenticação por dispositivo, cotas, administração, API de configurações e testes locais de integração estão implementados. O CI valida o TypeScript e executa testes unitários e de integração. Ainda exige provisionamento da conta Cloudflare, criação do banco D1, aplicação das migrations, definição dos segredos, confirmação dos package IDs Android e teste real de inferência antes de uso.
 
 ## Arquitetura
 
@@ -41,7 +41,7 @@ Requisitos: Node.js 20+ e conta Cloudflare.
 
 ```bash
 npm install
-npm run typecheck
+npm run check
 npx wrangler d1 create ciba-ai-db
 ```
 
@@ -80,7 +80,7 @@ O nome do modelo é configurado em `AI_MODEL`. Antes de produção, confirme no 
 - `GET /v1/admin/settings`
 - `POST /v1/admin/settings`
 
-Consulte [APP_INTEGRATION.md](docs/APP_INTEGRATION.md) para o contrato de integração dos clientes. Consulte [SECURITY.md](docs/SECURITY.md) antes de disponibilizar convites ou distribuir os aplicativos. A futura tela Configurações deve usar a API descrita em [SETTINGS.md](docs/SETTINGS.md); segredos de infraestrutura nunca devem ser enviados ao cliente.
+Consulte [TESTING.md](docs/TESTING.md) para executar os testes locais sem credenciais Cloudflare. Consulte [APP_INTEGRATION.md](docs/APP_INTEGRATION.md) para o contrato de integração dos clientes. Consulte [SECURITY.md](docs/SECURITY.md) antes de disponibilizar convites ou distribuir os aplicativos. A futura tela Configurações deve usar a API descrita em [SETTINGS.md](docs/SETTINGS.md); segredos de infraestrutura nunca devem ser enviados ao cliente.
 
 
 ## Proteções de uso
