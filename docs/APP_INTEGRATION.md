@@ -85,7 +85,7 @@ Content-Type: application/json
 }
 ~~~
 
-Resposta de sucesso contém model e response. O cliente deve aceitar response como conteúdo JSON, pois o provedor pode retornar uma estrutura além de texto simples.
+Resposta de sucesso contém model, response e intelligence (agent, strategy, provider e inference_calls). O cliente pode ignorar intelligence se não precisar exibir diagnóstico. O campo response é texto consolidado pelo núcleo Ciba AI.
 
 Regras atuais:
 - até 20 mensagens por requisição;
