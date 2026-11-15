@@ -7,6 +7,7 @@ describe("app identity profiles", () => {
       description: "Assistente de produtividade",
       app_type: "assistant",
       capabilities: ["assistant", "notes"],
+      task_types: ["summarize", "draft"],
       contract_version: "1.0.0",
     })).toEqual({
       valid: true,
@@ -14,12 +15,13 @@ describe("app identity profiles", () => {
         description: "Assistente de produtividade",
         app_type: "assistant",
         capabilities: ["assistant", "notes"],
+        task_types: ["summarize", "draft"],
         contract_version: "1.0.0",
       },
     });
     expect(validateAppProfile({})).toEqual({
       valid: true,
-      profile: { description: "", app_type: "other", capabilities: [], contract_version: "1.0.0" },
+      profile: { description: "", app_type: "other", capabilities: [], task_types: [], contract_version: "1.0.0" },
     });
   });
 
@@ -28,6 +30,7 @@ describe("app identity profiles", () => {
     expect(validateAppProfile({ capabilities: ["notes", "notes"] })).toMatchObject({ valid: false, error: "invalid_app_capabilities" });
     expect(validateAppProfile({ description: "x".repeat(281) })).toMatchObject({ valid: false, error: "invalid_app_description" });
     expect(validateAppProfile({ app_type: "root" })).toMatchObject({ valid: false, error: "invalid_app_type" });
+    expect(validateAppProfile({ task_types: ["delete_everything"] })).toMatchObject({ valid: false, error: "invalid_app_task_types" });
     expect(validateAppProfile({ contract_version: "latest" })).toMatchObject({ valid: false, error: "invalid_app_contract_version" });
   });
 
