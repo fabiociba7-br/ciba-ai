@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canDeviceActForOwner,
+  canPairDevice,
   canUseOwnerPairingInvitation,
   type OwnerBoundDevice,
   type OwnerIdentity,
@@ -43,5 +44,16 @@ describe("owner access through authenticated devices", () => {
     expect(canDeviceActForOwner(device, { ...owner, status: "revoked" }, "owner-private-1")).toBe(false);
     expect(canDeviceActForOwner(device, owner, "other-owner")).toBe(false);
     expect(canDeviceActForOwner(null, owner, "owner-private-1")).toBe(false);
+  });
+});
+
+describe("authenticated device pairing", () => {
+  it("pairs only an unlinked, active device for the invited app", () => {
+    expect(canPairDevice(device, invitation, owner, 5_000)).toBe(true);
+    expect(canPairDevice({ ...device, ownerId: "already-linked" }, invitation, owner, 5_000)).toBe(false);
+    expect(canPairDevice({ ...device, appId: "another-app" }, invitation, owner, 5_000)).toBe(false);
+    expect(canPairDevice({ ...device, revokedAt: 1_000 }, invitation, owner, 5_000)).toBe(false);
+    expect(canPairDevice(device, invitation, { ...owner, status: "revoked" }, 5_000)).toBe(false);
+    expect(canPairDevice(null, invitation, owner, 5_000)).toBe(false);
   });
 });
