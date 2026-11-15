@@ -41,7 +41,7 @@ npm run typecheck
 npx wrangler d1 create ciba-ai-db
 ```
 
-Copie o ID retornado para `wrangler.toml`, aplique a migration e configure os segredos:
+Copie o ID retornado para `wrangler.toml`. Substitua `ALLOWED_APP_IDS` pelos package IDs Android reais dos aplicativos Ciba (a lista está vazia de propósito até essa confirmação), aplique a migration e configure os segredos:
 
 ```bash
 npx wrangler d1 migrations apply ciba-ai-db --remote
