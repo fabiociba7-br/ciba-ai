@@ -71,6 +71,19 @@ export interface CibaTaskResults<T = unknown> {
   }>;
   count: number;
   maximum: number;
+  consolidation: {
+    status: "awaiting_results" | "no_successful_results" | "single_result" | "agreement" | "divergent";
+    task_id: string;
+    total_results: number;
+    completed_results: number;
+    partial_results: number;
+    failed_results: number;
+    distinct_successful_outputs: number;
+    agreement: boolean | null;
+    consensus_result: T | null;
+    sources: Array<{ app_id: string; status: "completed" | "partial" | "failed" }>;
+    divergent_source_app_ids: string[];
+  };
 }
 
 export interface CibaTaskDispatchResult {
