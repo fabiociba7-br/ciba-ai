@@ -520,7 +520,7 @@ const handleAppIdentity = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
   const app = await env.DB.prepare(
-    "SELECT app_id, display_name, enabled, description, app_type, capabilities_json, contract_version FROM app_registry WHERE app_id = ?"
+    "SELECT app_id, display_name, enabled, description, app_type, capabilities_json, task_types_json, contract_version FROM app_registry WHERE app_id = ?"
   ).bind(device.app_id).first<{
     app_id: string; display_name: string; enabled: number; description: string;
     app_type: string; capabilities_json: string; task_types_json: string; contract_version: string;
@@ -590,7 +590,8 @@ const handleOwnerDashboard = async (request: Request, env: Env) => {
       FROM devices d
       INNER JOIN app_registry a ON a.app_id = d.app_id
       WHERE d.owner_id = ?
-      GROUP BY a.app_id, a.display_name, a.enabled
+      GROUP BY a.app_id, a.display_name, a.enabled, a.description, a.app_type,
+        a.capabilities_json, a.task_types_json, a.contract_version
       ORDER BY a.display_name COLLATE NOCASE
     `).bind(owner.owner_id).all<{
       app_id: string; display_name: string; enabled: number; description: string;
