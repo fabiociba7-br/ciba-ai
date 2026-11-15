@@ -203,7 +203,7 @@ const handleCreateInvitation = async (request: Request, env: Env) => {
   }
   const body = await readJson(request, 4_000);
   const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
-  if (!appId || !allowedApps(env).has(appId)) return json({ error: "app_not_allowed" }, 400);
+  if (!appId || !(await isAppAllowed(env, appId))) return json({ error: "app_not_allowed" }, 400);
 
   const hours = typeof body.valid_hours === "number" && Number.isInteger(body.valid_hours)
     ? Math.min(Math.max(body.valid_hours, 1), 168) : 24;
