@@ -75,7 +75,7 @@ export async function runMultiModelEnsemble(input: {
     if (!member.provider.enabled || member.zeroCostApproved !== true ||
         !/^[a-z0-9][a-z0-9-]{1,63}$/.test(member.provider.id) ||
         !member.model.trim() || member.model.length > 200 ||
-        !Object.prototype.hasOwnProperty.call(AGENTS, member.role) || member.role === "general") {
+        !Object.prototype.hasOwnProperty.call(AGENTS, member.role)) {
       throw new Error("invalid_ensemble_member");
     }
     const key = member.provider.id + ":" + member.model;
