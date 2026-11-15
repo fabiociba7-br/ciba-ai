@@ -37,6 +37,14 @@ Resposta ilustrativa:
 
 Se ai_enabled for falso ou maintenance_mode verdadeiro, o app deve apresentar indisponibilidade de forma clara e não iniciar tentativas repetidas.
 
+## 1.1 Descobrir capacidades da inteligência
+
+~~~http
+GET /v1/ai/capabilities
+~~~
+
+O endpoint informa o provider efetivamente configurado, o modo de execução, os perfis especialistas disponíveis e se memória persistente, ferramentas externas ou fan-out multi-modelo estão habilitados. Nesta versão, o modo é single-pass e usa uma única inferência por chamada.
+
 ## 2. Registrar uma instalação
 
 O app recebe um convite de uso único emitido pelo administrador e chama:
