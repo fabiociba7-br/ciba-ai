@@ -304,7 +304,11 @@ describe("Ciba AI owner-controlled app access grants", () => {
     expect(dashboard.connected_apps.some((app) => app.app_id === sourceApp && app.active_device_count === 1)).toBe(true);
     expect(dashboard.devices).toHaveLength(1);
     expect(dashboard.devices[0]).not.toHaveProperty("token_hash");
-    expect(dashboard.security).toEqual({ credentials_returned: false, conversation_content_returned: false });
+    expect(dashboard.security).toEqual({
+      owner_identity_derived_from_paired_device: true,
+      credentials_returned: false,
+      conversation_content_returned: false,
+    });
 
     const enabled = await ownerRequest("/v1/owner/settings", "POST", {
       settings: { app_messaging_enabled: true },
