@@ -169,3 +169,12 @@ Um aplicativo autenticado pode solicitar roteamento com `POST /v1/apps/tasks/dis
 Garcia procura somente aplicativos habilitados, ativos e pareados ao mesmo proprietário. O destino precisa declarar o tipo de tarefa e possuir, junto com o remetente, concessões vigentes de `send` e `receive` no escopo `task`. Um único candidato elegível é selecionado. Se houver vários, a API responde HTTP 409 com candidatos e exige `preferred_app_id`; sem concessões retorna 403 e sem app capaz retorna 404. O recurso de mensagens do proprietário também precisa estar habilitado.
 
 A mensagem chega na caixa de entrada padrão como payload `protocol: garcia.task.request`, contendo `task_id`, `task_type`, `instruction` e contexto opcional. O aplicativo de destino executa sua própria lógica e responde enviando uma mensagem normal de volta ao remetente, com o mesmo `task_id`; isso exige concessões válidas no sentido inverso. Garcia não executa ações do app nem presume que uma tarefa foi concluída. A consolidação final ainda cabe ao aplicativo que iniciou a tarefa. O identificador `client_message_id` torna a solicitação idempotente por aplicativo e proprietário.
+
+
+## 13. Retorno e consulta de resultados de tarefas
+
+O aplicativo destinatário responde pelo endpoint autenticado `POST /v1/apps/tasks/results` ou pelo método SDK `submitTaskResult()`. Envie `task_id`, `client_message_id`, `result` (objeto JSON) e status opcional (`completed`, `failed` ou `partial`). O servidor só aceita resposta para uma solicitação Garcia ainda válida, originalmente encaminhada ao app autenticado, e exige concessões `send` e `receive` inversas entre os dois aplicativos. O resultado é limitado a 7.000 caracteres e usa a fila existente; não é executado pelo servidor.
+
+O aplicativo que iniciou a tarefa consulta `GET /v1/apps/tasks/results?task_id=...` ou `getTaskResults(taskId)`. A resposta contém resultados correlacionados pelo mesmo identificador, status, app respondente e horários. Os resultados continuam sujeitos à validade da mensagem e às concessões atuais. A consulta não confirma nem apaga as mensagens; após processar o resultado, o app deve confirmar o `message_id` com `acknowledgeMessages()`. Use um `client_message_id` estável em tentativas repetidas.
+
+Garcia transporta e correlaciona os resultados, mas a interpretação e a redação da resposta final continuam sob responsabilidade do app solicitante. Não trate um status `completed` como verificação independente da qualidade do conteúdo.
