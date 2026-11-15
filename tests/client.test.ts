@@ -49,6 +49,36 @@ describe("CibaClient", () => {
     expect(fetcher.mock.calls[1][0]).toBe("https://private.example/v1/apps/messages/inbox?limit=20");
   });
 
+  it("dispatches a typed task through the central coordinator", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({
+        dispatched: true, duplicate: false,
+        route: { task_id: "task-1", destination_app_id: "com.ciba.notes", created_at: "now", expires_at: "later" },
+      }), { status: 201 })
+    );
+    const client = new CibaClient({
+      baseUrl: "https://private.example",
+      getAccessToken: () => "device-token",
+      fetcher,
+    });
+    const result = await client.dispatchTask({
+      taskType: "summarize",
+      instruction: "Resuma o documento",
+      clientMessageId: "task-request-1",
+      preferredAppId: "com.ciba.notes",
+      context: { document_id: "doc-1" },
+    });
+    expect(result.route.destination_app_id).toBe("com.ciba.notes");
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/apps/tasks/dispatch");
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({
+      task_type: "summarize",
+      instruction: "Resuma o documento",
+      client_message_id: "task-request-1",
+      preferred_app_id: "com.ciba.notes",
+      context: { document_id: "doc-1" },
+    });
+  });
+
   it("maps message and grant fields to the API contract", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(JSON.stringify({ queued: true }), { status: 201 })
