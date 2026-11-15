@@ -475,16 +475,18 @@ const handleOwnerAccessGrants = async (request: Request, env: Env) => {
   const granteeAppId = typeof body.grantee_app_id === "string" ? body.grantee_app_id.trim() : "";
   const sourceAppId = typeof body.source_app_id === "string" ? body.source_app_id.trim() : null;
   const destinationAppId = typeof body.destination_app_id === "string" ? body.destination_app_id.trim() : null;
-  const permission = body.permission;
-  const scope = body.scope;
+  const rawPermission = body.permission;
+  const rawScope = body.scope;
   const permissions = ["send", "receive", "memory_read", "memory_write"];
   const scopes = ["task", "context", "app_memory", "owner_memory"];
   if (
     !isValidAppId(granteeAppId) ||
-    !permissions.includes(String(permission)) ||
-    !scopes.includes(String(scope)) ||
+    !permissions.includes(String(rawPermission)) ||
+    !scopes.includes(String(rawScope)) ||
     !(await isAppAllowed(env, granteeAppId))
   ) return json({ error: "invalid_grant_fields" }, 400);
+  const permission = rawPermission as "send" | "receive" | "memory_read" | "memory_write";
+  const scope = rawScope as "task" | "context" | "app_memory" | "owner_memory";
 
   if (permission === "send" || permission === "receive") {
     if (
