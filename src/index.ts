@@ -227,6 +227,9 @@ const handleChat = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
 
+  const settings = await readRuntimeSettings(env);
+  if (settings.maintenance_mode === "true") return json({ error: "maintenance_mode" }, 503);
+  if (settings.ai_enabled === "false") return json({ error: "ai_disabled" }, 503);
   const body = await readJson(request);
   if (!Array.isArray(body.messages) || body.messages.length < 1 || body.messages.length > 20) {
     return json({ error: "invalid_messages" }, 400);
@@ -253,8 +256,8 @@ const handleChat = async (request: Request, env: Env) => {
     throw error;
   }
 
-  const model = env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it";
-  const maxTokens = Math.min(getLimit(env.MAX_OUTPUT_TOKENS, 700), 2_000);
+  const model = settings.ai_model || env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it";
+  const maxTokens = Math.min(getLimit(settings.max_output_tokens || env.MAX_OUTPUT_TOKENS, 700), 2_000);
   const inputMessages = [
     { role: "system", content: "Você é o assistente de IA dos aplicativos Ciba. Responda em português quando o usuário escrever em português. Seja claro, útil e seguro." },
     ...messages,
