@@ -84,3 +84,12 @@ Antes de usar os endpoints administrativos, aplicar também a migration `0002_ru
 ## Retenção e limpeza automática
 
 Um Cron diário às 03:17 UTC remove registros de uso diário com mais de 35 dias e convites expirados e não utilizados com mais de 30 dias. O histórico de dispositivos é preservado para auditoria; tokens nunca são armazenados em texto puro.
+
+
+## Proteção contra excesso de chamadas
+
+O endpoint de chat aceita até 12 chamadas por dispositivo em cada minuto UTC. O controle é persistido no D1 e aplicado atomicamente por trigger SQL; a resposta para excesso é HTTP 429 com `rate_limit_exceeded`. A migration correspondente é `0004_minute_rate_limit.sql`. Registros antigos são removidos pelo cron diário.
+
+## Validação efetiva do modelo
+
+A allowlist de modelos é verificada novamente no momento da inferência. Atualmente, somente `@cf/google/gemma-4-26b-a4b-it` é aceito. Se a variável de ambiente ou a configuração persistida apontar para outro modelo, a inferência é bloqueada em vez de executar um modelo potencialmente pago.
