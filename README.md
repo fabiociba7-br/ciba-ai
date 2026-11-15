@@ -87,4 +87,4 @@ Consulte [SECURITY.md](docs/SECURITY.md) antes de disponibilizar convites ou dis
 
 - O endpoint `POST /v1/ai/chat` limita cada dispositivo a 12 chamadas por minuto; excedentes recebem HTTP 429 (`rate_limit_exceeded`).
 - O modelo efetivo é validado por allowlist no próprio Worker. Atualmente, somente `@cf/google/gemma-4-26b-a4b-it` é aceito; uma configuração de ambiente fora da allowlist não será executada.
-- A migration `0004_minute_rate_limit.sql` cria o contador por minuto. A limpeza agendada remove registros antigos.
+- As migrations `0004_minute_rate_limit.sql` and `0005_configurable_rate_limit.sql` cria o contador por minuto. A limpeza agendada remove registros antigos.
