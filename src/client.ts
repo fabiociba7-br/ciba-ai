@@ -35,6 +35,36 @@ export interface CibaAppIdentity {
   };
 }
 
+export type CibaTaskType =
+  | "analyze" | "classify" | "draft" | "extract" | "organize"
+  | "plan" | "research" | "summarize" | "transcribe" | "translate";
+
+export interface CibaTaskDispatchInput {
+  taskType: CibaTaskType;
+  instruction: string;
+  clientMessageId: string;
+  preferredAppId?: string;
+  context?: unknown;
+  ttlHours?: number;
+}
+
+export interface CibaTaskDispatchResult {
+  dispatched: true;
+  duplicate: boolean;
+  route: {
+    message_id: string;
+    task_id: string;
+    source_app_id?: string;
+    destination_app_id: string;
+    destination_display_name?: string;
+    task_type?: CibaTaskType;
+    scope?: "task";
+    created_at: string;
+    expires_at: string;
+    result_delivery?: "destination_app_must_reply_with_same_task_id";
+  };
+}
+
 export interface CibaClientOptions {
   /** Base URL of the private Ciba AI Worker, e.g. https://api.example.com */
   baseUrl: string;
@@ -204,6 +234,20 @@ export class CibaClient {
     return this.request("/v1/ai/chat", {
       method: "POST",
       body: JSON.stringify({ messages }),
+    });
+  }
+
+  dispatchTask(input: CibaTaskDispatchInput): Promise<CibaTaskDispatchResult> {
+    return this.request("/v1/apps/tasks/dispatch", {
+      method: "POST",
+      body: JSON.stringify({
+        task_type: input.taskType,
+        instruction: input.instruction,
+        client_message_id: input.clientMessageId,
+        ...(input.preferredAppId === undefined ? {} : { preferred_app_id: input.preferredAppId }),
+        ...(input.context === undefined ? {} : { context: input.context }),
+        ...(input.ttlHours === undefined ? {} : { ttl_hours: input.ttlHours }),
+      }),
     });
   }
 
