@@ -127,7 +127,8 @@ O Ciba AI é uma inteligência privada do proprietário e dos aplicativos autori
 
 Os contratos e a política de autorização já estão definidos em `src/core/memory.ts`. A política exige correspondência do proprietário, concede acesso local ao escopo do próprio aplicativo e exige uma concessão explícita para memória central ou memória de outro aplicativo. Concessões podem limitar leitura/escrita e expirar.
 
-**Estado real:** esta etapa não ativa armazenamento persistente, não cria endpoints de memória e não faz compartilhamento em produção. Ainda falta uma identidade autenticada única do proprietário, uma tela para administrar concessões e um backend com operações de exportação e exclusão. Até isso existir, nenhuma memória é gravada entre requisições e nenhum aplicativo recebe acesso aos dados de outro.
+**Estado real:** as APIs de memória e comunicação estão implementadas, mas dependem das migrations 0007–0011 e do deploy para operar em produção. O controle de capacidades por proprietário está disponível pela API autenticada; ainda não existe uma tela visual integrada nos aplicativos.
+
 
 ## Controles de capacidades por proprietário
 
