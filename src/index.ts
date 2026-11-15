@@ -549,7 +549,10 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   if (url.pathname === "/v1/admin/apps" && (request.method === "GET" || request.method === "POST")) {
     return handleAdminApps(request, env);
   }
-  if (url.pathname === "/v1/admin/ai/overview" && request.method === "GET") {\n    return handleAdminAiOverview(request, env);\n  }\n  if (url.pathname === "/v1/admin/settings" && (request.method === "GET" || request.method === "POST")) {
+  if (url.pathname === "/v1/admin/ai/overview" && request.method === "GET") {
+    return handleAdminAiOverview(request, env);
+  }
+  if (url.pathname === "/v1/admin/settings" && (request.method === "GET" || request.method === "POST")) {
     return handleAdminSettings(request, env);
   }
   if (url.pathname === "/v1/config" && request.method === "GET") {
