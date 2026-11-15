@@ -317,7 +317,14 @@ const handleAdminSettings = async (request: Request, env: Env) => {
 const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
-  if (url.pathname === "/v1/admin/settings" && (request.method === "GET" || request.method === "POST")) {\n    return handleAdminSettings(request, env);\n  }\n  if (url.pathname === "/v1/config" && request.method === "GET") {\n    const settings = await readRuntimeSettings(env);\n    return json(publicConfig(settings, env));\n  }\n  if (url.pathname === "/v1/status" && request.method === "GET") {
+  if (url.pathname === "/v1/admin/settings" && (request.method === "GET" || request.method === "POST")) {
+    return handleAdminSettings(request, env);
+  }
+  if (url.pathname === "/v1/config" && request.method === "GET") {
+    const settings = await readRuntimeSettings(env);
+    return json(publicConfig(settings, env));
+  }
+  if (url.pathname === "/v1/status" && request.method === "GET") {
     await env.DB.prepare("SELECT 1").first();
     return json({
       service: "ciba-ai",
