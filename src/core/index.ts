@@ -1,6 +1,11 @@
 export { runCibaOrchestrator } from "./orchestrator";
+export { runMultiModelEnsemble } from "./ensemble";
+export type { EnsembleMember, EnsemblePlan, EnsembleResult } from "./ensemble";
 export { listAgents } from "./agents/catalog";
 export { routeTask } from "./router";
 export { CloudflareWorkersAIProvider } from "./providers/cloudflare";
 export { OpenAICompatibleProvider } from "./providers/openai-compatible";
+export { createProviderRegistry } from "./providers/registry";
+export type { ProviderRegistry, RegisteredModel } from "./providers/registry";
+export type { CibaToolDefinition, CibaToolRegistry, CibaToolRisk } from "./tools";
 export type { CibaRole, ChatTurn, ModelProvider, OrchestrationResult } from "./types";
