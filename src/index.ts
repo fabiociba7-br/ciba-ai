@@ -1,0 +1,275 @@
+export interface Env {
+  DB: D1Database;
+  AI: {
+    run(model: string, input: Record<string, unknown>): Promise<unknown>;
+  };
+  ADMIN_TOKEN: string;
+  AI_MODEL?: string;
+  ALLOWED_APP_IDS?: string;
+  DAILY_GLOBAL_LIMIT?: string;
+  DAILY_APP_LIMIT?: string;
+  DAILY_DEVICE_LIMIT?: string;
+  MAX_OUTPUT_TOKENS?: string;
+  ALLOWED_ORIGINS?: string;
+}
+
+type ChatMessage = { role: "user" | "assistant"; content: string };
+
+const json = (data: unknown, status = 200, extra: HeadersInit = {}) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extra },
+  });
+
+const getLimit = (value: string | undefined, fallback: number): number => {
+  const n = Number(value);
+  return Number.isSafeInteger(n) && n > 0 ? n : fallback;
+};
+
+const b64url = (bytes: Uint8Array): string => {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+};
+
+const randomToken = (size = 32): string => {
+  const bytes = new Uint8Array(size);
+  crypto.getRandomValues(bytes);
+  return b64url(bytes);
+};
+
+const sha256 = async (value: string): Promise<string> => {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+};
+
+const nowIso = () => new Date().toISOString();
+const utcDay = () => new Date().toISOString().slice(0, 10);
+
+const allowedApps = (env: Env) =>
+  new Set((env.ALLOWED_APP_IDS || "").split(",").map((s) => s.trim()).filter(Boolean));
+
+const corsHeaders = (request: Request, env: Env): HeadersInit => {
+  const origin = request.headers.get("Origin") || "";
+  const allowed = (env.ALLOWED_ORIGINS || "*").split(",").map((s) => s.trim());
+  const allowOrigin = allowed.includes("*") || allowed.includes(origin) ? (allowed.includes("*") ? "*" : origin) : "null";
+  return {
+    "access-control-allow-origin": allowOrigin,
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-headers": "authorization,content-type",
+    "access-control-max-age": "86400",
+    "vary": "Origin",
+  };
+};
+
+const readJson = async (request: Request, maxBytes = 40_000): Promise<Record<string, unknown>> => {
+  const declared = Number(request.headers.get("content-length") || 0);
+  if (declared > maxBytes) throw new Error("body_too_large");
+  const raw = await request.text();
+  if (new TextEncoder().encode(raw).byteLength > maxBytes) throw new Error("body_too_large");
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid_json");
+  return parsed as Record<string, unknown>;
+};
+
+const authenticateDevice = async (request: Request, env: Env) => {
+  const header = request.headers.get("authorization") || "";
+  if (!header.startsWith("Bearer ")) return null;
+  const token = header.slice(7).trim();
+  if (token.length < 32 || token.length > 256) return null;
+  const tokenHash = await sha256(token);
+  return env.DB.prepare(
+    "SELECT device_id, app_id FROM devices WHERE token_hash = ? AND revoked_at IS NULL"
+  ).bind(tokenHash).first<{ device_id: string; app_id: string }>();
+};
+
+const reserveQuota = async (env: Env, appId: string, deviceId: string) => {
+  const day = utcDay();
+  const timestamp = nowIso();
+  const globalLimit = getLimit(env.DAILY_GLOBAL_LIMIT, 500);
+  const appLimit = getLimit(env.DAILY_APP_LIMIT, 200);
+  const deviceLimit = getLimit(env.DAILY_DEVICE_LIMIT, 40);
+
+  // One multi-row UPSERT is atomic. The trigger aborts the whole statement
+  // if any of the three buckets would exceed its limit.
+  await env.DB.prepare(`
+    INSERT INTO daily_usage(day, scope_key, requests, request_limit, updated_at)
+    VALUES
+      (?, 'global', 1, ?, ?),
+      (?, ?, 1, ?, ?),
+      (?, ?, 1, ?, ?)
+    ON CONFLICT(day, scope_key) DO UPDATE SET
+      requests = daily_usage.requests + 1,
+      request_limit = excluded.request_limit,
+      updated_at = excluded.updated_at
+  `).bind(
+    day, globalLimit, timestamp,
+    day, `app:${appId}`, appLimit, timestamp,
+    day, `device:${deviceId}`, deviceLimit, timestamp
+  ).run();
+};
+
+const usageFor = async (env: Env, appId: string, deviceId: string) => {
+  const day = utcDay();
+  const rows = await env.DB.prepare(
+    "SELECT scope_key, requests, request_limit FROM daily_usage WHERE day = ? AND scope_key IN ('global', ?, ?)"
+  ).bind(day, `app:${appId}`, `device:${deviceId}`).all<{
+    scope_key: string; requests: number; request_limit: number;
+  }>();
+  return { day, buckets: rows.results || [] };
+};
+
+const handleRegister = async (request: Request, env: Env) => {
+  const body = await readJson(request, 8_000);
+  const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
+  const invite = typeof body.invitation_code === "string" ? body.invitation_code.trim() : "";
+  if (!appId || appId.length > 100 || !allowedApps(env).has(appId)) {
+    return json({ error: "app_not_allowed" }, 403);
+  }
+  if (invite.length < 20 || invite.length > 256) return json({ error: "invalid_invitation" }, 400);
+
+  const deviceId = crypto.randomUUID();
+  const deviceToken = randomToken(36);
+  const tokenHash = await sha256(deviceToken);
+  const invitationHash = await sha256(invite);
+  const timestamp = nowIso();
+
+  // D1 batch is transactional: if the invitation is not consumed, the
+  // INSERT ... SELECT creates no device. If insertion fails, the batch rolls back.
+  const results = await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE invitations
+      SET used_at = ?, consumed_device_id = ?
+      WHERE code_hash = ? AND app_id = ? AND used_at IS NULL AND expires_at > ?
+    `).bind(timestamp, deviceId, invitationHash, appId, timestamp),
+    env.DB.prepare(`
+      INSERT INTO devices(device_id, app_id, token_hash, created_at, last_seen_at)
+      SELECT ?, ?, ?, ?, ?
+      WHERE EXISTS (
+        SELECT 1 FROM invitations
+        WHERE code_hash = ? AND app_id = ? AND used_at = ?
+          AND consumed_device_id = ?
+      )
+    `).bind(deviceId, appId, tokenHash, timestamp, timestamp,
+      invitationHash, appId, timestamp, deviceId),
+  ]);
+
+  if ((results[0]?.meta?.changes || 0) !== 1 || (results[1]?.meta?.changes || 0) !== 1) {
+    return json({ error: "invalid_or_used_invitation" }, 401);
+  }
+  return json({ device_id: deviceId, access_token: deviceToken, token_type: "Bearer" }, 201);
+};
+
+const handleCreateInvitation = async (request: Request, env: Env) => {
+  if (!env.ADMIN_TOKEN || request.headers.get("authorization") !== `Bearer ${env.ADMIN_TOKEN}`) {
+    return json({ error: "unauthorized" }, 401);
+  }
+  const body = await readJson(request, 4_000);
+  const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
+  if (!appId || !allowedApps(env).has(appId)) return json({ error: "app_not_allowed" }, 400);
+
+  const hours = typeof body.valid_hours === "number" && Number.isInteger(body.valid_hours)
+    ? Math.min(Math.max(body.valid_hours, 1), 168) : 24;
+  const code = randomToken(24);
+  const createdAt = nowIso();
+  const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+  await env.DB.prepare(
+    "INSERT INTO invitations(code_hash, app_id, created_at, expires_at) VALUES(?, ?, ?, ?)"
+  ).bind(await sha256(code), appId, createdAt, expiresAt).run();
+
+  return json({ invitation_code: code, app_id: appId, expires_at: expiresAt }, 201);
+};
+
+const handleChat = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+
+  const body = await readJson(request);
+  if (!Array.isArray(body.messages) || body.messages.length < 1 || body.messages.length > 20) {
+    return json({ error: "invalid_messages" }, 400);
+  }
+  const messages: ChatMessage[] = [];
+  let totalChars = 0;
+  for (const item of body.messages) {
+    if (!item || typeof item !== "object") return json({ error: "invalid_message" }, 400);
+    const message = item as Record<string, unknown>;
+    if ((message.role !== "user" && message.role !== "assistant") ||
+        typeof message.content !== "string" || message.content.length > 12_000) {
+      return json({ error: "invalid_message" }, 400);
+    }
+    totalChars += message.content.length;
+    messages.push({ role: message.role, content: message.content });
+  }
+  if (totalChars > 30_000) return json({ error: "prompt_too_large" }, 413);
+
+  try {
+    await reserveQuota(env, device.app_id, device.device_id);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("quota_exceeded")) return json({ error: "daily_quota_exceeded" }, 429);
+    throw error;
+  }
+
+  const model = env.AI_MODEL || "@cf/meta/llama-3.1-8b-instruct";
+  const maxTokens = Math.min(getLimit(env.MAX_OUTPUT_TOKENS, 700), 2_000);
+  const inputMessages = [
+    { role: "system", content: "Você é o assistente de IA dos aplicativos Ciba. Responda em português quando o usuário escrever em português. Seja claro, útil e seguro." },
+    ...messages,
+  ];
+
+  const result = await env.AI.run(model, { messages: inputMessages, max_tokens: maxTokens });
+  const output = result as { response?: unknown; [key: string]: unknown };
+  await env.DB.prepare(
+    "UPDATE devices SET last_seen_at = ? WHERE device_id = ?"
+  ).bind(nowIso(), device.device_id).run();
+
+  return json({
+    model,
+    response: typeof output?.response === "string" ? output.response : output,
+  });
+};
+
+const handleRequest = async (request: Request, env: Env): Promise<Response> => {
+  const url = new URL(request.url);
+  if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+  if (url.pathname === "/v1/status" && request.method === "GET") {
+    return json({ service: "ciba-ai", status: "online", inference: "cloudflare-workers-ai" });
+  }
+  if (url.pathname === "/v1/models" && request.method === "GET") {
+    return json({ models: env.AI_MODEL ? [env.AI_MODEL] : [], configured: Boolean(env.AI_MODEL) });
+  }
+  if (url.pathname === "/v1/auth/register" && request.method === "POST") {
+    return handleRegister(request, env);
+  }
+  if (url.pathname === "/v1/admin/invitations" && request.method === "POST") {
+    return handleCreateInvitation(request, env);
+  }
+  if (url.pathname === "/v1/ai/chat" && request.method === "POST") {
+    return handleChat(request, env);
+  }
+  if (url.pathname === "/v1/usage" && request.method === "GET") {
+    const device = await authenticateDevice(request, env);
+    if (!device) return json({ error: "unauthorized" }, 401);
+    return json(await usageFor(env, device.app_id, device.device_id));
+  }
+  return json({ error: "not_found" }, 404);
+};
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const cors = corsHeaders(request, env);
+    try {
+      const response = await handleRequest(request, env);
+      const headers = new Headers(response.headers);
+      new Headers(cors).forEach((value, key) => headers.set(key, value));
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+    } catch (error) {
+      // Do not expose database errors, tokens, prompts, or provider internals.
+      console.error("Ciba AI request failed", error instanceof Error ? error.name : "unknown");
+      const response = json({ error: "internal_error" }, 500);
+      const headers = new Headers(response.headers);
+      new Headers(cors).forEach((value, key) => headers.set(key, value));
+      return new Response(response.body, { status: response.status, headers });
+    }
+  },
+};
