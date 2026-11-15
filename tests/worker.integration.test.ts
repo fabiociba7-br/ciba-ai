@@ -279,7 +279,8 @@ describe("Ciba AI owner-controlled app access grants", () => {
 
     const ownerResponse = await adminRequest("/v1/admin/owners", "POST", { app_id: sourceApp });
     expect(ownerResponse.status).toBe(201);
-    const ownerCode = (await ownerResponse.json() as { pairing_invitation_code: string }).pairing_invitation_code;
+    const ownerBody = await ownerResponse.json() as { owner_id: string; pairing_invitation_code: string };
+    const ownerCode = ownerBody.pairing_invitation_code;
     const pairResponse = await request("/v1/owner/pair", {
       method: "POST",
       headers: {
@@ -336,8 +337,7 @@ describe("Ciba AI owner-controlled app access grants", () => {
       (await secondInvitation.json() as { invitation_code: string }).invitation_code,
       sourceApp,
     );
-    const ownerId = (await ownerResponse.json().catch(() => ({})) as { owner_id?: string }).owner_id;
-    expect(ownerId).toBeDefined();
+    const ownerId = ownerBody.owner_id;
     const secondPairing = await adminRequest("/v1/admin/owner-invitations", "POST", {
       owner_id: ownerId, app_id: sourceApp,
     });
