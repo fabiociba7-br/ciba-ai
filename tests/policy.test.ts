@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getLimit, isValidAppId, resolveModel, MAX_REQUESTS_PER_MINUTE } from "../src/policy";
+import { getLimit, isValidAppId, resolveModel, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE } from "../src/policy";
 
 describe("policy: numeric limits", () => {
   it("accepts positive safe integers", () => {
@@ -34,4 +34,10 @@ describe("policy: app identifiers", () => {
 
 describe("policy: request throttling", () => {
   it("keeps the per-device minute ceiling at 12", () => expect(MAX_REQUESTS_PER_MINUTE).toBe(12));
+});
+
+describe("policy: administrative authentication throttling", () => {
+  it("limits failed admin authentication to 10 attempts per minute", () => {
+    expect(MAX_ADMIN_AUTH_FAILURES_PER_MINUTE).toBe(10);
+  });
 });
