@@ -49,5 +49,10 @@ A revogação só afeta uma concessão pertencente ao proprietário autenticado.
 
 - As rotas e o armazenamento entram em vigor somente depois de aplicar as migrations 0007 e 0008 e publicar o Worker; isso ainda não foi feito.
 - Não há interface visual de gerenciamento nesta etapa; os endpoints são a API para uma futura tela de configurações.
-- As concessões ainda não estão conectadas a relay de mensagens nem a memória persistente. Criar uma concessão registra autorização, mas não inicia troca de dados.
+- O relay privado está implementado no código e exige concessões ativas de envio e recebimento. A migration 0009 ainda precisa ser aplicada e o Worker publicado antes de qualquer troca de mensagens em produção. A memória persistente continua desativada.
 - O proprietário pode administrar as permissões a partir de qualquer dispositivo ativo que esteja pareado à sua identidade privada.
+
+
+## Relay de mensagens
+
+A API de relay foi adicionada em `docs/APP_MESSAGE_RELAY.md`. O envio exige as concessões `send` e `receive` para o mesmo par de apps e escopo. A leitura revalida as permissões, e a confirmação só afeta mensagens destinadas ao app autenticado. A migration 0009 e o deploy ainda estão pendentes.
