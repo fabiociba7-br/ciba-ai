@@ -1411,6 +1411,161 @@ const handleTaskDispatch = async (request: Request, env: Env) => {
   }, 201);
 };
 
+const handleSubmitTaskResult = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  if (!(await isAppAllowed(env, device.app_id))) return json({ error: "source_app_disabled" }, 403);
+  if (!(await readOwnerFeatureSettings(env, owner.owner_id)).app_messaging_enabled) {
+    return json({ error: "app_messaging_disabled" }, 403);
+  }
+
+  const body = await readJson(request, 12_000);
+  const taskId = typeof body.task_id === "string" ? body.task_id.trim() : "";
+  const clientMessageId = typeof body.client_message_id === "string" ? body.client_message_id.trim() : "";
+  const status = body.status === undefined ? "completed" : body.status;
+  if (!taskId || taskId.length > 100 || !clientMessageId || clientMessageId.length > 100 ||
+      !["completed", "failed", "partial"].includes(String(status)) ||
+      !body.result || typeof body.result !== "object" || Array.isArray(body.result)) {
+    return json({ error: "invalid_task_result_fields" }, 400);
+  }
+
+  let resultJson: string;
+  try { resultJson = JSON.stringify(body.result); } catch {
+    return json({ error: "invalid_task_result" }, 400);
+  }
+  if (!resultJson || resultJson.length > 7_000) {
+    return json({ error: "task_result_too_large", max_characters: 7_000 }, 413);
+  }
+
+  const timestamp = nowIso();
+  const original = await env.DB.prepare(`
+    SELECT source_app_id, expires_at, payload_json
+    FROM app_messages
+    WHERE owner_id = ? AND destination_app_id = ? AND task_id = ?
+      AND scope = 'task' AND expires_at > ?
+    ORDER BY created_at DESC LIMIT 1
+  `).bind(owner.owner_id, device.app_id, taskId, timestamp)
+    .first<{ source_app_id: string; expires_at: string; payload_json: string }>();
+  if (!original) return json({ error: "task_request_not_found_or_expired" }, 404);
+
+  let requestPayload: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(original.payload_json);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) requestPayload = parsed;
+  } catch { /* Invalid stored request cannot authorize a response. */ }
+  if (requestPayload.protocol !== "garcia.task.request" || requestPayload.task_id !== taskId) {
+    return json({ error: "task_request_not_found_or_expired" }, 404);
+  }
+
+  const sourceAppId = original.source_app_id;
+  const [sendAllowed, receiveAllowed] = await Promise.all([
+    hasMessageGrant(env, owner.owner_id, device.app_id, device.app_id, sourceAppId, "send", "task", timestamp),
+    hasMessageGrant(env, owner.owner_id, sourceAppId, sourceAppId, device.app_id, "receive", "task", timestamp),
+  ]);
+  if (!sendAllowed || !receiveAllowed) return json({ error: "task_result_access_not_granted" }, 403);
+
+  const payload = {
+    protocol: "garcia.task.result",
+    contract: "garcia-app",
+    contract_version: "1.0.0",
+    task_id: taskId,
+    status,
+    result: body.result,
+  };
+  const payloadJson = JSON.stringify(payload);
+  const messageId = crypto.randomUUID();
+  const expiresAt = new Date(Math.min(
+    Date.now() + MESSAGE_DEFAULT_TTL_HOURS * 60 * 60 * 1000,
+    new Date(original.expires_at).getTime()
+  )).toISOString();
+  const inserted = await env.DB.prepare(`
+    INSERT INTO app_messages(
+      message_id, owner_id, source_app_id, destination_app_id,
+      client_message_id, task_id, scope, payload_json, created_at, expires_at
+    )
+    SELECT ?, ?, ?, ?, ?, ?, 'task', ?, ?, ?
+    WHERE (
+      SELECT COUNT(*) FROM app_messages
+      WHERE owner_id = ? AND destination_app_id = ?
+        AND acknowledged_at IS NULL AND expires_at > ?
+    ) < ?
+    ON CONFLICT(owner_id, source_app_id, client_message_id) DO NOTHING
+  `).bind(
+    messageId, owner.owner_id, device.app_id, sourceAppId,
+    clientMessageId, taskId, payloadJson, timestamp, expiresAt,
+    owner.owner_id, sourceAppId, timestamp, MESSAGE_MAX_PENDING_PER_DESTINATION
+  ).run();
+
+  if (inserted.meta.changes !== 1) {
+    const existing = await env.DB.prepare(`
+      SELECT message_id, task_id, created_at, expires_at
+      FROM app_messages WHERE owner_id = ? AND source_app_id = ? AND client_message_id = ?
+    `).bind(owner.owner_id, device.app_id, clientMessageId)
+      .first<{ message_id: string; task_id: string; created_at: string; expires_at: string }>();
+    if (existing) return json({ submitted: true, duplicate: true, message: existing }, 200);
+    return json({ error: "destination_queue_full", maximum_pending: MESSAGE_MAX_PENDING_PER_DESTINATION }, 429);
+  }
+
+  return json({
+    submitted: true,
+    duplicate: false,
+    message: {
+      message_id: messageId,
+      task_id: taskId,
+      source_app_id: device.app_id,
+      destination_app_id: sourceAppId,
+      status,
+      created_at: timestamp,
+      expires_at: expiresAt,
+    },
+  }, 201);
+};
+
+const handleTaskResults = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  if (!(await readOwnerFeatureSettings(env, owner.owner_id)).app_messaging_enabled) {
+    return json({ error: "app_messaging_disabled" }, 403);
+  }
+  const taskId = new URL(request.url).searchParams.get("task_id")?.trim() || "";
+  if (!taskId || taskId.length > 100) return json({ error: "invalid_task_id" }, 400);
+
+  const timestamp = nowIso();
+  const rows = await env.DB.prepare(`
+    SELECT m.message_id, m.source_app_id, m.task_id, m.payload_json, m.created_at, m.expires_at
+    FROM app_messages m
+    WHERE m.owner_id = ? AND m.destination_app_id = ? AND m.task_id = ?
+      AND m.scope = 'task' AND m.acknowledged_at IS NULL AND m.expires_at > ?
+      AND json_extract(m.payload_json, '$.protocol') = 'garcia.task.result'
+      AND EXISTS (
+        SELECT 1 FROM app_access_grants g
+        WHERE g.owner_id = m.owner_id AND g.grantee_app_id = m.source_app_id
+          AND g.source_app_id = m.source_app_id AND g.destination_app_id = m.destination_app_id
+          AND g.permission = 'send' AND g.scope = 'task'
+          AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)
+      )
+      AND EXISTS (
+        SELECT 1 FROM app_access_grants g
+        WHERE g.owner_id = m.owner_id AND g.grantee_app_id = m.destination_app_id
+          AND g.source_app_id = m.source_app_id AND g.destination_app_id = m.destination_app_id
+          AND g.permission = 'receive' AND g.scope = 'task'
+          AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)
+      )
+    ORDER BY m.created_at ASC LIMIT 20
+  `).bind(owner.owner_id, device.app_id, taskId, timestamp, timestamp, timestamp)
+    .all<{ message_id: string; source_app_id: string; task_id: string; payload_json: string; created_at: string; expires_at: string }>();
+  const results = (rows.results || []).map((row) => {
+    let payload: unknown = null;
+    try { payload = JSON.parse(row.payload_json); } catch { payload = null; }
+    return { message_id: row.message_id, source_app_id: row.source_app_id, task_id: row.task_id, payload, created_at: row.created_at, expires_at: row.expires_at };
+  });
+  return json({ task_id: taskId, results, count: results.length, maximum: 20 });
+};
+
 const handleSendAppMessage = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
@@ -1712,7 +1867,7 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   if (url.pathname === "/v1/apps/tasks/dispatch" && request.method === "POST") {
     return handleTaskDispatch(request, env);
   }
-  if (url.pathname === "/v1/apps/messages" && request.method === "POST") {
+  if (url.pathname === "/v1/apps/tasks/results" && request.method === "GET") {\n    return handleTaskResults(request, env);\n  }\n  if (url.pathname === "/v1/apps/tasks/results" && request.method === "POST") {\n    return handleSubmitTaskResult(request, env);\n  }\n  if (url.pathname === "/v1/apps/messages" && request.method === "POST") {
     return handleSendAppMessage(request, env);
   }
   if (url.pathname === "/v1/apps/messages/inbox" && request.method === "GET") {
