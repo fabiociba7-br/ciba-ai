@@ -17,6 +17,7 @@ export interface Env {
 import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_DAILY_GLOBAL_LIMIT, MAX_DAILY_APP_LIMIT, MAX_DAILY_DEVICE_LIMIT, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "./policy";
 import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents } from "./core";
 import { validateCuratedMemory } from "./core/memory";
+import { prepareMemoryCandidate } from "./core/memory-candidates";
 import { rankRelevantMemories, buildChatMemoryContext, type MemorySearchRecord } from "./core/memory-retrieval";
 import { validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./core/apps/registry";
 import { isAppTaskType, selectTaskRoute } from "./core/task-coordinator";
@@ -861,6 +862,50 @@ const handleMemoryRetrieve = async (request: Request, env: Env) => {
     inference_calls: 0,
     shared_memory_requires_explicit_grant: true,
   });
+};
+
+const handlePrepareMemoryCandidate = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const featureSettings = await readOwnerFeatureSettings(env, owner.owner_id);
+  if (!featureSettings.memory_enabled) return json({ error: "memory_disabled" }, 403);
+  if (!(await isAppAllowed(env, device.app_id))) return json({ error: "source_app_disabled" }, 403);
+
+  const body = await readJson(request, 8_000);
+  const scope = body.scope === undefined ? "app" : body.scope;
+  if (scope !== "app" && scope !== "owner") return json({ error: "invalid_memory_scope" }, 400);
+  if (scope === "owner") {
+    const grant = await env.DB.prepare(`
+      SELECT grant_id FROM app_access_grants
+      WHERE owner_id = ? AND grantee_app_id = ? AND permission = 'memory_write'
+        AND scope = 'owner_memory' AND source_app_id IS NULL AND destination_app_id IS NULL
+        AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)
+      LIMIT 1
+    `).bind(owner.owner_id, device.app_id, nowIso()).first<{ grant_id: string }>();
+    if (!grant) return json({ error: "memory_access_not_granted" }, 403);
+  }
+
+  try {
+    const candidate = prepareMemoryCandidate({
+      sourceRole: body.source_role,
+      sourceText: body.source_text,
+      key: body.key,
+      value: body.value,
+    });
+    return json({
+      candidate,
+      scope,
+      source_app_id: scope === "app" ? device.app_id : null,
+      next_step: "Show this candidate to the owner. Only after explicit confirmation call POST /v1/owner/memory with consent=curated.",
+      stored: false,
+      inference_calls: 0,
+    }, 200);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "invalid_memory_candidate";
+    return json({ error: code }, 400);
+  }
 };
 
 const handleOwnerMemory = async (request: Request, env: Env, url: URL) => {
@@ -2083,7 +2128,7 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   if (url.pathname === "/v1/owner/access-grants" && (request.method === "GET" || request.method === "POST")) {
     return handleOwnerAccessGrants(request, env);
   }
-  if (url.pathname === "/v1/owner/memory/retrieve" && request.method === "POST") {
+  if (url.pathname === "/v1/owner/memory/candidates" && request.method === "POST") {\n    return handlePrepareMemoryCandidate(request, env);\n  }\n  if (url.pathname === "/v1/owner/memory/retrieve" && request.method === "POST") {
     return handleMemoryRetrieve(request, env);
   }
   if (url.pathname === "/v1/owner/memory" && ["GET", "POST", "DELETE"].includes(request.method)) {
