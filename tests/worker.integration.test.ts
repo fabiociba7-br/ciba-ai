@@ -8,7 +8,7 @@ const worker = {
     env as unknown as Env,
   ),
 };
-const adminToken = "integration-test-admin-token";
+const adminToken = "integration-test-admin-token-0123456789abcdef";
 const appId = "com.ciba.integration";
 
 const request = (path: string, init: RequestInit = {}) =>
