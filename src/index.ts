@@ -13,7 +13,7 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
 }
 
-import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE } from "./policy";
+import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE } from "./policy";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -54,8 +54,46 @@ const isAppAllowed = async (env: Env, appId: string): Promise<boolean> => {
   return allowedApps(env).has(appId);
 };
 
-const adminAuthorized = (request: Request, env: Env) =>
-  Boolean(env.ADMIN_TOKEN) && request.headers.get("authorization") === `Bearer ${env.ADMIN_TOKEN}`;
+const authorizeAdmin = async (request: Request, env: Env): Promise<Response | null> => {
+  if (!env.ADMIN_TOKEN) return json({ error: "unauthorized" }, 401);
+
+  const authorization = request.headers.get("authorization") || "";
+  const supplied = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
+  const candidate = supplied.length <= 256 ? supplied : "";
+  const [expectedHash, candidateHash] = await Promise.all([
+    sha256(env.ADMIN_TOKEN),
+    sha256(candidate),
+  ]);
+
+  // Compare fixed-length digests to avoid leaking a matching token prefix.
+  let difference = 0;
+  for (let index = 0; index < expectedHash.length; index += 1) {
+    difference |= expectedHash.charCodeAt(index) ^ candidateHash.charCodeAt(index);
+  }
+  if (difference === 0 && supplied.length > 0) return null;
+
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const ipHash = await sha256(`${ip}:${env.ADMIN_TOKEN}`);
+  const minute = new Date().toISOString().slice(0, 16);
+  try {
+    await env.DB.prepare(`
+      INSERT INTO admin_auth_usage(minute, ip_hash, attempts, attempt_limit, updated_at)
+      VALUES(?, ?, 1, ?, ?)
+      ON CONFLICT(minute, ip_hash) DO UPDATE SET
+        attempts = admin_auth_usage.attempts + 1,
+        attempt_limit = excluded.attempt_limit,
+        updated_at = excluded.updated_at
+    `).bind(minute, ipHash, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, nowIso()).run();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "";
+    if (reason.includes("admin_auth_rate_exceeded")) {
+      return json({ error: "admin_auth_rate_limited", retry_after_seconds: 60 }, 429);
+    }
+    throw error;
+  }
+
+  return json({ error: "unauthorized" }, 401);
+};
 
 const readRuntimeSettings = async (env: Env): Promise<Record<string, string>> => {
   const rows = await env.DB.prepare("SELECT setting_key, setting_value FROM runtime_settings").all<{
@@ -207,9 +245,8 @@ const handleRegister = async (request: Request, env: Env) => {
 };
 
 const handleCreateInvitation = async (request: Request, env: Env) => {
-  if (!adminAuthorized(request, env)) {
-    return json({ error: "unauthorized" }, 401);
-  }
+  const authError = await authorizeAdmin(request, env);
+  if (authError) return authError;
   const body = await readJson(request, 4_000);
   const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
   if (!isValidAppId(appId) || !(await isAppAllowed(env, appId))) return json({ error: "app_not_allowed" }, 400);
@@ -227,9 +264,8 @@ const handleCreateInvitation = async (request: Request, env: Env) => {
 };
 
 const handleRevokeDevice = async (request: Request, env: Env) => {
-  if (!adminAuthorized(request, env)) {
-    return json({ error: "unauthorized" }, 401);
-  }
+  const authError = await authorizeAdmin(request, env);
+  if (authError) return authError;
   const body = await readJson(request, 4_000);
   const deviceId = typeof body.device_id === "string" ? body.device_id.trim() : "";
   if (!deviceId || deviceId.length > 100) return json({ error: "invalid_device_id" }, 400);
@@ -305,7 +341,8 @@ const handleChat = async (request: Request, env: Env) => {
 };
 
 const handleAdminDevices = async (request: Request, env: Env) => {
-  if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+  const authError = await authorizeAdmin(request, env);
+  if (authError) return authError;
   const url = new URL(request.url);
   const appId = url.searchParams.get("app_id");
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 100, 1), 500);
@@ -316,7 +353,8 @@ const handleAdminDevices = async (request: Request, env: Env) => {
 };
 
 const handleAdminInvitations = async (request: Request, env: Env) => {
-  if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+  const authError = await authorizeAdmin(request, env);
+  if (authError) return authError;
   const url = new URL(request.url);
   const appId = url.searchParams.get("app_id");
   const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 100, 1), 500);
@@ -327,7 +365,8 @@ const handleAdminInvitations = async (request: Request, env: Env) => {
 };
 
 const handleAdminApps = async (request: Request, env: Env) => {
-  if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+  const authError = await authorizeAdmin(request, env);
+  if (authError) return authError;
   if (request.method === "GET") {
     const rows = await env.DB.prepare(
       "SELECT app_id, display_name, enabled, created_at, updated_at FROM app_registry ORDER BY display_name"
@@ -348,7 +387,8 @@ const handleAdminApps = async (request: Request, env: Env) => {
 };
 
 const handleAdminSettings = async (request: Request, env: Env) => {
-  if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+  const authError = await authorizeAdmin(request, env);
+  if (authError) return authError;
   if (request.method === "GET") {
     return json({ settings: await readRuntimeSettings(env), configurable_keys: [...CONFIG_KEYS] });
   }
