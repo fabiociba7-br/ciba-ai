@@ -115,3 +115,16 @@ A administração pode reduzir os limites, mas não ultrapassar os tetos definid
 | Caracteres somados por requisição | 3.000 |
 
 Esses tetos reduzem o risco de consumo acidental, mas **não garantem** um valor máximo de Neurons nem substituem o painel de consumo e os limites da Cloudflare. A quantidade de Neurons depende do modelo e do conteúdo efetivamente processado.
+
+
+## Memória privada e comunicação entre aplicativos
+
+O Ciba AI é uma inteligência privada do proprietário e dos aplicativos autorizados por ele; não é uma plataforma de cadastro público. A arquitetura de memória distingue:
+
+- **Memória do proprietário:** contexto central que poderá ser compartilhado com aplicativos somente por concessão explícita.
+- **Memória do aplicativo:** dados isolados por `ownerId` e `appId`; outro aplicativo não pode ler ou alterar esses dados por padrão.
+- **Comunicação entre aplicativos:** deve passar pelo Ciba AI como intermediário, com identidade do aplicativo de origem e destino, escopo, permissão, validade e registro de auditoria.
+
+Os contratos e a política de autorização já estão definidos em `src/core/memory.ts`. A política exige correspondência do proprietário, concede acesso local ao escopo do próprio aplicativo e exige uma concessão explícita para memória central ou memória de outro aplicativo. Concessões podem limitar leitura/escrita e expirar.
+
+**Estado real:** esta etapa não ativa armazenamento persistente, não cria endpoints de memória e não faz compartilhamento em produção. Ainda falta uma identidade autenticada única do proprietário, uma tela para administrar concessões e um backend com operações de exportação e exclusão. Até isso existir, nenhuma memória é gravada entre requisições e nenhum aplicativo recebe acesso aos dados de outro.
