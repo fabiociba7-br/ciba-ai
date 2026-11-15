@@ -1,11 +1,14 @@
-import { env, exports } from "cloudflare:workers";
+import { env } from "cloudflare:workers";
+import workerModule, { type Env } from "../src/index";
 import { describe, expect, it, vi } from "vitest";
 
-type WorkerEntrypoint = {
-  fetch(request: Request): Promise<Response>;
+const worker = {
+  fetch: (request: Request) => workerModule.fetch(
+    request,
+    env as unknown as Env,
+    {} as ExecutionContext,
+  ),
 };
-
-const worker = exports.default as WorkerEntrypoint;
 const adminToken = "integration-test-admin-token";
 const appId = "com.ciba.integration";
 
