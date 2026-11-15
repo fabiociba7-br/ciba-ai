@@ -17,7 +17,7 @@ export interface Env {
 import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_DAILY_GLOBAL_LIMIT, MAX_DAILY_APP_LIMIT, MAX_DAILY_DEVICE_LIMIT, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "./policy";
 import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents } from "./core";
 import { validateCuratedMemory } from "./core/memory";
-import { rankRelevantMemories, type MemorySearchRecord } from "./core/memory-retrieval";
+import { rankRelevantMemories, buildChatMemoryContext, type MemorySearchRecord } from "./core/memory-retrieval";
 import { validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./core/apps/registry";
 import { isAppTaskType, selectTaskRoute } from "./core/task-coordinator";
 import { consolidateTaskResults, type TaskResultRecord } from "./core/task-results";
@@ -1095,11 +1095,53 @@ const handleChat = async (request: Request, env: Env) => {
   const provider = registeredModel ? registry.get(registeredModel.providerId) : undefined;
   if (!registeredModel || !provider) return json({ error: "ai_provider_not_available" }, 503);
 
+  let memoryContext = { text: "", entriesUsed: 0, characters: 0 };
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (owner) {
+    const featureSettings = await readOwnerFeatureSettings(env, owner.owner_id);
+    if (featureSettings.memory_enabled) {
+      const query = [...messages].reverse().find((message) => message.role === "user")?.content.trim().slice(0, 500) || "";
+      if (query.length >= 2) {
+        const timestamp = nowIso();
+        const visibleRows = await env.DB.prepare(`
+          SELECT m.memory_id, m.scope, m.source_app_id, m.memory_key, m.value,
+            m.created_by_app_id, m.updated_at, m.expires_at
+          FROM memory_records m
+          WHERE m.owner_id = ? AND m.deleted_at IS NULL
+            AND (m.expires_at IS NULL OR m.expires_at > ?)
+            AND (
+              (m.scope = 'app' AND m.source_app_id = ?)
+              OR (m.scope = 'app' AND EXISTS (
+                SELECT 1 FROM app_access_grants g
+                WHERE g.owner_id = m.owner_id AND g.grantee_app_id = ?
+                  AND g.permission = 'memory_read' AND g.scope = 'app_memory'
+                  AND g.source_app_id = m.source_app_id AND g.destination_app_id IS NULL
+                  AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)
+              ))
+              OR (m.scope = 'owner' AND EXISTS (
+                SELECT 1 FROM app_access_grants g
+                WHERE g.owner_id = m.owner_id AND g.grantee_app_id = ?
+                  AND g.permission = 'memory_read' AND g.scope = 'owner_memory'
+                  AND g.source_app_id IS NULL AND g.destination_app_id IS NULL
+                  AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)
+              ))
+            )
+          ORDER BY m.updated_at DESC LIMIT 200
+        `).bind(
+          owner.owner_id, timestamp, device.app_id, device.app_id, timestamp,
+          device.app_id, timestamp
+        ).all<MemorySearchRecord>();
+        memoryContext = buildChatMemoryContext(rankRelevantMemories(query, visibleRows.results || [], 5));
+      }
+    }
+  }
+
   const orchestration = await runCibaOrchestrator({
     messages,
     model: registeredModel.modelId,
     maxOutputTokens: Math.min(maxTokens, registeredModel.maxOutputTokens),
     provider,
+    memoryContext: memoryContext.text,
   });
   await env.DB.prepare(
     "UPDATE devices SET last_seen_at = ? WHERE device_id = ?"
@@ -1113,6 +1155,7 @@ const handleChat = async (request: Request, env: Env) => {
       strategy: orchestration.strategy,
       provider: orchestration.provider,
       inference_calls: orchestration.usedInferenceCalls,
+      memory_context: { enabled: memoryContext.entriesUsed > 0, entries_used: memoryContext.entriesUsed, characters: memoryContext.characters },
     },
   });
 };
