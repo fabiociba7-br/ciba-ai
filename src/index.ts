@@ -448,6 +448,114 @@ const handlePairOwner = async (request: Request, env: Env) => {
   return json({ paired: true, owner_id: paired.owner_id, app_id: device.app_id });
 };
 
+const getActiveOwnerForDevice = async (env: Env, ownerId: string | null) => {
+  if (!ownerId) return null;
+  return env.DB.prepare(
+    "SELECT owner_id FROM owners WHERE owner_id = ? AND status = 'active'"
+  ).bind(ownerId).first<{ owner_id: string }>();
+};
+
+const handleOwnerAccessGrants = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+
+  if (request.method === "GET") {
+    const rows = await env.DB.prepare(`
+      SELECT grant_id, grantee_app_id, source_app_id, destination_app_id,
+        permission, scope, created_at, expires_at, revoked_at
+      FROM app_access_grants WHERE owner_id = ?
+      ORDER BY created_at DESC LIMIT 200
+    `).bind(owner.owner_id).all();
+    return json({ grants: rows.results || [], maximum: 200 });
+  }
+
+  const body = await readJson(request, 8_000);
+  const granteeAppId = typeof body.grantee_app_id === "string" ? body.grantee_app_id.trim() : "";
+  const sourceAppId = typeof body.source_app_id === "string" ? body.source_app_id.trim() : null;
+  const destinationAppId = typeof body.destination_app_id === "string" ? body.destination_app_id.trim() : null;
+  const permission = body.permission;
+  const scope = body.scope;
+  const permissions = ["send", "receive", "memory_read", "memory_write"];
+  const scopes = ["task", "context", "app_memory", "owner_memory"];
+  if (
+    !isValidAppId(granteeAppId) ||
+    !permissions.includes(String(permission)) ||
+    !scopes.includes(String(scope)) ||
+    !(await isAppAllowed(env, granteeAppId))
+  ) return json({ error: "invalid_grant_fields" }, 400);
+
+  if (permission === "send" || permission === "receive") {
+    if (
+      (scope !== "task" && scope !== "context") ||
+      !sourceAppId || !destinationAppId ||
+      !isValidAppId(sourceAppId) || !isValidAppId(destinationAppId) ||
+      sourceAppId === destinationAppId ||
+      !(await isAppAllowed(env, sourceAppId)) ||
+      !(await isAppAllowed(env, destinationAppId)) ||
+      (permission === "send" && granteeAppId !== sourceAppId) ||
+      (permission === "receive" && granteeAppId !== destinationAppId)
+    ) return json({ error: "invalid_message_grant_direction" }, 400);
+  } else if (scope === "app_memory") {
+    if (
+      !sourceAppId || destinationAppId !== null ||
+      !isValidAppId(sourceAppId) || !(await isAppAllowed(env, sourceAppId))
+    ) return json({ error: "invalid_app_memory_grant" }, 400);
+  } else if (scope === "owner_memory") {
+    if (sourceAppId !== null || destinationAppId !== null) {
+      return json({ error: "invalid_owner_memory_grant" }, 400);
+    }
+  } else {
+    return json({ error: "invalid_memory_grant_scope" }, 400);
+  }
+
+  const validHours = body.valid_hours === undefined ? 720 : body.valid_hours;
+  if (typeof validHours !== "number" || !Number.isInteger(validHours) || validHours < 1 || validHours > 8760) {
+    return json({ error: "invalid_grant_valid_hours", minimum: 1, maximum: 8760 }, 400);
+  }
+
+  const grantId = crypto.randomUUID();
+  const createdAt = nowIso();
+  const expiresAt = new Date(Date.now() + validHours * 60 * 60 * 1000).toISOString();
+  await env.DB.prepare(`
+    INSERT INTO app_access_grants(
+      grant_id, owner_id, grantee_app_id, source_app_id, destination_app_id,
+      permission, scope, created_by_device_id, created_at, expires_at
+    ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    grantId, owner.owner_id, granteeAppId, sourceAppId, destinationAppId,
+    permission, scope, device.device_id, createdAt, expiresAt
+  ).run();
+
+  return json({
+    created: true,
+    grant: {
+      grant_id: grantId, grantee_app_id: granteeAppId,
+      source_app_id: sourceAppId, destination_app_id: destinationAppId,
+      permission, scope, created_at: createdAt, expires_at: expiresAt
+    }
+  }, 201);
+};
+
+const handleRevokeOwnerAccessGrant = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const body = await readJson(request, 4_000);
+  const grantId = typeof body.grant_id === "string" ? body.grant_id.trim() : "";
+  if (!grantId || grantId.length > 100) return json({ error: "invalid_grant_id" }, 400);
+  const timestamp = nowIso();
+  const result = await env.DB.prepare(`
+    UPDATE app_access_grants SET revoked_at = ?
+    WHERE grant_id = ? AND owner_id = ? AND revoked_at IS NULL
+  `).bind(timestamp, grantId, owner.owner_id).run();
+  return result.meta.changes === 1
+    ? json({ revoked: true, grant_id: grantId, revoked_at: timestamp })
+    : json({ error: "grant_not_found_or_already_revoked" }, 404);
+};
+
 const handleRevokeDevice = async (request: Request, env: Env) => {
   const authError = await authorizeAdmin(request, env);
   if (authError) return authError;
@@ -756,6 +864,12 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/owner/pair" && request.method === "POST") {
     return handlePairOwner(request, env);
+  }
+  if (url.pathname === "/v1/owner/access-grants" && (request.method === "GET" || request.method === "POST")) {
+    return handleOwnerAccessGrants(request, env);
+  }
+  if (url.pathname === "/v1/owner/access-grants/revoke" && request.method === "POST") {
+    return handleRevokeOwnerAccessGrant(request, env);
   }
   if (url.pathname === "/v1/admin/invitations" && request.method === "POST") {
     return handleCreateInvitation(request, env);
