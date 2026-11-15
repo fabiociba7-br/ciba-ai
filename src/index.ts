@@ -1098,9 +1098,25 @@ const handleAdminApps = async (request: Request, env: Env) => {
   const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
   const displayName = typeof body.display_name === "string" ? body.display_name.trim() : "";
   const enabled = body.enabled === undefined ? true : body.enabled;
-  const profile = validateAppProfile(body);
   if (!isValidAppId(appId) || !displayName || displayName.length > 100 ||
       typeof enabled !== "boolean") return json({ error: "invalid_app" }, 400);
+  const existing = await env.DB.prepare(
+    "SELECT description, app_type, capabilities_json, task_types_json, contract_version FROM app_registry WHERE app_id = ?"
+  ).bind(appId).first<{
+    description: string; app_type: string; capabilities_json: string;
+    task_types_json: string; contract_version: string;
+  }>();
+  const profile = validateAppProfile({
+    description: body.description === undefined ? existing?.description : body.description,
+    app_type: body.app_type === undefined ? existing?.app_type : body.app_type,
+    capabilities: body.capabilities === undefined
+      ? (existing ? parseStoredAppCapabilities(existing.capabilities_json) : undefined)
+      : body.capabilities,
+    task_types: body.task_types === undefined
+      ? (existing ? parseStoredAppTaskTypes(existing.task_types_json) : undefined)
+      : body.task_types,
+    contract_version: body.contract_version === undefined ? existing?.contract_version : body.contract_version,
+  });
   if (!profile.valid) return json({ error: profile.error }, 400);
   const timestamp = nowIso();
   await env.DB.prepare(
