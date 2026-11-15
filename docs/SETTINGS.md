@@ -183,3 +183,15 @@ A interface do painel lista os dispositivos pareados e identifica a sessão atua
 O endpoint `POST /v1/owner/devices/revoke` deriva o proprietário do token autenticado e executa a atualização condicionada simultaneamente ao identificador do dispositivo e ao `owner_id`. Assim, não aceita revogar dispositivos de outro proprietário. A própria sessão autenticada é protegida contra revogação acidental (`current_device_cannot_revoke`). Um dispositivo revogado perde imediatamente a autenticação em novas requisições.
 
 A revogação não apaga histórico, memórias ou dados do aplicativo; apenas invalida o token do dispositivo. A operação é irreversível pelo painel: para voltar, será necessário registrar e parear um novo dispositivo.
+## Conectar aplicativos pelo painel Garcia
+
+Na seção **Conectar novo aplicativo**, o proprietário autenticado escolhe um app já cadastrado e habilitado. O Worker cria atomicamente dois convites de uso único, ambos com validade de 24 horas:
+
+- **Código de registro:** usado pelo app em `POST /v1/auth/register` para registrar um dispositivo e obter seu token.
+- **Código de pareamento:** usado pelo dispositivo recém-registrado em `POST /v1/owner/pair` para vinculá-lo ao proprietário autenticado.
+
+O endpoint `GET /v1/owner/available-apps` lista somente apps habilitados. `POST /v1/owner/apps/connect` deriva o proprietário do dispositivo autenticado, confirma o app habilitado e cria os dois convites numa transação D1. Os códigos em texto puro são retornados somente na criação; apenas hashes são persistidos. Reutilização é impedida pelos fluxos de consumo existentes.
+
+O painel mostra os códigos uma única vez, com ações para copiar e a data de expiração. Eles devem ser entregues apenas ao responsável pelo aplicativo por canal seguro. O processo ainda exige que o app implemente o registro, armazene seu token em armazenamento seguro e faça o pareamento; o painel não instala nem configura automaticamente o app.
+
+Esta funcionalidade não permite ao proprietário cadastrar novos aplicativos nem alterar o registro global. Um app precisa ser previamente cadastrado e habilitado pela administração. Nenhuma credencial administrativa é colocada no navegador.
