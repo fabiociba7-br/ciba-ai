@@ -42,6 +42,11 @@ const sha256 = async (value: string): Promise<string> => {
 
 const nowIso = () => new Date().toISOString();
 const utcDay = () => new Date().toISOString().slice(0, 10);
+const secondsUntilUtcDayReset = () => {
+  const now = new Date();
+  const nextDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  return Math.max(1, Math.ceil((nextDay - now.getTime()) / 1000));
+};
 
 const allowedApps = (env: Env) =>
   new Set((env.ALLOWED_APP_IDS || "").split(",").map((s) => s.trim()).filter(Boolean));
@@ -89,7 +94,7 @@ const authorizeAdmin = async (request: Request, env: Env): Promise<Response | nu
   } catch (error) {
     const reason = error instanceof Error ? error.message : "";
     if (reason.includes("admin_auth_rate_exceeded")) {
-      return json({ error: "admin_auth_rate_limited", retry_after_seconds: 60 }, 429);
+      return json({ error: "admin_auth_rate_limited", retry_after_seconds: 60 }, 429, { "retry-after": "60" });
     }
     throw error;
   }
@@ -308,7 +313,7 @@ const handleChat = async (request: Request, env: Env) => {
   } catch (error) {
     const reason = error instanceof Error ? error.message : "";
     if (reason.includes("request_rate_exceeded")) {
-      return json({ error: "rate_limit_exceeded", retry_after_seconds: 60 }, 429);
+      return json({ error: "rate_limit_exceeded", retry_after_seconds: 60 }, 429, { "retry-after": "60" });
     }
     throw error;
   }
@@ -338,7 +343,10 @@ const handleChat = async (request: Request, env: Env) => {
     await reserveQuota(env, device.app_id, device.device_id);
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (message.includes("quota_exceeded")) return json({ error: "daily_quota_exceeded" }, 429);
+    if (message.includes("quota_exceeded")) {
+      const retryAfter = secondsUntilUtcDayReset();
+      return json({ error: "daily_quota_exceeded", retry_after_seconds: retryAfter }, 429, { "retry-after": String(retryAfter) });
+    }
     throw error;
   }
 
