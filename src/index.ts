@@ -49,6 +49,14 @@ const utcDay = () => new Date().toISOString().slice(0, 10);
 const allowedApps = (env: Env) =>
   new Set((env.ALLOWED_APP_IDS || "").split(",").map((s) => s.trim()).filter(Boolean));
 
+const isAppAllowed = async (env: Env, appId: string): Promise<boolean> => {
+  if (allowedApps(env).has(appId)) return true;
+  const row = await env.DB.prepare(
+    "SELECT app_id FROM app_registry WHERE app_id = ? AND enabled = 1"
+  ).bind(appId).first<{ app_id: string }>();
+  return Boolean(row);
+};
+
 const adminAuthorized = (request: Request, env: Env) =>
   Boolean(env.ADMIN_TOKEN) && request.headers.get("authorization") === `Bearer ${env.ADMIN_TOKEN}`;
 
@@ -152,7 +160,7 @@ const handleRegister = async (request: Request, env: Env) => {
   const body = await readJson(request, 8_000);
   const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
   const invite = typeof body.invitation_code === "string" ? body.invitation_code.trim() : "";
-  if (!appId || appId.length > 100 || !allowedApps(env).has(appId)) {
+  if (!appId || appId.length > 100 || !(await isAppAllowed(env, appId))) {
     return json({ error: "app_not_allowed" }, 403);
   }
   if (invite.length < 20 || invite.length > 256) return json({ error: "invalid_invitation" }, 400);
@@ -276,6 +284,27 @@ const handleChat = async (request: Request, env: Env) => {
   });
 };
 
+const handleAdminApps = async (request: Request, env: Env) => {
+  if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
+  if (request.method === "GET") {
+    const rows = await env.DB.prepare(
+      "SELECT app_id, display_name, enabled, created_at, updated_at FROM app_registry ORDER BY display_name"
+    ).all();
+    return json({ apps: rows.results || [] });
+  }
+  const body = await readJson(request, 4_000);
+  const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
+  const displayName = typeof body.display_name === "string" ? body.display_name.trim() : "";
+  const enabled = body.enabled === undefined ? true : body.enabled;
+  if (!/^[A-Za-z0-9_.]{3,150}$/.test(appId) || !displayName || displayName.length > 100 ||
+      typeof enabled !== "boolean") return json({ error: "invalid_app" }, 400);
+  const timestamp = nowIso();
+  await env.DB.prepare(
+    "INSERT INTO app_registry(app_id, display_name, enabled, created_at, updated_at) VALUES(?, ?, ?, ?, ?) ON CONFLICT(app_id) DO UPDATE SET display_name = excluded.display_name, enabled = excluded.enabled, updated_at = excluded.updated_at"
+  ).bind(appId, displayName, enabled ? 1 : 0, timestamp, timestamp).run();
+  return json({ saved: true, app_id: appId, display_name: displayName, enabled });
+};
+
 const handleAdminSettings = async (request: Request, env: Env) => {
   if (!adminAuthorized(request, env)) return json({ error: "unauthorized" }, 401);
   if (request.method === "GET") {
@@ -318,6 +347,9 @@ const handleAdminSettings = async (request: Request, env: Env) => {
 const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+  if (url.pathname === "/v1/admin/apps" && (request.method === "GET" || request.method === "POST")) {
+    return handleAdminApps(request, env);
+  }
   if (url.pathname === "/v1/admin/settings" && (request.method === "GET" || request.method === "POST")) {
     return handleAdminSettings(request, env);
   }
