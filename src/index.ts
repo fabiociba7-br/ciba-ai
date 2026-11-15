@@ -14,6 +14,7 @@ export interface Env {
 }
 
 import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_DAILY_GLOBAL_LIMIT, MAX_DAILY_APP_LIMIT, MAX_DAILY_DEVICE_LIMIT, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "./policy";
+import { runCibaOrchestrator, CloudflareWorkersAIProvider, listAgents } from "./core";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -375,20 +376,25 @@ const handleChat = async (request: Request, env: Env) => {
   const model = resolveModel(settings.ai_model, env.AI_MODEL);
   if (!model) return json({ error: "ai_model_not_available" }, 503);
   const maxTokens = Math.min(getLimit(settings.max_output_tokens || env.MAX_OUTPUT_TOKENS, MAX_OUTPUT_TOKENS), MAX_OUTPUT_TOKENS);
-  const inputMessages = [
-    { role: "system", content: "Você é o assistente de IA dos aplicativos Ciba. Responda em português quando o usuário escrever em português. Seja claro, útil e seguro." },
-    ...messages,
-  ];
-
-  const result = await env.AI.run(model, { messages: inputMessages, max_completion_tokens: maxTokens });
-  const output = result as { response?: unknown; [key: string]: unknown };
+  const orchestration = await runCibaOrchestrator({
+    messages,
+    model,
+    maxOutputTokens: maxTokens,
+    provider: new CloudflareWorkersAIProvider(env.AI),
+  });
   await env.DB.prepare(
     "UPDATE devices SET last_seen_at = ? WHERE device_id = ?"
   ).bind(nowIso(), device.device_id).run();
 
   return json({
     model,
-    response: typeof output?.response === "string" ? output.response : output,
+    response: orchestration.text,
+    intelligence: {
+      agent: orchestration.selectedAgent,
+      strategy: orchestration.strategy,
+      provider: orchestration.provider,
+      inference_calls: orchestration.usedInferenceCalls,
+    },
   });
 };
 
@@ -523,6 +529,21 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
     const settings = await readRuntimeSettings(env);
     const model = resolveModel(settings.ai_model, env.AI_MODEL);
     return json({ models: model ? [model] : [], configured: Boolean(model) });
+  }
+  if (url.pathname === "/v1/ai/capabilities" && request.method === "GET") {
+    const settings = await readRuntimeSettings(env);
+    const model = resolveModel(settings.ai_model, env.AI_MODEL);
+    return json({
+      identity: "ciba-ai",
+      core: "ciba-orchestrator",
+      mode: "single-pass",
+      provider: model ? "cloudflare-workers-ai" : null,
+      model,
+      agents: listAgents(),
+      multi_model_fanout_enabled: false,
+      persistent_memory_enabled: false,
+      external_tools_enabled: false,
+    });
   }
   if (url.pathname === "/v1/auth/register" && request.method === "POST") {
     return handleRegister(request, env);
