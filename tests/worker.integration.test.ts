@@ -243,3 +243,92 @@ describe("Ciba AI administrative safety ceilings", () => {
     });
   });
 });
+
+
+describe("Ciba AI owner-controlled app access grants", () => {
+  it("creates, lists and revokes scoped grants only from a paired owner device", async () => {
+    const sourceApp = "com.ciba.grants.source";
+    const targetApp = "com.ciba.grants.target";
+    for (const [appId, displayName] of [[sourceApp, "Grant Source"], [targetApp, "Grant Target"]]) {
+      const response = await adminRequest("/v1/admin/apps", "POST", {
+        app_id: appId, display_name: displayName, enabled: true,
+      });
+      expect(response.status).toBe(200);
+    }
+
+    const invitationResponse = await adminRequest("/v1/admin/invitations", "POST", {
+      app_id: sourceApp, valid_hours: 1,
+    });
+    expect(invitationResponse.status).toBe(201);
+    const invitationCode = (await invitationResponse.json() as { invitation_code: string }).invitation_code;
+    const device = await registerDevice(invitationCode);
+
+    const ownerResponse = await adminRequest("/v1/admin/owners", "POST", { app_id: sourceApp });
+    expect(ownerResponse.status).toBe(201);
+    const ownerCode = (await ownerResponse.json() as { pairing_invitation_code: string }).pairing_invitation_code;
+    const pairResponse = await request("/v1/owner/pair", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${device.access_token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ pairing_invitation_code: ownerCode }),
+    });
+    expect(pairResponse.status).toBe(200);
+
+    const ownerRequest = (path: string, method: string, body?: unknown) => request(path, {
+      method,
+      headers: {
+        authorization: `Bearer ${device.access_token}`,
+        "content-type": "application/json",
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+
+    const created = await ownerRequest("/v1/owner/access-grants", "POST", {
+      grantee_app_id: sourceApp,
+      source_app_id: sourceApp,
+      destination_app_id: targetApp,
+      permission: "send",
+      scope: "task",
+      valid_hours: 24,
+    });
+    expect(created.status).toBe(201);
+    const createdBody = await created.json() as { grant: { grant_id: string; permission: string; scope: string } };
+    expect(createdBody.grant.permission).toBe("send");
+    expect(createdBody.grant.scope).toBe("task");
+
+    const listed = await ownerRequest("/v1/owner/access-grants", "GET");
+    expect(listed.status).toBe(200);
+    const listBody = await listed.json() as { grants: Array<{ grant_id: string; revoked_at: string | null }> };
+    expect(listBody.grants.some((grant) => grant.grant_id === createdBody.grant.grant_id)).toBe(true);
+
+    const badDirection = await ownerRequest("/v1/owner/access-grants", "POST", {
+      grantee_app_id: targetApp,
+      source_app_id: sourceApp,
+      destination_app_id: targetApp,
+      permission: "send",
+      scope: "task",
+    });
+    expect(badDirection.status).toBe(400);
+
+    const revoked = await ownerRequest("/v1/owner/access-grants/revoke", "POST", {
+      grant_id: createdBody.grant.grant_id,
+    });
+    expect(revoked.status).toBe(200);
+    const repeatedRevoke = await ownerRequest("/v1/owner/access-grants/revoke", "POST", {
+      grant_id: createdBody.grant.grant_id,
+    });
+    expect(repeatedRevoke.status).toBe(404);
+
+    const targetInvitation = await adminRequest("/v1/admin/invitations", "POST", {
+      app_id: targetApp, valid_hours: 1,
+    });
+    const targetCode = (await targetInvitation.json() as { invitation_code: string }).invitation_code;
+    const unpairedTarget = await registerDevice(targetCode);
+    const denied = await request("/v1/owner/access-grants", {
+      headers: { authorization: `Bearer ${unpairedTarget.access_token}` },
+    });
+    expect(denied.status).toBe(403);
+  });
+});
