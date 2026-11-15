@@ -67,8 +67,7 @@ export function canUseAppAccessGrant(
       grant.scope !== request.scope ||
       (grant.expiresAt !== undefined && grant.expiresAt !== null &&
         (!Number.isSafeInteger(grant.expiresAt) || grant.expiresAt <= now)) ||
-      (grant.revokedAt !== undefined && grant.revokedAt !== null &&
-        (!Number.isSafeInteger(grant.revokedAt) || grant.revokedAt <= now))
+      (grant.revokedAt !== undefined && grant.revokedAt !== null)
     ) return false;
 
     return grant.sourceAppId === sourceAppId &&
