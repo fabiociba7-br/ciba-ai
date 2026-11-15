@@ -17,7 +17,7 @@ export interface Env {
 import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_DAILY_GLOBAL_LIMIT, MAX_DAILY_APP_LIMIT, MAX_DAILY_DEVICE_LIMIT, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "./policy";
 import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents } from "./core";
 import { validateCuratedMemory } from "./core/memory";
-import { validateAppProfile, parseStoredAppCapabilities } from "./core/apps/registry";
+import { validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./core/apps/registry";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -523,23 +523,23 @@ const handleAppIdentity = async (request: Request, env: Env) => {
     "SELECT app_id, display_name, enabled, description, app_type, capabilities_json, contract_version FROM app_registry WHERE app_id = ?"
   ).bind(device.app_id).first<{
     app_id: string; display_name: string; enabled: number; description: string;
-    app_type: string; capabilities_json: string; contract_version: string;
+    app_type: string; capabilities_json: string; task_types_json: string; contract_version: string;
   }>();
   if (!app) return json({ error: "app_profile_not_found" }, 404);
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   const connectedApps = owner ? await env.DB.prepare(`
     SELECT a.app_id, a.display_name, a.description, a.app_type,
-      a.capabilities_json, a.contract_version,
+      a.capabilities_json, a.task_types_json, a.contract_version,
       COUNT(DISTINCT d.device_id) AS active_device_count
     FROM devices d
     INNER JOIN app_registry a ON a.app_id = d.app_id
     WHERE d.owner_id = ? AND d.revoked_at IS NULL AND a.enabled = 1
     GROUP BY a.app_id, a.display_name, a.description, a.app_type,
-      a.capabilities_json, a.contract_version
+      a.capabilities_json, a.task_types_json, a.contract_version
     ORDER BY a.display_name COLLATE NOCASE
   `).bind(owner.owner_id).all<{
     app_id: string; display_name: string; description: string; app_type: string;
-    capabilities_json: string; contract_version: string; active_device_count: number;
+    capabilities_json: string; task_types_json: string; contract_version: string; active_device_count: number;
   }>() : { results: [] };
   return json({
     contract: "garcia-app",
@@ -551,6 +551,7 @@ const handleAppIdentity = async (request: Request, env: Env) => {
       description: app.description,
       app_type: app.app_type,
       capabilities: parseStoredAppCapabilities(app.capabilities_json),
+      task_types: parseStoredAppTaskTypes(app.task_types_json),
     },
     device: { device_id: device.device_id, owner_linked: Boolean(owner) },
     connected_apps: (connectedApps.results || []).map((item) => ({
@@ -559,6 +560,7 @@ const handleAppIdentity = async (request: Request, env: Env) => {
       description: item.description,
       app_type: item.app_type,
       capabilities: parseStoredAppCapabilities(item.capabilities_json),
+      task_types: parseStoredAppTaskTypes(item.task_types_json),
       contract_version: item.contract_version,
       active_device_count: item.active_device_count,
     })),
@@ -581,7 +583,7 @@ const handleOwnerDashboard = async (request: Request, env: Env) => {
     readRuntimeSettings(env),
     env.DB.prepare(`
       SELECT a.app_id, a.display_name, a.enabled, a.description, a.app_type,
-        a.capabilities_json, a.contract_version,
+        a.capabilities_json, a.task_types_json, a.contract_version,
         COUNT(d.device_id) AS device_count,
         SUM(CASE WHEN d.revoked_at IS NULL THEN 1 ELSE 0 END) AS active_device_count,
         MAX(d.last_seen_at) AS last_seen_at
@@ -592,7 +594,7 @@ const handleOwnerDashboard = async (request: Request, env: Env) => {
       ORDER BY a.display_name COLLATE NOCASE
     `).bind(owner.owner_id).all<{
       app_id: string; display_name: string; enabled: number; description: string;
-      app_type: string; capabilities_json: string; contract_version: string;
+      app_type: string; capabilities_json: string; task_types_json: string; contract_version: string;
       device_count: number; active_device_count: number; last_seen_at: string | null;
     }>(),
     env.DB.prepare(`
@@ -641,6 +643,7 @@ const handleOwnerDashboard = async (request: Request, env: Env) => {
       description: app.description,
       app_type: app.app_type,
       capabilities: parseStoredAppCapabilities(app.capabilities_json),
+      task_types: parseStoredAppTaskTypes(app.task_types_json),
       contract_version: app.contract_version,
       device_count: app.device_count,
       active_device_count: app.active_device_count,
@@ -1076,16 +1079,17 @@ const handleAdminApps = async (request: Request, env: Env) => {
   if (authError) return authError;
   if (request.method === "GET") {
     const rows = await env.DB.prepare(
-      "SELECT app_id, display_name, enabled, description, app_type, capabilities_json, contract_version, created_at, updated_at FROM app_registry ORDER BY display_name"
+      "SELECT app_id, display_name, enabled, description, app_type, capabilities_json, task_types_json, contract_version, created_at, updated_at FROM app_registry ORDER BY display_name"
     ).all<{
       app_id: string; display_name: string; enabled: number; description: string;
-      app_type: string; capabilities_json: string; contract_version: string;
+      app_type: string; capabilities_json: string; task_types_json: string; contract_version: string;
       created_at: string; updated_at: string;
     }>();
     return json({ apps: (rows.results || []).map((app) => ({
       app_id: app.app_id, display_name: app.display_name, enabled: app.enabled === 1,
       description: app.description, app_type: app.app_type,
       capabilities: parseStoredAppCapabilities(app.capabilities_json),
+      task_types: parseStoredAppTaskTypes(app.task_types_json),
       contract_version: app.contract_version, created_at: app.created_at, updated_at: app.updated_at,
     })) });
   }
@@ -1099,10 +1103,10 @@ const handleAdminApps = async (request: Request, env: Env) => {
   if (!profile.valid) return json({ error: profile.error }, 400);
   const timestamp = nowIso();
   await env.DB.prepare(
-    "INSERT INTO app_registry(app_id, display_name, enabled, description, app_type, capabilities_json, contract_version, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(app_id) DO UPDATE SET display_name = excluded.display_name, enabled = excluded.enabled, description = excluded.description, app_type = excluded.app_type, capabilities_json = excluded.capabilities_json, contract_version = excluded.contract_version, updated_at = excluded.updated_at"
+    "INSERT INTO app_registry(app_id, display_name, enabled, description, app_type, capabilities_json, task_types_json, contract_version, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(app_id) DO UPDATE SET display_name = excluded.display_name, enabled = excluded.enabled, description = excluded.description, app_type = excluded.app_type, capabilities_json = excluded.capabilities_json, task_types_json = excluded.task_types_json, contract_version = excluded.contract_version, updated_at = excluded.updated_at"
   ).bind(appId, displayName, enabled ? 1 : 0, profile.profile.description,
     profile.profile.app_type, JSON.stringify(profile.profile.capabilities),
-    profile.profile.contract_version, timestamp, timestamp).run();
+    JSON.stringify(profile.profile.task_types), profile.profile.contract_version, timestamp, timestamp).run();
   return json({
     saved: true, app_id: appId, display_name: displayName, enabled,
     ...profile.profile,
