@@ -633,6 +633,56 @@ describe("Ciba AI private app-to-app message relay", () => {
     });
     expect(taskAck.status).toBe(200);
 
+    const reverseGrant = (token: string, grantee: string, source: string, destination: string, permission: "send" | "receive") =>
+      request("/v1/owner/access-grants", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          grantee_app_id: grantee, source_app_id: source, destination_app_id: destination,
+          permission, scope: "task", valid_hours: 24,
+        }),
+      });
+    expect((await reverseGrant(sourceDevice.access_token, targetApp, targetApp, sourceApp, "send")).status).toBe(201);
+    expect((await reverseGrant(sourceDevice.access_token, sourceApp, targetApp, sourceApp, "receive")).status).toBe(201);
+
+    const submittedResult = await request("/v1/apps/tasks/results", {
+      method: "POST",
+      headers: { authorization: `Bearer ${targetDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        task_id: dispatchBody.route.task_id,
+        client_message_id: "coordinator-result-001",
+        status: "completed",
+        result: { summary: "Resumo concluído", items: 3 },
+      }),
+    });
+    expect(submittedResult.status).toBe(201);
+    const taskResults = await request(`/v1/apps/tasks/results?task_id=${encodeURIComponent(dispatchBody.route.task_id)}`, {
+      headers: { authorization: `Bearer ${sourceDevice.access_token}` },
+    });
+    expect(taskResults.status).toBe(200);
+    expect(await taskResults.json()).toMatchObject({
+      task_id: dispatchBody.route.task_id,
+      count: 1,
+      results: [expect.objectContaining({
+        source_app_id: targetApp,
+        payload: {
+          protocol: "garcia.task.result",
+          status: "completed",
+          result: { summary: "Resumo concluído", items: 3 },
+        },
+      })],
+    });
+    const badTaskResult = await request("/v1/apps/tasks/results", {
+      method: "POST",
+      headers: { authorization: `Bearer ${targetDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        task_id: "task-not-owned",
+        client_message_id: "coordinator-result-invalid",
+        result: { summary: "não autorizado" },
+      }),
+    });
+    expect(badTaskResult.status).toBe(404);
+
     const queuedAfterRevoke = await send("source-msg-002");
     expect(queuedAfterRevoke.status).toBe(201);
     const revoked = await request("/v1/owner/access-grants/revoke", {
