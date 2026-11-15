@@ -114,3 +114,25 @@ describe("Ciba AI Worker integration", () => {
     expect((await config.json() as { ai_enabled: boolean }).ai_enabled).toBe(false);
   });
 });
+
+
+describe("Ciba AI administrative authentication", () => {
+  it("limits repeated invalid admin tokens by Cloudflare edge IP", async () => {
+    const attempt = () => worker.fetch(new Request("https://ciba-ai.test/v1/admin/apps", {
+      method: "GET",
+      headers: { "CF-Connecting-IP": "198.51.100.77" },
+    }));
+
+    for (let index = 0; index < 10; index += 1) {
+      const response = await attempt();
+      expect(response.status).toBe(401);
+    }
+
+    const blocked = await attempt();
+    expect(blocked.status).toBe(429);
+    expect(await blocked.json()).toEqual({
+      error: "admin_auth_rate_limited",
+      retry_after_seconds: 60,
+    });
+  });
+});
