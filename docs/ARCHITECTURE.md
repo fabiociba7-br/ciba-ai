@@ -79,3 +79,7 @@ O módulo `src/client.ts` fornece uma interface TypeScript independente de frame
 ## Memória privada persistente
 
 A tabela `memory_records` armazena apenas entradas explicitamente curadas, com consentimento por gravação, chave e valor limitados, escopo de app ou proprietário, expiração opcional e exclusão lógica. O app autenticado pode operar na própria memória de app; memória de outro app e memória central exigem concessões `memory_read`/`memory_write` ativas. O chat não grava histórico automaticamente. A migration 0010 ainda não foi aplicada.
+
+## Controles privados do proprietário
+
+A migration `0011_owner_feature_settings.sql` cria preferências por proprietário. Memória persistente e comunicação entre apps ficam desligadas por padrão. Dispositivos pareados podem consultar e alterar somente as opções permitidas em `GET/POST /v1/owner/settings`. O gateway aplica esses interruptores nas rotas de memória, criação de concessões e relay; desligar uma capacidade bloqueia seu uso sem apagar dados nem revogar concessões. Reativar restaura o acesso sujeito às concessões ainda válidas. A migration ainda não foi aplicada e o Worker não foi publicado.
