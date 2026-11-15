@@ -75,3 +75,7 @@ A etapa de relay adiciona a fila `app_messages` e os endpoints autenticados `POS
 ## Cliente comum para aplicativos
 
 O módulo `src/client.ts` fornece uma interface TypeScript independente de framework para diagnóstico, registro de dispositivo, pareamento, chat, relay de mensagens e concessões. O aplicativo hospedeiro fornece o token sob demanda por meio de `getAccessToken`; o cliente não persiste credenciais. URLs remotas exigem HTTPS. O servidor continua sendo a autoridade para identidade, escopos, limites e permissões. O módulo pode ser reutilizado em projetos TypeScript, mas ainda não é um SDK nativo Kotlin/Swift nem foi integrado automaticamente aos binários dos apps. Consulte `docs/CLIENT_SDK.md`.
+
+## Memória privada persistente
+
+A tabela `memory_records` armazena apenas entradas explicitamente curadas, com consentimento por gravação, chave e valor limitados, escopo de app ou proprietário, expiração opcional e exclusão lógica. O app autenticado pode operar na própria memória de app; memória de outro app e memória central exigem concessões `memory_read`/`memory_write` ativas. O chat não grava histórico automaticamente. A migration 0010 ainda não foi aplicada.
