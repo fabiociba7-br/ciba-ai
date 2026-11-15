@@ -270,7 +270,9 @@ describe("Ciba AI owner-controlled app access grants", () => {
       const response = await adminRequest("/v1/admin/apps", "POST", {
         app_id: appId, display_name: displayName, enabled: true,
         description: displayName + " integration test app",
-        app_type: appType, capabilities, contract_version: "1.0.0",
+        app_type: appType, capabilities,
+        task_types: appId === sourceApp ? ["analyze", "plan"] : ["organize", "summarize"],
+        contract_version: "1.0.0",
       });
       expect(response.status).toBe(200);
     }
@@ -489,17 +491,17 @@ describe("Ciba AI private app-to-app message relay", () => {
     const sourceIdentity = await sourceIdentityResponse.json() as {
       contract: string;
       contract_version: string;
-      identity: { app_id: string; app_type: string; capabilities: string[] };
-      connected_apps: Array<{ app_id: string; capabilities: string[] }>;
+      identity: { app_id: string; app_type: string; capabilities: string[]; task_types: string[] };
+      connected_apps: Array<{ app_id: string; capabilities: string[]; task_types: string[] }>;
       capability_semantics: { descriptive_only: boolean; grants_required_for_cross_app_access: boolean; app_actions_executable_by_garcia: boolean };
     };
     expect(sourceIdentity.contract).toBe("garcia-app");
     expect(sourceIdentity.contract_version).toBe("1.0.0");
     expect(sourceIdentity.identity).toMatchObject({
-      app_id: sourceApp, app_type: "assistant", capabilities: ["assistant", "productivity"],
+      app_id: sourceApp, app_type: "assistant", capabilities: ["assistant", "productivity"], task_types: ["analyze", "plan"],
     });
     expect(sourceIdentity.connected_apps).toEqual(expect.arrayContaining([
-      expect.objectContaining({ app_id: targetApp, capabilities: ["notes", "calendar"] }),
+      expect.objectContaining({ app_id: targetApp, capabilities: ["notes", "calendar"], task_types: ["organize", "summarize"] }),
     ]));
     expect(sourceIdentity.capability_semantics).toEqual({
       descriptive_only: true,
