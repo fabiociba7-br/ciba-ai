@@ -175,3 +175,11 @@ O painel oferece:
 O usuário informa o token de um dispositivo já pareado. O token fica somente em memória JavaScript durante a sessão e é descartado ao sair ou fechar a página; não é escrito em `localStorage` nem `sessionStorage`. A página chama somente endpoints do mesmo domínio e não envia credenciais a serviços externos. A resposta HTML usa política CSP restritiva, bloqueio de cache e cabeçalhos de segurança.
 
 A rota da interface é pública no sentido de que entrega apenas o HTML estático; os dados e todas as alterações continuam protegidos pelas APIs autenticadas do proprietário. Para usar o painel, o Worker e as migrations necessárias precisam estar configurados. Esta implementação no repositório não significa que já esteja publicado.
+
+## Gerenciamento e revogação de dispositivos
+
+A interface do painel lista os dispositivos pareados e identifica a sessão atual. Para outros dispositivos ativos, oferece a ação de revogação imediata.
+
+O endpoint `POST /v1/owner/devices/revoke` deriva o proprietário do token autenticado e executa a atualização condicionada simultaneamente ao identificador do dispositivo e ao `owner_id`. Assim, não aceita revogar dispositivos de outro proprietário. A própria sessão autenticada é protegida contra revogação acidental (`current_device_cannot_revoke`). Um dispositivo revogado perde imediatamente a autenticação em novas requisições.
+
+A revogação não apaga histórico, memórias ou dados do aplicativo; apenas invalida o token do dispositivo. A operação é irreversível pelo painel: para voltar, será necessário registrar e parear um novo dispositivo.
