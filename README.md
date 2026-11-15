@@ -13,7 +13,7 @@ Gateway privado de IA compartilhada para aplicativos da família Ciba.
 
 ## Custo zero: condição obrigatória
 
-A franquia gratuita documentada pela Cloudflare é de 10.000 Neurons por dia. No Workers Free, as chamadas falham ao atingir o limite; no Workers Paid, o excedente é cobrado a US$ 0,011 por 1.000 Neurons. A página do modelo Gemma 4 também publica preços unitários de tokens, portanto não se deve interpretar a franquia como uso ilimitado ou custo garantidamente zero fora do plano Free. Para manter custo zero, use uma conta Workers Free, não habilite Workers Paid nem créditos pré-pagos do AI Gateway e não configure fallback pago. O limite interno de requisições do Ciba AI é uma proteção adicional, não uma conversão exata de Neurons. Confira o painel de consumo da Cloudflare regularmente. [Documentação oficial de preços](https://developers.cloudflare.com/workers-ai/platform/pricing/).
+A franquia gratuita documentada pela Cloudflare é de 10.000 Neurons por dia. No Workers Free, as chamadas falham ao atingir o limite; no Workers Paid, o excedente é cobrado a US$ 0,011 por 1.000 Neurons. O modelo Gemma 4 está listado a 9.091 Neurons por milhão de tokens de entrada e 27.273 por milhão de tokens de saída. Os tetos internos foram reduzidos para criar margem dentro da franquia, mas não representam garantia matemática de consumo: a contagem real deve ser acompanhada no painel. [Tabela oficial por modelo](https://developers.cloudflare.com/workers-ai/platform/pricing/). Para manter custo zero, use uma conta Workers Free, não habilite Workers Paid nem créditos pré-pagos do AI Gateway e não configure fallback pago. O limite interno de requisições do Ciba AI é uma proteção adicional, não uma conversão exata de Neurons. Confira o painel de consumo da Cloudflare regularmente. [Documentação oficial de preços](https://developers.cloudflare.com/workers-ai/platform/pricing/).
 
 ## Estado do projeto
 
@@ -87,6 +87,6 @@ Consulte [TESTING.md](docs/TESTING.md) para executar os testes locais sem creden
 ## Proteções de uso
 
 - O endpoint `POST /v1/ai/chat` limita cada dispositivo a 12 chamadas por minuto; excedentes recebem HTTP 429 (`rate_limit_exceeded`).
-- Tetos rígidos: 500 requisições globais/dia, 200 por app/dia, 40 por dispositivo/dia, 700 tokens de saída, 6.000 caracteres por mensagem e 12.000 caracteres por requisição. A tela administrativa poderá reduzir, mas não elevar esses tetos.
+- Tetos rígidos: 50 requisições globais/dia, 25 por app/dia, 10 por dispositivo/dia, 512 tokens de saída, 1.500 caracteres por mensagem e 3.000 caracteres por requisição. A tela administrativa poderá reduzir, mas não elevar esses tetos.
 - O modelo efetivo é validado por allowlist no próprio Worker. Atualmente, somente `@cf/google/gemma-4-26b-a4b-it` é aceito; uma configuração de ambiente fora da allowlist não será executada.
 - As migrations `0004_minute_rate_limit.sql` e `0005_configurable_rate_limit.sql` criam o contador por minuto. A limpeza agendada remove registros antigos.
