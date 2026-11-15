@@ -5,12 +5,12 @@ export const MAX_REQUESTS_PER_MINUTE = 12;
 export const MAX_ADMIN_AUTH_FAILURES_PER_MINUTE = 10;
 
 // Hard ceilings: administrative settings may lower these values, never raise them.
-export const MAX_DAILY_GLOBAL_LIMIT = 500;
-export const MAX_DAILY_APP_LIMIT = 200;
-export const MAX_DAILY_DEVICE_LIMIT = 40;
-export const MAX_OUTPUT_TOKENS = 700;
-export const MAX_MESSAGE_CHARS = 6_000;
-export const MAX_TOTAL_INPUT_CHARS = 12_000;
+export const MAX_DAILY_GLOBAL_LIMIT = 50;
+export const MAX_DAILY_APP_LIMIT = 25;
+export const MAX_DAILY_DEVICE_LIMIT = 10;
+export const MAX_OUTPUT_TOKENS = 512;
+export const MAX_MESSAGE_CHARS = 1_500;
+export const MAX_TOTAL_INPUT_CHARS = 3_000;
 
 export const getLimit = (value: string | undefined, fallback: number): number => {
   const n = Number(value);
