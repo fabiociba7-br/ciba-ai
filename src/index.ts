@@ -782,7 +782,8 @@ export default {
       env.DB.prepare("DELETE FROM daily_usage WHERE day < ?").bind(usageCutoff),
       env.DB.prepare("DELETE FROM minute_usage WHERE minute < ?").bind(new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16)),
       env.DB.prepare("DELETE FROM admin_auth_usage WHERE minute < ?").bind(new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16)),
-      env.DB.prepare("DELETE FROM invitations WHERE expires_at < ? AND used_at IS NULL").bind(invitationCutoff),\n      env.DB.prepare("DELETE FROM owner_pairing_invitations WHERE expires_at < ? AND consumed_at IS NULL").bind(invitationCutoff),
+      env.DB.prepare("DELETE FROM invitations WHERE expires_at < ? AND used_at IS NULL").bind(invitationCutoff),
+      env.DB.prepare("DELETE FROM owner_pairing_invitations WHERE expires_at < ? AND consumed_at IS NULL").bind(invitationCutoff),
     ]);
   },
   async fetch(request: Request, env: Env): Promise<Response> {
