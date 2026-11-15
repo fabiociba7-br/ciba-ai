@@ -123,3 +123,12 @@ A migration `0010_private_memory_records.sql` e a API `/v1/owner/memory` adicion
 ## Controles do proprietário
 
 As capacidades de memória persistente e comunicação entre aplicativos agora têm interruptores independentes por proprietário. Ambos começam desativados e só podem ser alterados por dispositivos pareados. As verificações são feitas no servidor em cada rota; não dependem da interface do aplicativo. Desativar uma capacidade bloqueia seu uso sem apagar registros ou revogar concessões existentes. Consulte `docs/SETTINGS.md`.
+
+
+## Recuperação contextual da memória (etapa 24)
+
+O endpoint autenticado `POST /v1/owner/memory/retrieve` recupera itens curados relevantes para uma consulta. A classificação é lexical e determinística, com pontuação maior para termos presentes na chave e na informação armazenada. Não usa embeddings, não chama modelo e não gera custo de inferência.
+
+A consulta considera a memória do próprio app e inclui memória central ou de outros apps somente quando existe concessão ativa de leitura para o dispositivo/app solicitante. O proprietário ativo, o interruptor `memory_enabled`, a expiração e a exclusão são verificados no servidor. A busca limita a leitura a 200 registros e devolve até 20 resultados. Não persiste a consulta nem altera dados.
+
+A recuperação é uma API explícita do SDK (`retrieveMemory`); nesta etapa, o chat normal não injeta memórias automaticamente. Isso evita enviar contexto privado a uma inferência sem uma integração explícita e testada em etapa posterior. Não há migration nova.
