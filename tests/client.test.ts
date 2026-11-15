@@ -82,7 +82,7 @@ describe("CibaClient", () => {
   it("submits and retrieves correlated task results", async () => {
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(new Response(JSON.stringify({ submitted: true, duplicate: false }), { status: 201 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ task_id: "task-1", results: [], count: 0, maximum: 20 }), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ task_id: "task-1", results: [], count: 0, maximum: 20, consolidation: { status: "awaiting_results", task_id: "task-1", total_results: 0, completed_results: 0, partial_results: 0, failed_results: 0, distinct_successful_outputs: 0, agreement: null, consensus_result: null, sources: [], divergent_source_app_ids: [] } }), { status: 200 }));
     const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
     await client.submitTaskResult({
       taskId: "task-1", clientMessageId: "result-1",
@@ -94,6 +94,7 @@ describe("CibaClient", () => {
     });
     const results = await client.getTaskResults("task-1");
     expect(results.task_id).toBe("task-1");
+    expect(results.consolidation.status).toBe("awaiting_results");
     expect(fetcher.mock.calls[1][0]).toBe("https://private.example/v1/apps/tasks/results?task_id=task-1");
     await expect(client.getTaskResults("")).rejects.toThrow("invalid_task_id");
   });
