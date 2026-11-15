@@ -1462,7 +1462,7 @@ const handleSubmitTaskResult = async (request: Request, env: Env) => {
   const sourceAppId = original.source_app_id;
   const [sendAllowed, receiveAllowed] = await Promise.all([
     hasMessageGrant(env, owner.owner_id, device.app_id, device.app_id, sourceAppId, "send", "task", timestamp),
-    hasMessageGrant(env, owner.owner_id, sourceAppId, sourceAppId, device.app_id, "receive", "task", timestamp),
+    hasMessageGrant(env, owner.owner_id, sourceAppId, device.app_id, sourceAppId, "receive", "task", timestamp),
   ]);
   if (!sendAllowed || !receiveAllowed) return json({
     error: "task_result_access_not_granted",
