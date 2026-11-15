@@ -45,8 +45,8 @@ export function rankRelevantMemories(
     const valueTerms = new Set(terms(record.value));
     let score = 0;
     for (const term of queryTerms) {
-      if (keyTerms.has(term)) score += 3;
-      if (valueTerms.has(term)) score += 2;
+      if (keyTerms.has(term) || [...keyTerms].some((word) => term.length >= 4 && (word.startsWith(term) || term.startsWith(word)))) score += 3;
+      if (valueTerms.has(term) || [...valueTerms].some((word) => term.length >= 4 && (word.startsWith(term) || term.startsWith(word)))) score += 2;
     }
     return { ...record, relevance: score };
   })
