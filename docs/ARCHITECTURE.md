@@ -45,3 +45,10 @@ A migration `0007_private_owner_identity.sql` prepara uma identidade opaca de pr
 As políticas em `src/core/owner.ts` exigem proprietário ativo, convite não consumido, aplicativo correspondente e prazo válido. O acesso do proprietário é derivado do registro do dispositivo autenticado; um `ownerId` enviado pelo cliente não constitui prova de identidade. Dispositivos sem vínculo ou revogados falham por padrão.
 
 **Limite desta etapa:** a migration e as políticas estão no repositório, mas ainda não há endpoints para criar proprietários, emitir/consumir convites ou associar dispositivos. A migration não foi aplicada a banco local ou remoto. Não existe login público nem sessão de proprietário ativa. O pareamento real só deve ser implementado com consumo atômico do convite e autenticação do dispositivo já existente.
+
+
+## Pareamento privado implementado
+
+O gateway agora contém endpoints administrativos para criar um proprietário privado com convite inicial e emitir convites para associar outros aplicativos. Um dispositivo já registrado usa seu token de dispositivo para consumir um convite de uso único em `/v1/owner/pair`. A associação é feita no servidor, com verificações de proprietário ativo, aplicativo correspondente, convite não expirado/não consumido e dispositivo ainda não associado. A listagem administrativa inclui o identificador opaco do proprietário associado.
+
+O fluxo depende da migration `0007_private_owner_identity.sql` e permanece inoperante em ambientes cujo banco ainda não recebeu essa migration. Não há cadastro público, sessão de proprietário separada, interface de pareamento nem grants entre apps nesta etapa. Consulte `OWNER_PAIRING.md` para o protocolo.
