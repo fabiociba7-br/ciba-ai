@@ -165,5 +165,15 @@ describe("Ciba AI response security headers", () => {
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(response.headers.get("referrer-policy")).toBe("no-referrer");
     expect(response.headers.get("x-frame-options")).toBe("DENY");
+
+    const invalidJson = await request("/v1/auth/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{",
+    });
+    expect(invalidJson.status).toBe(400);
+    expect(invalidJson.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(invalidJson.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(invalidJson.headers.get("x-frame-options")).toBe("DENY");
   });
 });
