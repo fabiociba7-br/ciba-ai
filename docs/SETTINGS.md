@@ -88,7 +88,7 @@ Um Cron diário às 03:17 UTC remove registros de uso diário com mais de 35 dia
 
 ## Proteção contra excesso de chamadas
 
-O endpoint de chat aceita até 12 chamadas por dispositivo em cada minuto UTC. O controle é persistido no D1 e aplicado atomicamente por trigger SQL; a resposta para excesso é HTTP 429 com `rate_limit_exceeded`. A migration correspondente é `0004_minute_rate_limit.sql`. Registros antigos são removidos pelo cron diário.
+O endpoint de chat aceita até 12 chamadas por dispositivo em cada minuto UTC. O controle é persistido no D1 e aplicado atomicamente por trigger SQL; a resposta para excesso é HTTP 429 com `rate_limit_exceeded`. As migrations `0004_minute_rate_limit.sql` e `0005_configurable_rate_limit.sql` criam o contador e vinculam o limite armazenado à constante usada pelo Worker. Registros antigos são removidos pelo cron diário.
 
 ## Validação efetiva do modelo
 
