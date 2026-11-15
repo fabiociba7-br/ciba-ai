@@ -21,7 +21,7 @@ A unificação inicial é feita na camada de software. Não há fusão dos pesos
 
 Os perfis especialistas atuais são instruções especializadas selecionadas pelo roteador e executadas pelo mesmo modelo em uma chamada. Eles não são seis modelos independentes. O endpoint de capacidades deixa explícito que o modo atual é single-pass.
 
-A colaboração entre modelos independentes (fan-out), revisão com segunda inferência e memória persistente estão desativadas. Ativá-las antes de provisionar infraestrutura e medir consumo pode ultrapassar a franquia gratuita. O desenho permite evoluir para isso sem alterar o contrato dos aplicativos.
+Foi adicionada uma primitiva opt-in de ensemble multi-modelo (`src/core/ensemble.ts`): ela aceita membros com providers/modelos diferentes, limita a três chamadas de especialistas e uma chamada de síntese, reúne resultados bem-sucedidos e retorna os participantes usados. O registro de providers (`src/core/providers/registry.ts`) e os contratos de ferramentas (`src/core/tools`) também estão disponíveis. Essas primitivas ainda não estão ligadas ao endpoint público: não há providers externos configurados, credenciais, orçamento por provider nem autorização para encaminhar dados a terceiros. Portanto, a colaboração real entre modelos permanece desativada. Ativá-la antes de provisionar infraestrutura e medir consumo pode ultrapassar a franquia gratuita.
 
 ## Fluxo atual
 
