@@ -13,7 +13,7 @@ export interface Env {
   ALLOWED_ORIGINS?: string;
 }
 
-import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE } from "./policy";
+import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_DAILY_GLOBAL_LIMIT, MAX_DAILY_APP_LIMIT, MAX_DAILY_DEVICE_LIMIT, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "./policy";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -120,10 +120,10 @@ const publicConfig = (settings: Record<string, string>, env: Env) => ({
   model: resolveModel(settings.ai_model, env.AI_MODEL),
   maintenance_mode: settings.maintenance_mode === "true",
   limits: {
-    global_daily: getLimit(settings.daily_global_limit || env.DAILY_GLOBAL_LIMIT, 500),
-    app_daily: getLimit(settings.daily_app_limit || env.DAILY_APP_LIMIT, 200),
-    device_daily: getLimit(settings.daily_device_limit || env.DAILY_DEVICE_LIMIT, 40),
-    max_output_tokens: Math.min(getLimit(settings.max_output_tokens || env.MAX_OUTPUT_TOKENS, 700), 2000),
+    global_daily: Math.min(getLimit(settings.daily_global_limit || env.DAILY_GLOBAL_LIMIT, MAX_DAILY_GLOBAL_LIMIT), MAX_DAILY_GLOBAL_LIMIT),
+    app_daily: Math.min(getLimit(settings.daily_app_limit || env.DAILY_APP_LIMIT, MAX_DAILY_APP_LIMIT), MAX_DAILY_APP_LIMIT),
+    device_daily: Math.min(getLimit(settings.daily_device_limit || env.DAILY_DEVICE_LIMIT, MAX_DAILY_DEVICE_LIMIT), MAX_DAILY_DEVICE_LIMIT),
+    max_output_tokens: Math.min(getLimit(settings.max_output_tokens || env.MAX_OUTPUT_TOKENS, MAX_OUTPUT_TOKENS), MAX_OUTPUT_TOKENS),
   },
 });
 
@@ -331,13 +331,13 @@ const handleChat = async (request: Request, env: Env) => {
     if (!item || typeof item !== "object") return json({ error: "invalid_message" }, 400);
     const message = item as Record<string, unknown>;
     if ((message.role !== "user" && message.role !== "assistant") ||
-        typeof message.content !== "string" || message.content.length > 12_000) {
+        typeof message.content !== "string" || message.content.length > MAX_MESSAGE_CHARS) {
       return json({ error: "invalid_message" }, 400);
     }
     totalChars += message.content.length;
     messages.push({ role: message.role, content: message.content });
   }
-  if (totalChars > 30_000) return json({ error: "prompt_too_large" }, 413);
+  if (totalChars > MAX_TOTAL_INPUT_CHARS) return json({ error: "prompt_too_large", max_input_chars: MAX_TOTAL_INPUT_CHARS }, 413);
 
   try {
     await reserveQuota(env, device.app_id, device.device_id);
@@ -352,7 +352,7 @@ const handleChat = async (request: Request, env: Env) => {
 
   const model = resolveModel(settings.ai_model, env.AI_MODEL);
   if (!model) return json({ error: "ai_model_not_available" }, 503);
-  const maxTokens = Math.min(getLimit(settings.max_output_tokens || env.MAX_OUTPUT_TOKENS, 700), 2_000);
+  const maxTokens = Math.min(getLimit(settings.max_output_tokens || env.MAX_OUTPUT_TOKENS, MAX_OUTPUT_TOKENS), MAX_OUTPUT_TOKENS);
   const inputMessages = [
     { role: "system", content: "Você é o assistente de IA dos aplicativos Ciba. Responda em português quando o usuário escrever em português. Seja claro, útil e seguro." },
     ...messages,
@@ -441,9 +441,17 @@ const handleAdminSettings = async (request: Request, env: Env) => {
     if (key === "ai_model" && !ZERO_COST_MODELS.has(normalized)) {
       return json({ error: "invalid_ai_model" }, 400);
     }
-    if (["daily_global_limit", "daily_app_limit", "daily_device_limit", "max_output_tokens"].includes(key)) {
+    const settingCeilings: Record<string, number> = {
+      daily_global_limit: MAX_DAILY_GLOBAL_LIMIT,
+      daily_app_limit: MAX_DAILY_APP_LIMIT,
+      daily_device_limit: MAX_DAILY_DEVICE_LIMIT,
+      max_output_tokens: MAX_OUTPUT_TOKENS,
+    };
+    if (key in settingCeilings) {
       const n = Number(normalized);
-      if (!Number.isSafeInteger(n) || n < 1 || n > 100000) return json({ error: "invalid_numeric_setting", key }, 400);
+      if (!Number.isSafeInteger(n) || n < 1 || n > settingCeilings[key]) {
+        return json({ error: "setting_exceeds_safety_ceiling", key, maximum: settingCeilings[key] }, 400);
+      }
     }
     if (["ai_enabled", "maintenance_mode"].includes(key) && !["true", "false"].includes(normalized)) {
       return json({ error: "invalid_boolean_setting", key }, 400);
