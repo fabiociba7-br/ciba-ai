@@ -516,6 +516,7 @@ const handleOwnerDashboard = async (request: Request, env: Env) => {
   return json({
     identity: "Garcia",
     owner: { status: "active" },
+    current_device_id: device.device_id,
     intelligence: {
       mode: "single-pass",
       enabled: config.ai_enabled,
@@ -535,6 +536,7 @@ const handleOwnerDashboard = async (request: Request, env: Env) => {
     devices: (deviceRows.results || []).map((row) => ({
       ...row,
       status: row.revoked_at ? "revoked" : "active",
+      is_current: row.device_id === device.device_id,
     })),
     access_grants: grantRows.results || [],
     limits: { maximum_devices_shown: 100, maximum_grants_shown: 200 },
@@ -809,6 +811,21 @@ const handleOwnerMemory = async (request: Request, env: Env, url: URL) => {
   return json({ error: "method_not_allowed" }, 405);
 };
 
+const handleRevokeOwnerDevice = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const body = await readJson(request, 4_000);
+  const deviceId = typeof body.device_id === "string" ? body.device_id.trim() : "";
+  if (!deviceId || deviceId.length > 100) return json({ error: "invalid_device_id" }, 400);
+  if (deviceId === device.device_id) return json({ error: "current_device_cannot_revoke" }, 400);
+  const result = await env.DB.prepare("UPDATE devices SET revoked_at = ? WHERE device_id = ? AND owner_id = ? AND revoked_at IS NULL")
+    .bind(nowIso(), deviceId, owner.owner_id).run();
+  return result.meta.changes === 1
+    ? json({ revoked: true, device_id: deviceId })
+    : json({ error: "device_not_found_or_already_revoked" }, 404);
+};
 const handleRevokeOwnerAccessGrant = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
@@ -1374,6 +1391,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/owner/memory" && ["GET", "POST", "DELETE"].includes(request.method)) {
     return handleOwnerMemory(request, env, url);
+  }
+  if (url.pathname === "/v1/owner/devices/revoke" && request.method === "POST") {
+    return handleRevokeOwnerDevice(request, env);
   }
   if (url.pathname === "/v1/owner/access-grants/revoke" && request.method === "POST") {
     return handleRevokeOwnerAccessGrant(request, env);
