@@ -306,6 +306,27 @@ export class CibaClient {
     return this.request(`/v1/apps/tasks/results?task_id=${encodeURIComponent(taskId)}`);
   }
 
+  async synthesizeTaskResults(taskId: string): Promise<{
+    task_id: string;
+    synthesis: string;
+    sources: Array<{ app_id: string; status: "completed" | "partial" }>;
+    input_characters: number;
+    model: string;
+    intelligence: {
+      strategy: "bounded-task-synthesis";
+      provider: string;
+      inference_calls: 1;
+      max_output_tokens: number;
+      zero_cost_model_approved: true;
+    };
+  }> {
+    if (!taskId.trim() || taskId.length > 100) throw new Error("invalid_task_id");
+    return this.request("/v1/apps/tasks/synthesize", {
+      method: "POST",
+      body: JSON.stringify({ task_id: taskId }),
+    });
+  }
+
   sendMessage<T>(input: CibaMessageInput<T>): Promise<Record<string, unknown>> {
     return this.request("/v1/apps/messages", {
       method: "POST",
