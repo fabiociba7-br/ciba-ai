@@ -14,7 +14,7 @@ export interface Env {
 }
 
 import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_DAILY_GLOBAL_LIMIT, MAX_DAILY_APP_LIMIT, MAX_DAILY_DEVICE_LIMIT, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "./policy";
-import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents } from "./core";
+import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents, canPairDevice } from "./core";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -212,8 +212,8 @@ const authenticateDevice = async (request: Request, env: Env) => {
   if (token.length < 32 || token.length > 256) return null;
   const tokenHash = await sha256(token);
   return env.DB.prepare(
-    "SELECT device_id, app_id FROM devices WHERE token_hash = ? AND revoked_at IS NULL"
-  ).bind(tokenHash).first<{ device_id: string; app_id: string }>();
+    "SELECT device_id, app_id, owner_id FROM devices WHERE token_hash = ? AND revoked_at IS NULL"
+  ).bind(tokenHash).first<{ device_id: string; app_id: string; owner_id: string | null }>();
 };
 
 const reserveQuota = async (env: Env, appId: string, deviceId: string) => {
@@ -323,6 +323,129 @@ const handleCreateInvitation = async (request: Request, env: Env) => {
   ).bind(await sha256(code), appId, createdAt, expiresAt).run();
 
   return json({ invitation_code: code, app_id: appId, expires_at: expiresAt }, 201);
+};
+
+const handleCreateOwner = async (request: Request, env: Env) => {
+  const authError = await authorizeAdmin(request, env);
+  if (authError) return authError;
+  const body = await readJson(request, 4_000);
+  const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
+  if (!isValidAppId(appId) || !(await isAppAllowed(env, appId))) {
+    return json({ error: "app_not_allowed" }, 400);
+  }
+
+  const ownerId = crypto.randomUUID();
+  const code = randomToken(24);
+  const createdAt = nowIso();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const codeHash = await sha256(code);
+  const results = await env.DB.batch([
+    env.DB.prepare(
+      "INSERT INTO owners(owner_id, status, created_at) VALUES(?, 'active', ?)"
+    ).bind(ownerId, createdAt),
+    env.DB.prepare(`
+      INSERT INTO owner_pairing_invitations(code_hash, owner_id, app_id, created_at, expires_at)
+      SELECT ?, owner_id, ?, ?, ? FROM owners WHERE owner_id = ? AND status = 'active'
+    `).bind(codeHash, appId, createdAt, expiresAt, ownerId),
+  ]);
+  if ((results[0]?.meta?.changes || 0) !== 1 || (results[1]?.meta?.changes || 0) !== 1) {
+    return json({ error: "owner_creation_failed" }, 500);
+  }
+  return json({
+    owner_id: ownerId,
+    pairing_invitation_code: code,
+    app_id: appId,
+    expires_at: expiresAt,
+    note: "Store this code securely; it is shown only once."
+  }, 201);
+};
+
+const handleCreateOwnerInvitation = async (request: Request, env: Env) => {
+  const authError = await authorizeAdmin(request, env);
+  if (authError) return authError;
+  const body = await readJson(request, 4_000);
+  const ownerId = typeof body.owner_id === "string" ? body.owner_id.trim() : "";
+  const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
+  if (!ownerId || ownerId.length > 100 || !isValidAppId(appId) || !(await isAppAllowed(env, appId))) {
+    return json({ error: "invalid_owner_or_app" }, 400);
+  }
+
+  const code = randomToken(24);
+  const createdAt = nowIso();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const result = await env.DB.prepare(`
+    INSERT INTO owner_pairing_invitations(code_hash, owner_id, app_id, created_at, expires_at)
+    SELECT ?, owner_id, ?, ?, ? FROM owners WHERE owner_id = ? AND status = 'active'
+  `).bind(await sha256(code), appId, createdAt, expiresAt, ownerId).run();
+
+  if (result.meta.changes !== 1) return json({ error: "owner_not_found_or_revoked" }, 404);
+  return json({
+    pairing_invitation_code: code,
+    owner_id: ownerId,
+    app_id: appId,
+    expires_at: expiresAt,
+    note: "Store this code securely; it is shown only once."
+  }, 201);
+};
+
+const handlePairOwner = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  if (device.owner_id) return json({ error: "device_already_paired" }, 409);
+
+  const body = await readJson(request, 4_000);
+  const code = typeof body.pairing_invitation_code === "string"
+    ? body.pairing_invitation_code.trim() : "";
+  if (code.length < 20 || code.length > 256) {
+    return json({ error: "invalid_owner_pairing_invitation" }, 400);
+  }
+
+  const codeHash = await sha256(code);
+  const timestamp = nowIso();
+  // The first statement consumes the invitation only if this authenticated
+  // device is still unlinked and belongs to the invited app. D1 batch runs
+  // these statements transactionally; a consumed code cannot be replayed.
+  const results = await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE owner_pairing_invitations
+      SET consumed_at = ?, consumed_device_id = ?
+      WHERE code_hash = ? AND app_id = ? AND consumed_at IS NULL AND expires_at > ?
+        AND EXISTS (
+          SELECT 1 FROM owners
+          WHERE owners.owner_id = owner_pairing_invitations.owner_id AND owners.status = 'active'
+        )
+        AND EXISTS (
+          SELECT 1 FROM devices
+          WHERE devices.device_id = ? AND devices.app_id = ?
+            AND devices.owner_id IS NULL AND devices.revoked_at IS NULL
+        )
+    `).bind(timestamp, device.device_id, codeHash, device.app_id, timestamp, device.device_id, device.app_id),
+    env.DB.prepare(`
+      UPDATE devices
+      SET owner_id = (
+        SELECT owner_id FROM owner_pairing_invitations
+        WHERE code_hash = ? AND consumed_at = ? AND consumed_device_id = ? AND app_id = ?
+      )
+      WHERE device_id = ? AND app_id = ? AND owner_id IS NULL AND revoked_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM owner_pairing_invitations
+          WHERE code_hash = ? AND consumed_at = ? AND consumed_device_id = ? AND app_id = ?
+        )
+    `).bind(codeHash, timestamp, device.device_id, device.app_id,
+      device.device_id, device.app_id, codeHash, timestamp, device.device_id, device.app_id),
+  ]);
+
+  if ((results[0]?.meta?.changes || 0) !== 1) {
+    return json({ error: "invalid_or_used_owner_pairing_invitation" }, 401);
+  }
+  if ((results[1]?.meta?.changes || 0) !== 1) {
+    return json({ error: "owner_pairing_conflict" }, 409);
+  }
+  const paired = await env.DB.prepare(
+    "SELECT owner_id FROM devices WHERE device_id = ?"
+  ).bind(device.device_id).first<{ owner_id: string | null }>();
+  if (!paired?.owner_id) return json({ error: "owner_pairing_failed" }, 500);
+  return json({ paired: true, owner_id: paired.owner_id, app_id: device.app_id });
 };
 
 const handleRevokeDevice = async (request: Request, env: Env) => {
@@ -625,7 +748,7 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   if (url.pathname === "/v1/auth/register" && request.method === "POST") {
     return handleRegister(request, env);
   }
-  if (url.pathname === "/v1/admin/invitations" && request.method === "POST") {
+  if (url.pathname === "/v1/admin/owners" && request.method === "POST") {\n    return handleCreateOwner(request, env);\n  }\n  if (url.pathname === "/v1/admin/owner-invitations" && request.method === "POST") {\n    return handleCreateOwnerInvitation(request, env);\n  }\n  if (url.pathname === "/v1/owner/pair" && request.method === "POST") {\n    return handlePairOwner(request, env);\n  }\n  if (url.pathname === "/v1/admin/invitations" && request.method === "POST") {
     return handleCreateInvitation(request, env);
   }
   if (url.pathname === "/v1/admin/devices/revoke" && request.method === "POST") {
@@ -650,7 +773,7 @@ export default {
       env.DB.prepare("DELETE FROM daily_usage WHERE day < ?").bind(usageCutoff),
       env.DB.prepare("DELETE FROM minute_usage WHERE minute < ?").bind(new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16)),
       env.DB.prepare("DELETE FROM admin_auth_usage WHERE minute < ?").bind(new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16)),
-      env.DB.prepare("DELETE FROM invitations WHERE expires_at < ? AND used_at IS NULL").bind(invitationCutoff),
+      env.DB.prepare("DELETE FROM invitations WHERE expires_at < ? AND used_at IS NULL").bind(invitationCutoff),\n      env.DB.prepare("DELETE FROM owner_pairing_invitations WHERE expires_at < ? AND consumed_at IS NULL").bind(invitationCutoff),
     ]);
   },
   async fetch(request: Request, env: Env): Promise<Response> {
