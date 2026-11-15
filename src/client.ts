@@ -229,7 +229,9 @@ export class CibaClient {
   }
 
   saveMemory(input: CibaMemoryInput): Promise<Record<string, unknown>> {
-    return this.request("/v1/owner/memory", {
+    const params = new URLSearchParams({ scope: input.scope });
+    if (input.sourceAppId) params.set("source_app_id", input.sourceAppId);
+    return this.request(`/v1/owner/memory?${params.toString()}`, {
       method: "POST",
       body: JSON.stringify({
         scope: input.scope, key: input.key, value: input.value, consent: input.consent,
