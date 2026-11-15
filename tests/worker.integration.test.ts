@@ -33,11 +33,11 @@ const createInvitation = async () => {
   return (await response.json() as { invitation_code: string }).invitation_code;
 };
 
-const registerDevice = async (invitationCode: string) => {
+const registerDevice = async (invitationCode: string, targetAppId = appId) => {
   const response = await request("/v1/auth/register", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ app_id: appId, invitation_code: invitationCode }),
+    body: JSON.stringify({ app_id: targetAppId, invitation_code: invitationCode }),
   });
   expect(response.status).toBe(201);
   return await response.json() as { device_id: string; access_token: string };
@@ -261,7 +261,7 @@ describe("Ciba AI owner-controlled app access grants", () => {
     });
     expect(invitationResponse.status).toBe(201);
     const invitationCode = (await invitationResponse.json() as { invitation_code: string }).invitation_code;
-    const device = await registerDevice(invitationCode);
+    const device = await registerDevice(invitationCode, sourceApp);
 
     const ownerResponse = await adminRequest("/v1/admin/owners", "POST", { app_id: sourceApp });
     expect(ownerResponse.status).toBe(201);
@@ -325,7 +325,7 @@ describe("Ciba AI owner-controlled app access grants", () => {
       app_id: targetApp, valid_hours: 1,
     });
     const targetCode = (await targetInvitation.json() as { invitation_code: string }).invitation_code;
-    const unpairedTarget = await registerDevice(targetCode);
+    const unpairedTarget = await registerDevice(targetCode, targetApp);
     const denied = await request("/v1/owner/access-grants", {
       headers: { authorization: `Bearer ${unpairedTarget.access_token}` },
     });
