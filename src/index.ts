@@ -18,6 +18,7 @@ import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PE
 import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents } from "./core";
 import { validateCuratedMemory } from "./core/memory";
 import { validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./core/apps/registry";
+import { isAppTaskType, selectTaskRoute } from "./core/task-coordinator";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -1259,6 +1260,157 @@ const hasMessageGrant = async (
   return Boolean(row);
 };
 
+const handleTaskDispatch = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  if (!(await isAppAllowed(env, device.app_id))) return json({ error: "source_app_disabled" }, 403);
+  if (!(await readOwnerFeatureSettings(env, owner.owner_id)).app_messaging_enabled) {
+    return json({ error: "app_messaging_disabled" }, 403);
+  }
+
+  const body = await readJson(request, 12_000);
+  const taskType = body.task_type;
+  const instruction = typeof body.instruction === "string" ? body.instruction.trim() : "";
+  const preferredAppId = body.preferred_app_id === undefined
+    ? undefined
+    : typeof body.preferred_app_id === "string" ? body.preferred_app_id.trim() : "";
+  const clientMessageId = typeof body.client_message_id === "string" ? body.client_message_id.trim() : "";
+  if (!isAppTaskType(taskType) || !instruction || instruction.length > 6_000 ||
+      !clientMessageId || clientMessageId.length > 100 ||
+      (preferredAppId !== undefined && (!preferredAppId || !isValidAppId(preferredAppId)))) {
+    return json({ error: "invalid_task_dispatch_fields" }, 400);
+  }
+  const ttlHours = body.ttl_hours === undefined ? MESSAGE_DEFAULT_TTL_HOURS : body.ttl_hours;
+  if (typeof ttlHours !== "number" || !Number.isInteger(ttlHours) ||
+      ttlHours < 1 || ttlHours > MESSAGE_MAX_TTL_HOURS) {
+    return json({ error: "invalid_message_ttl", minimum_hours: 1, maximum_hours: MESSAGE_MAX_TTL_HOURS }, 400);
+  }
+
+  let contextJson: string | undefined;
+  if (body.context !== undefined) {
+    try { contextJson = JSON.stringify(body.context); } catch {
+      return json({ error: "invalid_task_context" }, 400);
+    }
+    if (contextJson === undefined || contextJson.length > 1_500) {
+      return json({ error: "task_context_too_large", max_characters: 1_500 }, 413);
+    }
+  }
+
+  const timestamp = nowIso();
+  const rows = await env.DB.prepare(`
+    SELECT a.app_id, a.display_name, a.task_types_json
+    FROM devices d
+    INNER JOIN app_registry a ON a.app_id = d.app_id
+    WHERE d.owner_id = ? AND d.revoked_at IS NULL AND a.enabled = 1
+      AND d.app_id <> ?
+    GROUP BY a.app_id, a.display_name, a.task_types_json
+    ORDER BY a.display_name COLLATE NOCASE
+  `).bind(owner.owner_id, device.app_id).all<{
+    app_id: string; display_name: string; task_types_json: string;
+  }>();
+  const capableRows = (rows.results || []).filter((row) =>
+    parseStoredAppTaskTypes(row.task_types_json).includes(taskType)
+  );
+  const candidates = await Promise.all(capableRows.map(async (row) => {
+    const [sendGranted, receiveGranted] = await Promise.all([
+      hasMessageGrant(env, owner.owner_id, device.app_id, device.app_id, row.app_id, "send", "task", timestamp),
+      hasMessageGrant(env, owner.owner_id, row.app_id, device.app_id, row.app_id, "receive", "task", timestamp),
+    ]);
+    return {
+      appId: row.app_id,
+      displayName: row.display_name,
+      taskTypes: parseStoredAppTaskTypes(row.task_types_json),
+      sendGranted,
+      receiveGranted,
+    };
+  }));
+  const decision = selectTaskRoute(taskType, candidates, preferredAppId);
+  if (decision.status === "no_capable_app") {
+    return json({ error: "no_capable_app", task_type: taskType }, 404);
+  }
+  if (decision.status === "no_granted_app") {
+    return json({
+      error: "no_eligible_app_grants",
+      task_type: taskType,
+      capable_apps: decision.capableAppIds,
+    }, 403);
+  }
+  if (decision.status === "ambiguous") {
+    return json({
+      error: "task_route_ambiguous",
+      task_type: taskType,
+      candidates: decision.candidates.map((candidate) => ({
+        app_id: candidate.appId, display_name: candidate.displayName,
+      })),
+      note: "Informe preferred_app_id para escolher explicitamente.",
+    }, 409);
+  }
+
+  const destinationAppId = decision.candidate.appId;
+  const taskId = crypto.randomUUID();
+  const payload = {
+    protocol: "garcia.task.request",
+    contract: "garcia-app",
+    contract_version: "1.0.0",
+    task_id: taskId,
+    task_type: taskType,
+    instruction,
+    ...(body.context === undefined ? {} : { context: body.context }),
+  };
+  const payloadJson = JSON.stringify(payload);
+  if (payloadJson.length > MESSAGE_MAX_PAYLOAD_CHARS) {
+    return json({ error: "message_payload_too_large", max_characters: MESSAGE_MAX_PAYLOAD_CHARS }, 413);
+  }
+  const messageId = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000).toISOString();
+  const inserted = await env.DB.prepare(`
+    INSERT INTO app_messages(
+      message_id, owner_id, source_app_id, destination_app_id,
+      client_message_id, task_id, scope, payload_json, created_at, expires_at
+    )
+    SELECT ?, ?, ?, ?, ?, ?, 'task', ?, ?, ?
+    WHERE (
+      SELECT COUNT(*) FROM app_messages
+      WHERE owner_id = ? AND destination_app_id = ?
+        AND acknowledged_at IS NULL AND expires_at > ?
+    ) < ?
+    ON CONFLICT(owner_id, source_app_id, client_message_id) DO NOTHING
+  `).bind(
+    messageId, owner.owner_id, device.app_id, destinationAppId,
+    clientMessageId, taskId, payloadJson, timestamp, expiresAt,
+    owner.owner_id, destinationAppId, timestamp, MESSAGE_MAX_PENDING_PER_DESTINATION
+  ).run();
+  if (inserted.meta.changes !== 1) {
+    const existing = await env.DB.prepare(`
+      SELECT message_id, task_id, destination_app_id, created_at, expires_at
+      FROM app_messages
+      WHERE owner_id = ? AND source_app_id = ? AND client_message_id = ?
+    `).bind(owner.owner_id, device.app_id, clientMessageId)
+      .first<{ message_id: string; task_id: string; destination_app_id: string; created_at: string; expires_at: string }>();
+    if (existing) return json({ dispatched: true, duplicate: true, route: existing }, 200);
+    return json({ error: "destination_queue_full", maximum_pending: MESSAGE_MAX_PENDING_PER_DESTINATION }, 429);
+  }
+
+  return json({
+    dispatched: true,
+    duplicate: false,
+    route: {
+      message_id: messageId,
+      task_id: taskId,
+      source_app_id: device.app_id,
+      destination_app_id: destinationAppId,
+      destination_display_name: decision.candidate.displayName,
+      task_type: taskType,
+      scope: "task",
+      created_at: timestamp,
+      expires_at: expiresAt,
+      result_delivery: "destination_app_must_reply_with_same_task_id",
+    },
+  }, 201);
+};
+
 const handleSendAppMessage = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
@@ -1556,6 +1708,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/owner/access-grants/revoke" && request.method === "POST") {
     return handleRevokeOwnerAccessGrant(request, env);
+  }
+  if (url.pathname === "/v1/apps/tasks/dispatch" && request.method === "POST") {
+    return handleTaskDispatch(request, env);
   }
   if (url.pathname === "/v1/apps/messages" && request.method === "POST") {
     return handleSendAppMessage(request, env);
