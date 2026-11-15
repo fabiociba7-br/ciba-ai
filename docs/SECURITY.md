@@ -13,6 +13,7 @@ O identificador de aplicativo é uma declaração do cliente, não uma prova cri
 ## Regras obrigatórias
 
 - Nunca colocar `ADMIN_TOKEN` em aplicativos móveis, repositórios ou variáveis públicas.
+- Configurar `ADMIN_TOKEN` com pelo menos 32 caracteres aleatórios; sem esse requisito, as rotas administrativas permanecem desativadas e respondem `503 admin_auth_not_configured`.
 - A autenticação administrativa compara hashes de tamanho fixo e limita a 10 falhas por minuto por IP de borda Cloudflare (`CF-Connecting-IP`).
 - Os registros de falha armazenam somente o hash do IP combinado com o segredo administrativo; a tabela é limpa pelo cron após dois dias.
 - O limite por IP é uma camada adicional contra força bruta, não substitui um token forte, proteção de conta Cloudflare nem controles de acesso administrativos.
