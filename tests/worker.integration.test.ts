@@ -78,7 +78,8 @@ describe("Ciba AI Worker integration", () => {
     expect(settingsResponse.status).toBe(200);
 
     const secondDevice = await registerDevice(await createInvitation());
-    await env.DB.prepare(
+    const testDb = (env as unknown as { DB: D1Database }).DB;
+    await testDb.prepare(
       "INSERT INTO runtime_settings(setting_key, setting_value, updated_at) VALUES(?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = excluded.updated_at"
     ).bind("ai_model", "not-an-allowed-model", new Date().toISOString()).run();
 
