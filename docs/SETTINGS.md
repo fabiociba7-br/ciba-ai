@@ -128,3 +128,18 @@ O Ciba AI é uma inteligência privada do proprietário e dos aplicativos autori
 Os contratos e a política de autorização já estão definidos em `src/core/memory.ts`. A política exige correspondência do proprietário, concede acesso local ao escopo do próprio aplicativo e exige uma concessão explícita para memória central ou memória de outro aplicativo. Concessões podem limitar leitura/escrita e expirar.
 
 **Estado real:** esta etapa não ativa armazenamento persistente, não cria endpoints de memória e não faz compartilhamento em produção. Ainda falta uma identidade autenticada única do proprietário, uma tela para administrar concessões e um backend com operações de exportação e exclusão. Até isso existir, nenhuma memória é gravada entre requisições e nenhum aplicativo recebe acesso aos dados de outro.
+
+## Controles de capacidades por proprietário
+
+Cada proprietário pode controlar as capacidades privadas por `GET /v1/owner/settings` e `POST /v1/owner/settings`, usando um dispositivo autenticado e pareado. Exemplo:
+
+```json
+{
+  "settings": {
+    "memory_enabled": true,
+    "app_messaging_enabled": false
+  }
+}
+```
+
+Ambas as opções começam em `false`. Com memória desligada, as rotas de memória e a criação de concessões de memória retornam HTTP 403. Com comunicação desligada, envio, caixa de entrada, confirmação de mensagens e criação de concessões de comunicação retornam HTTP 403. Desligar não apaga dados nem revoga concessões; apenas bloqueia a capacidade até que seja reativada. A administração não aceita chaves arbitrárias nem segredos nesse endpoint. A migration `0011_owner_feature_settings.sql` precisa ser aplicada antes do uso.
