@@ -62,6 +62,23 @@ describe("CibaClient", () => {
     });
   });
 
+  it("maps owner app connection invitation methods to the authenticated API", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ apps: [{ app_id: "com.ciba.app", display_name: "Ciba App" }] }), { status: 200 })
+    );
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "owner-device-token", fetcher });
+    await client.listAvailableApps();
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/owner/available-apps");
+    const headers = new Headers(fetcher.mock.calls[0][1]?.headers);
+    expect(headers.get("authorization")).toBe("Bearer owner-device-token");
+    fetcher.mockResolvedValueOnce(new Response(JSON.stringify({
+      app_id: "com.ciba.app", registration_invitation_code: "registration-code",
+      pairing_invitation_code: "pairing-code", expires_at: "2030-01-01T00:00:00.000Z", note: "one-time",
+    }), { status: 201 }));
+    await client.createAppConnectionInvitation("com.ciba.app");
+    expect(fetcher.mock.calls[1][0]).toBe("https://private.example/v1/owner/apps/connect");
+    expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({ app_id: "com.ciba.app" });
+  });
   it("does not call authenticated endpoints without a token", async () => {
     const fetcher = vi.fn<typeof fetch>();
     const client = new CibaClient({ baseUrl: "https://private.example", fetcher });
