@@ -75,5 +75,6 @@ O nome do modelo é configurado em `AI_MODEL`. Antes de produção, confirme no 
 - `POST /v1/ai/chat`
 - `GET /v1/usage`
 - `POST /v1/admin/invitations`
+- `POST /v1/admin/devices/revoke`
 
 Consulte [SECURITY.md](docs/SECURITY.md) antes de disponibilizar convites ou distribuir os aplicativos.
