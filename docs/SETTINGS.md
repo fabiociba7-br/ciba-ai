@@ -203,3 +203,8 @@ O cadastro administrativo `POST /v1/admin/apps` aceita metadados de identidade: 
 As capacidades não são permissões nem ferramentas executáveis. Concessões existentes e controles do proprietário continuam sendo a única base para acesso cruzado; nenhum comando é executado a partir desses metadados.
 
 O painel exibe também os tipos de tarefa declarados por cada aplicativo. Essa lista serve para reconhecimento e roteamento futuro; não executa ações nem substitui a autorização por concessões.
+
+
+## Encaminhamento de tarefas entre aplicativos
+
+O endpoint `POST /v1/apps/tasks/dispatch` usa o perfil de tarefas e as concessões vigentes para escolher um app de destino. Só roteia para apps habilitados, com dispositivo ativo no mesmo proprietário, com o tipo de tarefa declarado e com permissões de envio e recebimento concedidas. Em caso de múltiplos destinos, exige escolha explícita. O encaminhamento usa a fila de mensagens existente e continua bloqueado quando `app_messaging_enabled` está desligado.
