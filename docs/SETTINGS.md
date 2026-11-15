@@ -2,6 +2,23 @@
 
 O Ciba AI separa configurações operacionais de segredos. As configurações editáveis ficam na tabela D1 `runtime_settings` e poderão ser controladas por uma futura tela **Configurações** nos aplicativos ou num painel administrativo.
 
+## Cadastro de aplicativos pela API
+
+- `GET /v1/admin/apps`: lista os aplicativos registrados.
+- `POST /v1/admin/apps`: cadastra ou atualiza um aplicativo permitido.
+
+Exemplo de cadastro:
+
+```json
+{
+  "app_id": "com.exemplo.aplicativo",
+  "display_name": "Aplicativo Ciba",
+  "enabled": true
+}
+```
+
+O `app_id` deve ser o applicationId real do Android. Aplicativos desativados deixam de poder registrar novos dispositivos e gerar convites. O valor também não substitui atestação de integridade do APK; isso será uma camada adicional antes de produção.
+
 ## Configurações editáveis pela API
 
 Autenticação administrativa: `Authorization: Bearer ADMIN_TOKEN`.
