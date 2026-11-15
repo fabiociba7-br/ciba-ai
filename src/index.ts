@@ -470,6 +470,51 @@ const readOwnerFeatureSettings = async (env: Env, ownerId: string): Promise<Owne
   };
 };
 
+const handleOwnerAvailableApps = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const rows = await env.DB.prepare(
+    "SELECT app_id, display_name FROM app_registry WHERE enabled = 1 ORDER BY display_name COLLATE NOCASE"
+  ).all<{ app_id: string; display_name: string }>();
+  const apps = (rows.results || []).filter((app) => isValidAppId(app.app_id));
+  return json({ apps });
+};
+
+const handleConnectOwnerApp = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const body = await readJson(request, 4_000);
+  const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
+  if (!isValidAppId(appId) || !(await isAppAllowed(env, appId))) return json({ error: "app_not_allowed" }, 400);
+  const app = await env.DB.prepare(
+    "SELECT app_id FROM app_registry WHERE app_id = ? AND enabled = 1"
+  ).bind(appId).first<{ app_id: string }>();
+  if (!app) return json({ error: "app_not_available" }, 404);
+  const registrationCode = randomToken(24);
+  const pairingCode = randomToken(24);
+  const createdAt = nowIso();
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const results = await env.DB.batch([
+    env.DB.prepare("INSERT INTO invitations(code_hash, app_id, created_at, expires_at) VALUES(?, ?, ?, ?)")
+      .bind(await sha256(registrationCode), appId, createdAt, expiresAt),
+    env.DB.prepare("INSERT INTO owner_pairing_invitations(code_hash, owner_id, app_id, created_at, expires_at) VALUES(?, ?, ?, ?, ?)")
+      .bind(await sha256(pairingCode), owner.owner_id, appId, createdAt, expiresAt),
+  ]);
+  if ((results[0]?.meta?.changes || 0) !== 1 || (results[1]?.meta?.changes || 0) !== 1) {
+    return json({ error: "app_connection_invitation_failed" }, 500);
+  }
+  return json({
+    app_id: appId,
+    registration_invitation_code: registrationCode,
+    pairing_invitation_code: pairingCode,
+    expires_at: expiresAt,
+    note: "Each code is shown only once. Register the device with the first code, then pair it with the second code.",
+  }, 201);
+};
 const handleOwnerDashboard = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
@@ -1379,6 +1424,12 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/owner/pair" && request.method === "POST") {
     return handlePairOwner(request, env);
+  }
+  if (url.pathname === "/v1/owner/available-apps" && request.method === "GET") {
+    return handleOwnerAvailableApps(request, env);
+  }
+  if (url.pathname === "/v1/owner/apps/connect" && request.method === "POST") {
+    return handleConnectOwnerApp(request, env);
   }
   if (url.pathname === "/v1/owner/dashboard" && request.method === "GET") {
     return handleOwnerDashboard(request, env);
