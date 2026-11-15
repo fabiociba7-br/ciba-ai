@@ -204,6 +204,17 @@ export class CibaClient {
     });
   }
 
+  getOwnerSettings<T = Record<string, unknown>>(): Promise<{ settings: T }> {
+    return this.request("/v1/owner/settings");
+  }
+
+  updateOwnerSettings(settings: { memory_enabled?: boolean; app_messaging_enabled?: boolean }): Promise<Record<string, unknown>> {
+    return this.request("/v1/owner/settings", {
+      method: "POST",
+      body: JSON.stringify({ settings }),
+    });
+  }
+
   listAccessGrants<T = Record<string, unknown>>(): Promise<{ grants: T[]; maximum: number }> {
     return this.request("/v1/owner/access-grants");
   }
