@@ -134,7 +134,7 @@ export interface CibaInboxMessage<T = unknown> {
 
 export type CibaMemoryScope = "app" | "owner";
 
-export interface CibaMemoryInput {
+export interface CibaMemoryCandidateInput {\n  sourceText: string;\n  key: string;\n  value: string;\n  scope?: CibaMemoryScope;\n}\n\nexport interface CibaMemoryInput {
   scope: CibaMemoryScope;
   key: string;
   value: string;
@@ -429,6 +429,29 @@ export class CibaClient {
     return this.request("/v1/owner/memory/retrieve", {
       method: "POST",
       body: JSON.stringify({ query, limit }),
+    });
+  }
+
+  prepareMemoryCandidate(input: CibaMemoryCandidateInput): Promise<{
+    candidate: { key: string; value: string; evidence_excerpt: string; source_role: "user"; requires_confirmation: true; persisted: false };
+    scope: CibaMemoryScope;
+    source_app_id: string | null;
+    next_step: string;
+    stored: false;
+    inference_calls: 0;
+  }> {
+    if (input.sourceText.trim().length < 2 || input.sourceText.length > 2_000) throw new Error("invalid_memory_candidate_source");
+    if (!input.key.trim() || input.key.length > 80) throw new Error("invalid_memory_key");
+    if (!input.value.trim() || input.value.length > 500) throw new Error("invalid_memory_value");
+    return this.request("/v1/owner/memory/candidates", {
+      method: "POST",
+      body: JSON.stringify({
+        source_role: "user",
+        source_text: input.sourceText,
+        key: input.key,
+        value: input.value,
+        scope: input.scope || "app",
+      }),
     });
   }
 
