@@ -45,7 +45,7 @@ const registerDevice = async (invitationCode: string, targetAppId = appId) => {
 
 describe("Ciba AI Worker integration", () => {
   it("serves the Garcia dashboard shell with restrictive browser security headers", async () => {
-    const response = await SELF.fetch("https://example.com/dashboard");
+    const response = await request("/dashboard");
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
     expect(response.headers.get("cache-control")).toBe("no-store");
