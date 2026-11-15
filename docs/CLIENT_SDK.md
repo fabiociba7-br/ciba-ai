@@ -28,6 +28,7 @@ const inbox = await client.getInbox();
 - IA central: `chat(messages)`.
 - Comunicação entre apps: `sendMessage()`, `getInbox()`, `acknowledgeMessages()`.
 - Autorizações: `listAccessGrants()`, `createAccessGrant()`, `revokeAccessGrant()`.
+- Configurações privadas: `getOwnerSettings()` e `updateOwnerSettings()` para ligar/desligar memória e comunicação entre apps.
 - Memória curada: `listMemory()`, `saveMemory()` e `deleteMemory()`. Use `scope: "app"` para memória do app ou `scope: "owner"` para memória central; a memória de outro app exige `sourceAppId` e concessão ativa.
 
 ## Segurança e integração
@@ -49,3 +50,7 @@ O cliente é uma camada reutilizável; a API remota ainda depende das migrations
 ## Memória curada
 
 `saveMemory({ scope: "app", key: "style", value: "Respostas diretas", consent: "curated" })` grava uma entrada na memória do app autenticado. Para a memória central, use `scope: "owner"`; para outro app, informe `sourceAppId` e obtenha previamente as concessões `memory_read`/`memory_write` apropriadas. A API exige consentimento explícito em cada gravação e não salva histórico de chat.
+
+## Configurações privadas do proprietário
+
+`getOwnerSettings()` consulta as capacidades do proprietário autenticado. `updateOwnerSettings({ memory_enabled: true, app_messaging_enabled: false })` altera somente as opções fornecidas. Ambas começam desligadas. A autorização é verificada pelo Worker em cada operação, não apenas pelo SDK. A migration 0011 precisa estar aplicada no ambiente.
