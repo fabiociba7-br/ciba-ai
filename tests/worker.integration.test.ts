@@ -454,3 +454,85 @@ describe("Ciba AI private app-to-app message relay", () => {
     expect(await denied.json()).toEqual({ error: "active_owner_required" });
   });
 });
+
+describe("Ciba AI curated private memory", () => {
+  it("isolates app memory and requires explicit grants for owner memory", async () => {
+    const memoryApp = "com.ciba.memory.owner";
+    const response = await adminRequest("/v1/admin/apps", "POST", {
+      app_id: memoryApp, display_name: "Memory Owner App", enabled: true,
+    });
+    expect(response.status).toBe(200);
+
+    const invitation = await adminRequest("/v1/admin/invitations", "POST", {
+      app_id: memoryApp, valid_hours: 1,
+    });
+    const code = (await invitation.json() as { invitation_code: string }).invitation_code;
+    const device = await registerDevice(code, memoryApp);
+    const ownerResponse = await adminRequest("/v1/admin/owners", "POST", { app_id: memoryApp });
+    const ownerCode = (await ownerResponse.json() as { pairing_invitation_code: string }).pairing_invitation_code;
+    const paired = await request("/v1/owner/pair", {
+      method: "POST",
+      headers: { authorization: `Bearer ${device.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ pairing_invitation_code: ownerCode }),
+    });
+    expect(paired.status).toBe(200);
+
+    const ownerRequest = (path: string, method = "GET", body?: unknown) => request(path, {
+      method,
+      headers: {
+        authorization: `Bearer ${device.access_token}`,
+        "content-type": "application/json",
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+
+    const saved = await ownerRequest("/v1/owner/memory?scope=app", "POST", {
+      key: "response_style", value: "Prefere respostas diretas.", consent: "curated",
+    });
+    expect(saved.status).toBe(201);
+    const savedBody = await saved.json() as { memory_id: string };
+    const listed = await ownerRequest("/v1/owner/memory?scope=app");
+    expect(listed.status).toBe(200);
+    const listBody = await listed.json() as { memories: Array<{ memory_id: string; value: string }> };
+    expect(listBody.memories).toHaveLength(1);
+    expect(listBody.memories[0].memory_id).toBe(savedBody.memory_id);
+
+    const noConsent = await ownerRequest("/v1/owner/memory?scope=app", "POST", {
+      key: "no_consent", value: "Não deve salvar.", consent: "disabled",
+    });
+    expect(noConsent.status).toBe(400);
+
+    const secret = await ownerRequest("/v1/owner/memory?scope=app", "POST", {
+      key: "credential", value: "api_key=not-a-real-key", consent: "curated",
+    });
+    expect(secret.status).toBe(400);
+
+    const deniedOwnerMemory = await ownerRequest("/v1/owner/memory?scope=owner");
+    expect(deniedOwnerMemory.status).toBe(403);
+
+    for (const permission of ["memory_read", "memory_write"]) {
+      const grant = await ownerRequest("/v1/owner/access-grants", "POST", {
+        grantee_app_id: memoryApp,
+        permission,
+        scope: "owner_memory",
+        valid_hours: 24,
+      });
+      expect(grant.status).toBe(201);
+    }
+
+    const savedOwner = await ownerRequest("/v1/owner/memory?scope=owner", "POST", {
+      key: "global_preference", value: "Memória central explícita.", consent: "curated",
+    });
+    expect(savedOwner.status).toBe(201);
+    const ownerList = await ownerRequest("/v1/owner/memory?scope=owner");
+    expect(ownerList.status).toBe(200);
+
+    const deleted = await ownerRequest("/v1/owner/memory?scope=app", "DELETE", {
+      memory_id: savedBody.memory_id,
+    });
+    expect(deleted.status).toBe(200);
+    const afterDelete = await ownerRequest("/v1/owner/memory?scope=app");
+    expect((await afterDelete.json() as { memories: unknown[] }).memories).toHaveLength(0);
+  });
+});
+
