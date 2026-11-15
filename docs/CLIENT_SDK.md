@@ -90,3 +90,6 @@ Consulte o contrato antes de integrar um novo app. Ele descreve o vínculo por c
 ## Identidade e reconhecimento do aplicativo
 
 `getAppIdentity()` chama `GET /v1/apps/identity`. O Worker deriva o aplicativo e o dispositivo do token autenticado e retorna o perfil cadastrado, versão do contrato e outros aplicativos habilitados com dispositivos ativos vinculados ao mesmo proprietário. As capacidades listadas são declarativas: não habilitam execução de ações e não substituem concessões de acesso.
+
+
+A resposta tipada `CibaAppIdentity` inclui o perfil do app autenticado, capacidades declaradas, tipos de tarefa declarados e os apps ativos vinculados ao mesmo proprietário.
