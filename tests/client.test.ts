@@ -5,6 +5,17 @@ describe("CibaClient", () => {
   it("exports the integration contract version", () => {
     expect(GARCIA_APP_CONTRACT_VERSION).toBe("1.0.0");
   });
+  it("discovers the authenticated app identity", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ identity: { app_id: "com.ciba.app" }, connected_apps: [] }), { status: 200 })
+    );
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const result = await client.getAppIdentity<{ identity: { app_id: string } }>();
+    expect(result.identity.app_id).toBe("com.ciba.app");
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/apps/identity");
+    expect(new Headers(fetcher.mock.calls[0][1]?.headers).get("authorization")).toBe("Bearer device-token");
+  });
+
   it("uses the latest token callback and sends chat through the shared API", async () => {
     const fetcher = vi.fn<typeof fetch>().mockImplementation(async () =>
       new Response(JSON.stringify({
