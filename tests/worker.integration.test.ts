@@ -102,6 +102,15 @@ describe("Ciba AI Worker integration", () => {
 
     const status = await request("/v1/status");
     expect(status.status).toBe(200);
-    expect((await status.json() as { database: string }).database).toBe("connected");
+    const statusBody = await status.json() as { database: string; status: string; ai_enabled: boolean };
+    expect(statusBody.database).toBe("connected");
+    expect(statusBody.status).toBe("degraded");
+    expect(statusBody.ai_enabled).toBe(false);
+
+    const models = await request("/v1/models");
+    expect(await models.json()).toEqual({ models: [], configured: false });
+
+    const config = await request("/v1/config");
+    expect((await config.json() as { ai_enabled: boolean }).ai_enabled).toBe(false);
   });
 });
