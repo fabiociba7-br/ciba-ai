@@ -49,6 +49,12 @@ A base de política em `src/core/memory.ts` define escopos, concessões, permiss
 
 **Estado efetivo:** o fluxo de chat ainda usa apenas o contexto limitado da requisição atual e não persiste prompts nem respostas. A identidade privada do proprietário, o pareamento e a API de concessões estão implementados no código, mas dependem das migrations e do deploy para funcionar no ambiente real. O relay de mensagens agora tem fila D1, endpoints de envio/caixa de entrada/confirmação e exige concessões ativas de envio e recebimento para o mesmo proprietário, origem, destino e escopo. O relay também depende da migration 0009 e de deploy; portanto, ainda não está ativo em produção. Não existe memória persistente. Nenhum dado de um app é repassado a outro por padrão.
 
+## Consolidação de tarefas entre aplicativos
+
+O fluxo de resultados possui uma camada determinística de consolidação (src/core/task-results.ts). Ao consultar os resultados correlacionados de uma tarefa, Garcia compara as estruturas JSON retornadas pelos apps, contabiliza respostas concluídas/parciais/falhas e identifica concordância exata ou divergência. Se houver divergência, não escolhe um resultado nem inventa uma resposta combinada; mantém a proveniência por aplicativo e deixa o consenso vazio. A comparação ignora apenas a ordem das chaves dos objetos JSON.
+
+Essa etapa não adiciona chamadas de IA, não ativa ensemble ou modelos externos e não altera o modo de inferência atual (single-pass). Portanto, ela não acrescenta custo de inferência. Uma futura síntese semântica exigirá uma etapa separada, orçamento explícito, modelo aprovado para custo zero e testes específicos; não está ativada aqui.
+
 ## Ferramentas e MCP
 
 O núcleo foi organizado para receber ferramentas através de uma interface controlada. Nenhuma ferramenta externa é executada automaticamente nesta versão. Os contratos tipados de ferramentas foram criados em `src/core/tools`, mas não existe ferramenta registrada. A futura camada deverá usar allowlist, schemas validados, escopos mínimos, timeouts e aprovação explícita para ações irreversíveis.
