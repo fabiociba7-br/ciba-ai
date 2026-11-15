@@ -75,7 +75,7 @@ O nome do modelo é configurado em `AI_MODEL`. Antes de produção, confirme no 
 - `POST /v1/auth/register`
 - `POST /v1/ai/chat`
 - `GET /v1/usage`
-- `POST /v1/admin/invitations`
+- `GET /v1/admin/apps`\n- `POST /v1/admin/apps`\n- `POST /v1/admin/invitations`
 - `POST /v1/admin/devices/revoke`
 - `GET /v1/admin/settings`
 - `POST /v1/admin/settings`
