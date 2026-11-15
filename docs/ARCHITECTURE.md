@@ -70,3 +70,8 @@ O módulo `src/core/access-grants.ts` contém a política pura de validação, c
 A etapa de relay adiciona a fila `app_messages` e os endpoints autenticados `POST /v1/apps/messages`, `GET /v1/apps/messages/inbox` e `POST /v1/apps/messages/ack`. O envio exige concessões ativas `send` e `receive` para o mesmo proprietário, origem, destino e escopo. O recebimento revalida ambas as concessões; revogação ou expiração impede novas entregas. Cada mensagem tem chave de idempotência, payload limitado a 8.000 caracteres, validade máxima de 72 horas e limite de 100 pendentes por app de destino e proprietário. A fila só transporta JSON; não executa comandos nem ferramentas.
 
 **Estado:** código, migration e testes estão no repositório. A migration 0009 não foi aplicada e não houve deploy; portanto, a comunicação não está ativa em produção.
+
+
+## Cliente comum para aplicativos
+
+O módulo `src/client.ts` fornece uma interface TypeScript independente de framework para diagnóstico, registro de dispositivo, pareamento, chat, relay de mensagens e concessões. O aplicativo hospedeiro fornece o token sob demanda por meio de `getAccessToken`; o cliente não persiste credenciais. URLs remotas exigem HTTPS. O servidor continua sendo a autoridade para identidade, escopos, limites e permissões. O módulo pode ser reutilizado em projetos TypeScript, mas ainda não é um SDK nativo Kotlin/Swift nem foi integrado automaticamente aos binários dos apps. Consulte `docs/CLIENT_SDK.md`.
