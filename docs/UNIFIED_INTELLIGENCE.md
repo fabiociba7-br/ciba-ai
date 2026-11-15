@@ -47,7 +47,7 @@ O Ciba AI é uma inteligência privada do proprietário e dos aplicativos autori
 
 A base de política em `src/core/memory.ts` define escopos, concessões, permissões, validade, contrato de armazenamento e validação de itens curados. A validação rejeita alguns padrões óbvios de credenciais, mas não é um detector geral de dados sensíveis. O conteúdo precisa ser curado explicitamente; conversas brutas não são transformadas em memória automaticamente.
 
-**Estado efetivo:** o fluxo de chat ainda usa apenas o contexto limitado da requisição atual. Não existe memória persistente, identidade única do proprietário, interface de concessões, API de compartilhamento ou comunicação entre apps ativa. Os contratos desta etapa são fundação técnica, não uma funcionalidade já disponível em produção. A próxima implementação deverá autenticar o proprietário, permitir que ele autorize os aplicativos, criar armazenamento persistente com exportação/exclusão e encaminhar mensagens entre apps pelo Ciba AI com escopos e auditoria. Nenhum dado de um app poderá ser repassado a outro por padrão.
+**Estado efetivo:** o fluxo de chat ainda usa apenas o contexto limitado da requisição atual e não persiste prompts nem respostas. A identidade privada do proprietário, o pareamento e a API de concessões estão implementados no código, mas dependem das migrations e do deploy para funcionar no ambiente real. O relay de mensagens agora tem fila D1, endpoints de envio/caixa de entrada/confirmação e exige concessões ativas de envio e recebimento para o mesmo proprietário, origem, destino e escopo. O relay também depende da migration 0009 e de deploy; portanto, ainda não está ativo em produção. Não existe memória persistente. Nenhum dado de um app é repassado a outro por padrão.
 
 ## Ferramentas e MCP
 
@@ -89,7 +89,7 @@ A licença de cada modelo é independente da licença do framework. Antes de dis
 
 A migration `0008_explicit_app_access_grants.sql` prepara concessões persistentes com uma linha por permissão e escopo. O contrato em `src/core/access-grants.ts` exige correspondência exata de proprietário, app solicitante, par de apps quando aplicável, permissão e escopo; expiração e revogação são verificadas com negação por padrão. As permissões são separadas para envio, recebimento, leitura e escrita de memória. A memória de um app e a memória do proprietário são escopos distintos.
 
-Esta entrega é somente a fundação de esquema e política. Não cria concessões por si só, não ativa compartilhamento, não persiste mensagens nem memória e não disponibiliza endpoint de gerenciamento. A próxima etapa deverá fornecer um controle autenticado do proprietário para criar, consultar e revogar concessões antes de implementar o relay entre apps.
+A fundação de esquema e política foi seguida pela API autenticada do proprietário para criar, consultar e revogar concessões. A migration 0008 ainda precisa ser aplicada no D1 antes do uso em ambiente real.
 
 
 ## API privada de gerenciamento de concessões
@@ -97,3 +97,10 @@ Esta entrega é somente a fundação de esquema e política. Não cria concessõ
 Dispositivos pareados a um proprietário ativo agora podem administrar as concessões por `GET/POST /v1/owner/access-grants` e revogar por `POST /v1/owner/access-grants/revoke`. O gateway deriva a identidade do proprietário do token autenticado e limita a validade de cada concessão a no máximo 8.760 horas (padrão de 720). O controle é por permissão e aplicativo, não por acesso irrestrito. Os endpoints foram documentados em `docs/ACCESS_GRANTS.md`.
 
 A API não ativa o relay nem a memória persistente. A migration 0008 ainda precisa ser aplicada e o Worker publicado antes que os endpoints possam ser usados em um ambiente real. Não há tela visual de gerenciamento nesta etapa.
+
+
+## Relay de mensagens entre aplicativos
+
+A fila privada foi implementada em `migrations/0009_private_app_message_queue.sql`. Os endpoints são `POST /v1/apps/messages`, `GET /v1/apps/messages/inbox` e `POST /v1/apps/messages/ack`. O envio exige permissões `send` e `receive` ativas para o mesmo proprietário, origem, destino e escopo. A caixa de entrada deriva o app e o proprietário do dispositivo autenticado e revalida as concessões em cada leitura. Mensagens têm chave de idempotência, payload JSON limitado, validade máxima de 72 horas e limite de 100 pendentes por app de destino. A fila transporta dados; não executa instruções nem ferramentas.
+
+**Estado de ativação:** código e testes estão no GitHub, mas a migration 0009 não foi aplicada e não houve deploy. O relay ainda não está ativo em produção. Consulte `docs/APP_MESSAGE_RELAY.md`.
