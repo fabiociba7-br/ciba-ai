@@ -12,6 +12,7 @@ A unificação inicial é feita na camada de software. Não há fusão dos pesos
 - Task Router: seleção determinística de um perfil especialista a partir da solicitação.
 - Agent Catalog: perfis generalista, raciocínio, pesquisa, programação, criação e verificação.
 - Provider interface: contrato comum para diferentes mecanismos de inferência.
+- Provider registry: catálogo em memória de providers e modelos, com seleção por especialidade, verificação de provider habilitado e aprovação explícita para uso no caminho de custo zero.
 - Cloudflare Workers AI adapter: provedor atualmente ativo.
 - OpenAI-compatible adapter: base para endpoints auto-hospedados compatíveis, como Ollama, vLLM ou LM Studio.
 - Memory adapter: contexto limitado à conversa atual, sem persistência de conteúdo.
@@ -21,7 +22,7 @@ A unificação inicial é feita na camada de software. Não há fusão dos pesos
 
 Os perfis especialistas atuais são instruções especializadas selecionadas pelo roteador e executadas pelo mesmo modelo em uma chamada. Eles não são seis modelos independentes. O endpoint de capacidades deixa explícito que o modo atual é single-pass.
 
-Foi adicionada uma primitiva opt-in de ensemble multi-modelo (`src/core/ensemble.ts`): ela aceita membros com providers/modelos diferentes, limita a três chamadas de especialistas e uma chamada de síntese, reúne resultados bem-sucedidos e retorna os participantes usados. O registro de providers (`src/core/providers/registry.ts`) e os contratos de ferramentas (`src/core/tools`) também estão disponíveis. Essas primitivas ainda não estão ligadas ao endpoint público: não há providers externos configurados, credenciais, orçamento por provider nem autorização para encaminhar dados a terceiros. Portanto, a colaboração real entre modelos permanece desativada. Ativá-la antes de provisionar infraestrutura e medir consumo pode ultrapassar a franquia gratuita.
+Foi adicionada uma primitiva opt-in de ensemble multi-modelo (`src/core/ensemble.ts`): ela aceita membros com providers/modelos diferentes, limita a três chamadas de especialistas e uma chamada de síntese, reúne resultados bem-sucedidos e retorna os participantes usados. Ela permanece fora do fluxo público. O registro de providers (`src/core/providers/registry.ts`) agora cataloga modelos, valida papéis e limites, e só seleciona modelos marcados como aprovados para custo zero. O fluxo de chat usa esse registro para resolver o provider Cloudflare e o modelo atualmente permitido; o overview administrativo mostra o catálogo efetivamente configurado. O adapter OpenAI-compatible continua preparado, mas não conectado nem configurado. Não há providers externos configurados, credenciais, orçamento por provider nem autorização para encaminhar dados a terceiros. Portanto, a colaboração real entre modelos permanece desativada.
 
 ## Fluxo atual
 
