@@ -1867,7 +1867,13 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   if (url.pathname === "/v1/apps/tasks/dispatch" && request.method === "POST") {
     return handleTaskDispatch(request, env);
   }
-  if (url.pathname === "/v1/apps/tasks/results" && request.method === "GET") {\n    return handleTaskResults(request, env);\n  }\n  if (url.pathname === "/v1/apps/tasks/results" && request.method === "POST") {\n    return handleSubmitTaskResult(request, env);\n  }\n  if (url.pathname === "/v1/apps/messages" && request.method === "POST") {
+  if (url.pathname === "/v1/apps/tasks/results" && request.method === "GET") {
+    return handleTaskResults(request, env);
+  }
+  if (url.pathname === "/v1/apps/tasks/results" && request.method === "POST") {
+    return handleSubmitTaskResult(request, env);
+  }
+  if (url.pathname === "/v1/apps/messages" && request.method === "POST") {
     return handleSendAppMessage(request, env);
   }
   if (url.pathname === "/v1/apps/messages/inbox" && request.method === "GET") {
