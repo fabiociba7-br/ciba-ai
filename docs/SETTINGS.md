@@ -198,6 +198,8 @@ Esta funcionalidade não permite ao proprietário cadastrar novos aplicativos ne
 
 ## Cadastro de identidade dos aplicativos
 
-O cadastro administrativo `POST /v1/admin/apps` aceita metadados de identidade: descrição (até 280 caracteres), tipo, capacidades declarativas conhecidas e versão semântica do contrato. A listagem administrativa retorna esses campos. O painel do proprietário mostra tipo, descrição e capacidades dos apps conectados. A consulta autenticada `GET /v1/apps/identity` é destinada aos próprios aplicativos e lista apenas outros apps habilitados com dispositivos ativos ligados ao mesmo proprietário.
+O cadastro administrativo `POST /v1/admin/apps` aceita metadados de identidade: descrição (até 280 caracteres), tipo, capacidades declarativas conhecidas, tipos de tarefa declarados e versão semântica do contrato. A listagem administrativa retorna esses campos. O painel do proprietário mostra tipo, descrição e capacidades dos apps conectados. A consulta autenticada `GET /v1/apps/identity` é destinada aos próprios aplicativos e lista apenas outros apps habilitados com dispositivos ativos ligados ao mesmo proprietário.
 
 As capacidades não são permissões nem ferramentas executáveis. Concessões existentes e controles do proprietário continuam sendo a única base para acesso cruzado; nenhum comando é executado a partir desses metadados.
+
+O painel exibe também os tipos de tarefa declarados por cada aplicativo. Essa lista serve para reconhecimento e roteamento futuro; não executa ações nem substitui a autorização por concessões.
