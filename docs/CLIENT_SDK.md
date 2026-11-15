@@ -69,3 +69,13 @@ The endpoint is `GET /v1/owner/dashboard`. It requires a paired device token and
 ## Revogar dispositivo do proprietário
 
 O método `revokeOwnerDevice(deviceId)` chama `POST /v1/owner/devices/revoke`. A operação exige um dispositivo pareado e revoga somente outro dispositivo pertencente ao mesmo proprietário. A sessão autenticada atual não pode revogar a si própria.
+## Conectar um novo aplicativo pelo proprietário
+
+O proprietário autenticado pode consultar `listAvailableApps()` e gerar convites com `createAppConnectionInvitation(appId)`. O servidor só permite aplicativos previamente cadastrados e habilitados em `app_registry`; o proprietário não pode cadastrar arbitrariamente um novo `app_id`.
+
+O resultado contém dois códigos de uso único, exibidos uma única vez e válidos por 24 horas:
+
+1. `registration_invitation_code`: o novo app chama `registerDevice(appId, registrationInvitationCode)` e recebe o token do dispositivo.
+2. `pairing_invitation_code`: o novo app chama `pairOwner(pairingInvitationCode)` com o token recém-recebido, vinculando o dispositivo ao mesmo proprietário.
+
+Os códigos são armazenados apenas como hashes. O app deve armazenar o token de dispositivo em armazenamento seguro da plataforma. A geração dos convites não instala o app nem executa sua configuração automaticamente.
