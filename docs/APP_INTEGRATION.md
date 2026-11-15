@@ -27,10 +27,10 @@ Resposta ilustrativa:
   "model": "@cf/google/gemma-4-26b-a4b-it",
   "maintenance_mode": false,
   "limits": {
-    "global_daily": 500,
-    "app_daily": 200,
-    "device_daily": 40,
-    "max_output_tokens": 700
+    "global_daily": 50,
+    "app_daily": 25,
+    "device_daily": 10,
+    "max_output_tokens": 512
   }
 }
 ~~~
