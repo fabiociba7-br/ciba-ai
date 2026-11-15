@@ -122,10 +122,12 @@ const publicConfig = (settings: Record<string, string>, env: Env) => ({
 
 const corsHeaders = (request: Request, env: Env): HeadersInit => {
   const origin = request.headers.get("Origin") || "";
-  const allowed = (env.ALLOWED_ORIGINS || "*").split(",").map((s) => s.trim());
-  const allowOrigin = allowed.includes("*") || allowed.includes(origin) ? (allowed.includes("*") ? "*" : origin) : "null";
+  const allowed = (env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const allowOrigin = origin && (allowed.includes("*") || allowed.includes(origin))
+    ? (allowed.includes("*") ? "*" : origin)
+    : null;
   return {
-    "access-control-allow-origin": allowOrigin,
+    ...(allowOrigin ? { "access-control-allow-origin": allowOrigin } : {}),
     "access-control-allow-methods": "GET,POST,OPTIONS",
     "access-control-allow-headers": "authorization,content-type",
     "access-control-max-age": "86400",
