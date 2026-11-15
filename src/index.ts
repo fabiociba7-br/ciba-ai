@@ -408,18 +408,20 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   if (url.pathname === "/v1/status" && request.method === "GET") {
     await env.DB.prepare("SELECT 1").first();
     const settings = await readRuntimeSettings(env);
+    const maintenanceMode = settings.maintenance_mode === "true";
+    const aiEnabled = settings.ai_enabled !== "false" && Boolean(resolveModel(settings.ai_model, env.AI_MODEL));
     return json({
       service: "ciba-ai",
-      status: "ready",
+      status: maintenanceMode ? "maintenance" : aiEnabled ? "ready" : "degraded",
       database: "connected",
-      ai_enabled: settings.ai_enabled !== "false" && Boolean(resolveModel(settings.ai_model, env.AI_MODEL)),
-      maintenance_mode: settings.maintenance_mode === "true",
+      ai_enabled: aiEnabled,
+      maintenance_mode: maintenanceMode,
       inference: "cloudflare-workers-ai",
     });
   }
   if (url.pathname === "/v1/models" && request.method === "GET") {
     const settings = await readRuntimeSettings(env);
-    const model = settings.ai_model || env.AI_MODEL || null;
+    const model = resolveModel(settings.ai_model, env.AI_MODEL);
     return json({ models: model ? [model] : [], configured: Boolean(model) });
   }
   if (url.pathname === "/v1/auth/register" && request.method === "POST") {
