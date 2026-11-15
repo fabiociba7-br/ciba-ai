@@ -371,7 +371,13 @@ const handleAdminSettings = async (request: Request, env: Env) => {
 const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
-  if (url.pathname === "/v1/admin/devices" && request.method === "GET") {\n    return handleAdminDevices(request, env);\n  }\n  if (url.pathname === "/v1/admin/invitations" && request.method === "GET") {\n    return handleAdminInvitations(request, env);\n  }\n  if (url.pathname === "/v1/admin/apps" && (request.method === "GET" || request.method === "POST")) {
+  if (url.pathname === "/v1/admin/devices" && request.method === "GET") {
+    return handleAdminDevices(request, env);
+  }
+  if (url.pathname === "/v1/admin/invitations" && request.method === "GET") {
+    return handleAdminInvitations(request, env);
+  }
+  if (url.pathname === "/v1/admin/apps" && (request.method === "GET" || request.method === "POST")) {
     return handleAdminApps(request, env);
   }
   if (url.pathname === "/v1/admin/settings" && (request.method === "GET" || request.method === "POST")) {
