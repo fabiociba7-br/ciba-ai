@@ -44,6 +44,20 @@ const registerDevice = async (invitationCode: string, targetAppId = appId) => {
 };
 
 describe("Ciba AI Worker integration", () => {
+  it("serves the Garcia dashboard shell with restrictive browser security headers", async () => {
+    const response = await SELF.fetch("https://example.com/dashboard");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("content-security-policy")).toContain("default-src 'none'");
+    expect(response.headers.get("content-security-policy")).toContain("connect-src 'self'");
+    const html = await response.text();
+    expect(html).toContain("Garcia");
+    expect(html).toContain("/v1/owner/dashboard");
+    expect(html).toContain("sessionStorage");
+    expect(html).not.toContain("localStorage");
+  });
+
   it("registers devices, consumes invitations once, revokes access and enforces daily quota", async () => {
     const appResponse = await adminRequest("/v1/admin/apps", "POST", {
       app_id: appId,
