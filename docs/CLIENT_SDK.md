@@ -93,3 +93,12 @@ Consulte o contrato antes de integrar um novo app. Ele descreve o vínculo por c
 
 
 A resposta tipada `CibaAppIdentity` inclui o perfil do app autenticado, capacidades declaradas, tipos de tarefa declarados e os apps ativos vinculados ao mesmo proprietário.
+
+
+## Resultados de tarefas
+
+- `submitTaskResult({ taskId, clientMessageId, result, status? })`: devolve o resultado ao aplicativo que originou a tarefa. Status aceitos: `completed`, `failed`, `partial`.
+- `getTaskResults(taskId)`: consulta os resultados correlacionados que ainda estão disponíveis para o app autenticado.
+- `acknowledgeMessages([messageId])`: confirma o processamento depois que o aplicativo consumir o resultado.
+
+O destino só pode responder a uma solicitação ativa originalmente encaminhada a ele. A resposta exige concessões direcionais inversas no escopo `task`; a consulta exige autenticação do proprietário pareado. O SDK não persiste resultados nem executa a consolidação semântica por conta própria.
