@@ -60,7 +60,7 @@ Content-Type: application/json
 | `daily_global_limit` | número | Limite diário global de requisições |
 | `daily_app_limit` | número | Limite diário por aplicativo |
 | `daily_device_limit` | número | Limite diário por dispositivo |
-| `max_output_tokens` | número | Limite de tokens de saída (máximo 700) |
+| `max_output_tokens` | número | Limite de tokens de saída (máximo 512) |
 | `maintenance_mode` | boolean | Bloqueia temporariamente chamadas de chat |
 
 Os valores salvos no D1 prevalecem sobre os valores padrão em `wrangler.toml`. A API valida os tipos e os limites antes de gravar. Para preservar a meta de custo zero, a seleção de modelo fica restrita à lista de modelos explicitamente liberados no código; atualmente, somente `@cf/google/gemma-4-26b-a4b-it` é aceito. Não cadastrar modelos com cobrança por fora dessa lista. O endpoint público `/v1/config` não revela tokens administrativos, credenciais ou segredos.
