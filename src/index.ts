@@ -210,7 +210,7 @@ const handleChat = async (request: Request, env: Env) => {
     throw error;
   }
 
-  const model = env.AI_MODEL || "@cf/meta/llama-3.1-8b-instruct";
+  const model = env.AI_MODEL || "@cf/google/gemma-4-26b-a4b-it";
   const maxTokens = Math.min(getLimit(env.MAX_OUTPUT_TOKENS, 700), 2_000);
   const inputMessages = [
     { role: "system", content: "Você é o assistente de IA dos aplicativos Ciba. Responda em português quando o usuário escrever em português. Seja claro, útil e seguro." },
