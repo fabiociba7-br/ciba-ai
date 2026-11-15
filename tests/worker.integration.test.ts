@@ -98,7 +98,10 @@ describe("Ciba AI Worker integration", () => {
 
     const overQuotaChat = await chat();
     expect(overQuotaChat.status).toBe(429);
-    expect(await overQuotaChat.json()).toEqual({ error: "daily_quota_exceeded" });
+    const quotaBody = await overQuotaChat.json() as { error: string; retry_after_seconds: number };
+    expect(quotaBody.error).toBe("daily_quota_exceeded");
+    expect(quotaBody.retry_after_seconds).toBeGreaterThan(0);
+    expect(overQuotaChat.headers.get("retry-after")).toBe(String(quotaBody.retry_after_seconds));
 
     const status = await request("/v1/status");
     expect(status.status).toBe(200);
@@ -134,6 +137,7 @@ describe("Ciba AI administrative authentication", () => {
       error: "admin_auth_rate_limited",
       retry_after_seconds: 60,
     });
+    expect(blocked.headers.get("retry-after")).toBe("60");
   });
 });
 
