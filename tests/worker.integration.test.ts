@@ -455,9 +455,15 @@ describe("Ciba AI private app-to-app message relay", () => {
   it("delivers only with paired owner identity and matching send/receive grants", async () => {
     const sourceApp = "com.ciba.relay.source";
     const targetApp = "com.ciba.relay.target";
-    for (const [appId, displayName] of [[sourceApp, "Relay Source"], [targetApp, "Relay Target"]]) {
+    for (const [appId, displayName, appType, capabilities, taskTypes] of [
+      [sourceApp, "Relay Source", "assistant", ["assistant", "productivity"], ["analyze", "plan"]],
+      [targetApp, "Relay Target", "productivity", ["notes", "calendar"], ["organize", "summarize"]],
+    ] as const) {
       const response = await adminRequest("/v1/admin/apps", "POST", {
         app_id: appId, display_name: displayName, enabled: true,
+        description: displayName + " app",
+        app_type: appType, capabilities, task_types: taskTypes,
+        contract_version: "1.0.0",
       });
       expect(response.status).toBe(200);
     }
