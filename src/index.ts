@@ -74,7 +74,7 @@ const CONFIG_KEYS = new Set([
 
 const publicConfig = (settings: Record<string, string>, env: Env) => ({
   service: "ciba-ai",
-  ai_enabled: settings.ai_enabled !== "false" && Boolean(env.AI_MODEL),
+  ai_enabled: settings.ai_enabled !== "false" && Boolean(settings.ai_model || env.AI_MODEL),
   model: settings.ai_model || env.AI_MODEL || null,
   maintenance_mode: settings.maintenance_mode === "true",
   limits: {
@@ -364,7 +364,7 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
       service: "ciba-ai",
       status: "ready",
       database: "connected",
-      ai_enabled: settings.ai_enabled !== "false" && Boolean(env.AI_MODEL),
+      ai_enabled: settings.ai_enabled !== "false" && Boolean(settings.ai_model || env.AI_MODEL),
       maintenance_mode: settings.maintenance_mode === "true",
       inference: "cloudflare-workers-ai",
     });
