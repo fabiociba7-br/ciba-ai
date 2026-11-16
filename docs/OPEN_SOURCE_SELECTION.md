@@ -87,7 +87,7 @@ Toda solicitação de transcrição deve carregar um consentimento explícito, a
 
 A função `runWhisperCppTranscription` centraliza a validação do áudio, a avaliação do perfil do dispositivo, a resolução de um adapter já registrado e a validação do resultado. Se o hardware não for compatível ou não houver adapter, retorna motivos explícitos sem executar transcrição. Erros do adapter não provocam fallback remoto. O limite de bytes é aplicado antes da chamada ao motor.
 
-Esse fluxo é uma integração de núcleo, não uma prova de execução nativa: continua dependendo de um adapter Android real, biblioteca JNI/NDK e modelo instalado e carregado.
+Esse fluxo é uma integração de núcleo, não uma prova de execução nativa: continua dependendo de um adapter Android real, biblioteca JNI/NDK e modelo instalado e carregado. Cada adapter declara também os requisitos mínimos do modelo específico que carrega (memória total/disponível, CPU, plataforma, arquitetura e API Android, quando aplicável). A resolução exige compatibilidade tanto com os requisitos gerais do runtime quanto com os requisitos do modelo escolhido; um modelo que exceda os recursos disponíveis é recusado antes de chamar o motor. Os valores são declarados pelo adapter e devem ser medidos/documentados para cada artefato real; não representam benchmarks já realizados pela Garcia.
 
 
 O registry limita a concorrência de transcrições a uma execução por padrão, configurável entre 1 e 8. Cada execução reserva uma vaga antes de copiar o áudio e libera essa vaga em `finally`, inclusive quando o adapter falha ou retorna dados inválidos. Quando a capacidade está ocupada, a nova solicitação recebe `transcription_capacity_reached` sem chamar o motor.
