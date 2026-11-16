@@ -312,4 +312,36 @@ describe("CibaClient", () => {
     expect(() => new CibaClient({ baseUrl: "http://api.example.com" }))
       .toThrow("ciba_base_url_must_use_https");
   });
+
+  it("validates an inbox task and exposes its context as untrusted data", () => {
+    const client = new CibaClient({ baseUrl: "https://private.example" });
+    const result = client.consumeTaskMessage({
+      message_id: "message-1", source_app_id: "com.source", destination_app_id: "com.destination",
+      task_id: "task-1", scope: "task", created_at: "2026-11-15T10:00:00.000Z",
+      expires_at: "2026-11-16T10:00:00.000Z",
+      payload: {
+        protocol: "garcia.task.request", task_id: "task-1", task_type: "plan", instruction: "Planejar o projeto",
+        context_package: {
+          protocol: "garcia.context.package", version: 1, context_id: "ctx-1",
+          purpose: "Contexto do projeto", conversation_history_included: false,
+          items: [{ key: "project_phase", value: "Em revisão", kind: "project", origin: "curated_memory" }],
+        },
+      },
+    });
+    expect(result.accepted).toBe(true);
+    expect(result.context.available).toBe(true);
+    expect(result.context.trust).toBe("untrusted_data");
+    expect(result.context.items[0].key).toBe("project_phase");
+  });
+
+  it("does not treat a context-scope inbox message as a task", () => {
+    const client = new CibaClient({ baseUrl: "https://private.example" });
+    const result = client.consumeTaskMessage({
+      message_id: "message-2", source_app_id: "com.source", destination_app_id: "com.destination",
+      task_id: "context-2", scope: "context", created_at: "2026-11-15T10:00:00.000Z",
+      expires_at: "2026-11-16T10:00:00.000Z", payload: {},
+    });
+    expect(result.accepted).toBe(false);
+    expect(result.errors).toContain("message_scope_is_not_task");
+  });
 });
