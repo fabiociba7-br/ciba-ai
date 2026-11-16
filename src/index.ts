@@ -156,7 +156,7 @@ const corsHeaders = (request: Request, env: Env): HeadersInit => {
     : null;
   return {
     ...(allowOrigin ? { "access-control-allow-origin": allowOrigin } : {}),
-    "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
+    "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
     "access-control-allow-headers": "authorization,content-type",
     "access-control-max-age": "86400",
     "vary": "Origin",
@@ -944,24 +944,24 @@ const handleOwnerMemory = async (request: Request, env: Env, url: URL) => {
   }
 
   if (request.method === "GET") {
-    const rows = scope === "owner"
-      ? await env.DB.prepare(`
-          SELECT memory_id, scope, memory_key, value, created_by_app_id,
-            created_at, updated_at, expires_at
-          FROM memory_records
-          WHERE owner_id = ? AND scope = 'owner' AND deleted_at IS NULL
-            AND (expires_at IS NULL OR expires_at > ?)
-          ORDER BY updated_at DESC LIMIT 200
-        `).bind(owner.owner_id, nowIso()).all()
-      : await env.DB.prepare(`
-          SELECT memory_id, scope, memory_key, value, created_by_app_id,
-            created_at, updated_at, expires_at
-          FROM memory_records
-          WHERE owner_id = ? AND scope = 'app' AND source_app_id = ?
-            AND deleted_at IS NULL AND (expires_at IS NULL OR expires_at > ?)
-          ORDER BY updated_at DESC LIMIT 200
-        `).bind(owner.owner_id, sourceAppId, nowIso()).all();
-    return json({ memories: rows.results || [], maximum: 200, scope, source_app_id: scope === "app" ? sourceAppId : null });
+    const search = (url.searchParams.get("q") || "").trim().slice(0, 100).toLocaleLowerCase("pt-BR");
+    const includeExpired = url.searchParams.get("include_expired") === "true";
+    const expiryClause = includeExpired ? "" : "AND (expires_at IS NULL OR expires_at > ?)";
+    const query = scope === "owner"
+      ? `SELECT memory_id, scope, memory_key, value, created_by_app_id, created_at, updated_at, expires_at
+         FROM memory_records WHERE owner_id = ? AND scope = 'owner' AND deleted_at IS NULL ${expiryClause}
+         ORDER BY updated_at DESC LIMIT 200`
+      : `SELECT memory_id, scope, memory_key, value, created_by_app_id, created_at, updated_at, expires_at
+         FROM memory_records WHERE owner_id = ? AND scope = 'app' AND source_app_id = ? AND deleted_at IS NULL ${expiryClause}
+         ORDER BY updated_at DESC LIMIT 200`;
+    const statement = scope === "owner"
+      ? env.DB.prepare(query).bind(...(includeExpired ? [owner.owner_id] : [owner.owner_id, nowIso()]))
+      : env.DB.prepare(query).bind(...(includeExpired ? [owner.owner_id, sourceAppId] : [owner.owner_id, sourceAppId, nowIso()]));
+    const rows = await statement.all<Record<string, unknown>>();
+    const memories = (rows.results || []).filter((memory) => !search
+      || String(memory.memory_key || "").toLocaleLowerCase("pt-BR").includes(search)
+      || String(memory.value || "").toLocaleLowerCase("pt-BR").includes(search));
+    return json({ memories, maximum: 200, scope, source_app_id: scope === "app" ? sourceAppId : null, search, include_expired: includeExpired });
   }
 
   const body = await readJson(request, 4_000);
@@ -1022,6 +1022,36 @@ const handleOwnerMemory = async (request: Request, env: Env, url: URL) => {
     `).bind(memoryId, owner.owner_id, scope, storedSourceAppId, key, value,
       device.app_id, timestamp, timestamp, expiresAt).run();
     return json({ saved: true, updated: false, memory_id: memoryId, scope, source_app_id: storedSourceAppId }, 201);
+  }
+
+  if (request.method === "PATCH") {
+    const memoryId = typeof body.memory_id === "string" ? body.memory_id.trim() : "";
+    if (!memoryId || memoryId.length > 100) return json({ error: "invalid_memory_id" }, 400);
+    const key = typeof body.key === "string" ? body.key.trim() : "";
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(key)) return json({ error: "invalid_memory_key" }, 400);
+    let value: string;
+    try {
+      value = validateCuratedMemory({ consent: body.consent === "curated" ? "curated" : "disabled", value: typeof body.value === "string" ? body.value : "", maxCharacters: 500 });
+    } catch (error) {
+      return json({ error: error instanceof Error ? error.message : "invalid_memory_value" }, 400);
+    }
+    const validHours = body.valid_hours;
+    if (validHours !== undefined && validHours !== null &&
+      (typeof validHours !== "number" || !Number.isInteger(validHours) || validHours < 1 || validHours > 8760)) {
+      return json({ error: "invalid_memory_valid_hours", minimum: 1, maximum: 8760 }, 400);
+    }
+    const timestamp = nowIso();
+    const expiresAt = validHours === undefined ? null : validHours === null ? null : new Date(Date.now() + validHours * 60 * 60 * 1000).toISOString();
+    const result = await env.DB.prepare(`
+      UPDATE memory_records SET memory_key = ?, value = ?, updated_at = ?,
+        expires_at = CASE WHEN ? = 1 THEN NULL WHEN ? = 2 THEN expires_at ELSE ? END
+      WHERE memory_id = ? AND owner_id = ? AND scope = ?
+        AND source_app_id IS ? AND deleted_at IS NULL
+    `).bind(key, value, timestamp,
+      validHours === null ? 1 : validHours === undefined ? 2 : 0,
+      validHours === undefined ? 2 : 0, expiresAt,
+      memoryId, owner.owner_id, scope, scope === "owner" ? null : sourceAppId).run();
+    return result.meta.changes === 1 ? json({ updated: true, memory_id: memoryId, scope }) : json({ error: "memory_not_found" }, 404);
   }
 
   if (request.method === "DELETE") {
@@ -2134,7 +2164,7 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   if (url.pathname === "/v1/owner/memory/retrieve" && request.method === "POST") {
     return handleMemoryRetrieve(request, env);
   }
-  if (url.pathname === "/v1/owner/memory" && ["GET", "POST", "DELETE"].includes(request.method)) {
+  if (url.pathname === "/v1/owner/memory" && ["GET", "POST", "PATCH", "DELETE"].includes(request.method)) {
     return handleOwnerMemory(request, env, url);
   }
   if (url.pathname === "/v1/owner/devices/revoke" && request.method === "POST") {
