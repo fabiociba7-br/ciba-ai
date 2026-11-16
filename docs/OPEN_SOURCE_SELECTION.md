@@ -56,3 +56,9 @@ A incorporação será feita por etapas, com adapters tipados e isolados. O cat�
 
 O endpoint público informa explicitamente que o catálogo é apenas metadado: modelos ainda não estão instalados e adapters ainda não são executáveis. A disponibilidade real só poderá mudar depois da implementação e validação do adapter correspondente.
 
+
+### Primeiro motor: transcrição local com whisper.cpp
+
+A primeira integração concreta começa pelo contrato TypeScript de `whisper.cpp` em `src/core/speech-to-text.ts`. O contrato padroniza entrada de áudio, idioma opcional, segmentos com timestamps e resultado identificado pelo motor/modelo. A validação limita formatos aceitos e tamanho do áudio.
+
+O registry é fail-closed: não disponibiliza runtime sem adapter explicitamente registrado e bloqueia registro enquanto a revisão de licença não estiver aprovada. Android embarcado, desktop local e serviço local são os runtimes previstos; não existe fallback remoto automático. Esta etapa não inclui binários nativos, NDK/JNI, downloads de modelos ou execução de transcrição.
