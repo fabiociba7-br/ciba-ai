@@ -6,6 +6,8 @@ import {
 import type { DeviceCapabilityRequirements } from "../src/core/device-capabilities";
 import type { SpeechToTextRequest, SpeechToTextResult } from "../src/core/speech-to-text";
 
+const MODEL_SHA256 = "a".repeat(64);
+
 const request: SpeechToTextRequest = {
   audio: new Uint8Array([1, 2, 3]),
   consent: { granted: true, purpose: "transcription", source: "explicit_user_action" },
@@ -35,6 +37,7 @@ function bridge(overrides: Partial<AndroidWhisperCppBridge> = {}): AndroidWhispe
       nativeLibraryReady: true,
       modelLoaded: true,
       modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
       engineVersion: "test",
     }),
     transcribe: async () => result,
@@ -46,6 +49,7 @@ describe("Android Whisper.cpp bridge contract", () => {
   it("creates an Android adapter without loading native code", () => {
     const adapter = createAndroidWhisperCppAdapter(bridge(), {
       modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
       maxAudioBytes: 1024,
       deviceRequirements,
     });
@@ -56,7 +60,7 @@ describe("Android Whisper.cpp bridge contract", () => {
   it("fails closed when the native library is unavailable", async () => {
     const adapter = createAndroidWhisperCppAdapter(bridge({
       getStatus: async () => ({ nativeLibraryReady: false, modelLoaded: false }),
-    }), { modelId: "ggml-tiny", maxAudioBytes: 1024, deviceRequirements });
+    }), { modelId: "ggml-tiny", modelSha256: MODEL_SHA256, maxAudioBytes: 1024, deviceRequirements });
     await expect(adapter.transcribe(request))
       .rejects.toThrow("android_whisper_native_library_unavailable");
   });
@@ -65,9 +69,44 @@ describe("Android Whisper.cpp bridge contract", () => {
     const adapter = createAndroidWhisperCppAdapter(bridge({
       getStatus: async () => ({
         nativeLibraryReady: true, modelLoaded: false, modelId: "ggml-tiny",
+        modelSha256: MODEL_SHA256,
       }),
     }), { modelId: "ggml-tiny", maxAudioBytes: 1024, deviceRequirements });
     await expect(adapter.transcribe(request))
+      .rejects.toThrow("android_whisper_model_unavailable");
+  });
+
+
+  it("fails closed when the loaded model digest is missing or different", async () => {
+    const missingDigest = createAndroidWhisperCppAdapter(bridge({
+      getStatus: async () => ({
+        nativeLibraryReady: true,
+        modelLoaded: true,
+        modelId: "ggml-tiny",
+      }),
+    }), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+    await expect(missingDigest.transcribe(request))
+      .rejects.toThrow("android_whisper_model_unavailable");
+
+    const wrongDigest = createAndroidWhisperCppAdapter(bridge({
+      getStatus: async () => ({
+        nativeLibraryReady: true,
+        modelLoaded: true,
+        modelId: "ggml-tiny",
+        modelSha256: "b".repeat(64),
+      }),
+    }), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+    await expect(wrongDigest.transcribe(request))
       .rejects.toThrow("android_whisper_model_unavailable");
   });
 
@@ -110,6 +149,7 @@ describe("Android Whisper.cpp bridge contract", () => {
           nativeLibraryReady: true,
           modelLoaded: true,
           modelId: "ggml-tiny",
+          modelSha256: MODEL_SHA256,
           engineVersion: "original",
         };
       },
@@ -145,6 +185,7 @@ describe("Android Whisper.cpp bridge contract", () => {
     };
     const mutableOptions = {
       modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
       maxAudioBytes: 3,
       deviceRequirements: mutableRequirements,
     };
@@ -177,7 +218,7 @@ describe("Android Whisper.cpp bridge contract", () => {
 
   it("rejects invalid adapter configuration", () => {
     expect(() => createAndroidWhisperCppAdapter(bridge(), {
-      modelId: " ", maxAudioBytes: 1024,
+      modelId: " ", modelSha256: MODEL_SHA256, maxAudioBytes: 1024,
       deviceRequirements,
     })).toThrow("invalid_android_whisper_options");
   });
