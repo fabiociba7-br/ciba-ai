@@ -100,24 +100,35 @@ export function createAndroidWhisperCppAdapter(
   return Object.freeze(adapter);
 }
 
+const MAX_ANDROID_TRANSCRIPT_CHARS = 100_000;
+const MAX_ANDROID_SEGMENTS = 5_000;
+const MAX_ANDROID_SEGMENT_TEXT_CHARS = 10_000;
+
 function isValidSegment(segment: SpeechSegment): boolean {
-  return Number.isFinite(segment.startMs) &&
+  return segment !== null &&
+    Number.isFinite(segment.startMs) &&
     Number.isFinite(segment.endMs) &&
     segment.startMs >= 0 &&
     segment.endMs >= segment.startMs &&
-    typeof segment.text === "string";
+    typeof segment.text === "string" &&
+    segment.text.length <= MAX_ANDROID_SEGMENT_TEXT_CHARS;
 }
 
 function isValidResult(
   result: SpeechToTextResult,
   expectedModelId: string,
 ): boolean {
-  return result.engine === "whisper.cpp" &&
+  return result !== null &&
+    result.engine === "whisper.cpp" &&
     result.modelId === expectedModelId &&
     typeof result.text === "string" &&
+    result.text.length <= MAX_ANDROID_TRANSCRIPT_CHARS &&
     typeof result.language === "string" &&
+    /^[a-z]{2,3}(-[A-Z]{2})?$/.test(result.language) &&
     Array.isArray(result.segments) &&
+    result.segments.length <= MAX_ANDROID_SEGMENTS &&
     result.segments.every(isValidSegment) &&
     (result.durationMs === undefined ||
-      (Number.isFinite(result.durationMs) && result.durationMs >= 0));
+      (Number.isFinite(result.durationMs) && result.durationMs >= 0 &&
+        result.segments.every((segment) => segment.endMs <= result.durationMs!)));
 }
