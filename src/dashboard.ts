@@ -69,6 +69,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <h3 style="margin-top:22px">Aprendizado aguardando revisão</h3><p class="small muted">Novas informações e possíveis conflitos só entram na memória após sua aprovação.</p><div id="memory-reviews" class="muted small">Nenhuma proposta carregada.</div>
 </section>
 <section class="panel" style="margin-bottom:16px"><h3>Relações entre memórias</h3><p class="small muted">Identifica possíveis conflitos, assuntos relacionados e registros antigos ou expirados. São alertas determinísticos: nada é corrigido ou excluído automaticamente.</p><div class="actions"><button id="memory-insights-refresh" class="secondary">Analisar memórias autorizadas</button></div><div id="memory-insights" class="muted small">Ative a memória privada para analisar registros.</div></section>
+<section class="panel" style="margin-bottom:16px"><h3>Perfil contextual do proprietário</h3><p class="small muted">Organiza memórias autorizadas por assunto, destaca preferências recorrentes e sugere itens para revisão. Não altera dados automaticamente.</p><div class="actions"><button id="owner-profile-refresh" class="secondary">Atualizar perfil contextual</button></div><div id="owner-profile" class="muted small">Ative a memória privada para montar o perfil.</div></section>
 <section class="panel" style="margin-bottom:16px"><h3>Histórico de alterações da memória</h3><p class="small muted">Registro de auditoria com metadados. O histórico não guarda o conteúdo das memórias nem conversas e é mantido por até 180 dias.</p><div class="actions"><button id="memory-history-refresh" class="secondary">Atualizar histórico</button></div><div id="memory-history" class="muted small">Ative a memória para consultar o histórico.</div></section>
 <section class="panel" style="margin-bottom:16px"><h3>Aplicativos conectados</h3><div id="apps-list" class="muted small">Nenhum dado carregado.</div></section>
 <section class="panel" style="margin-bottom:16px"><h3>Conectar novo aplicativo</h3>
@@ -202,6 +203,26 @@ var outdated=data.outdated||[];host.appendChild(el("strong","Registros para revi
 outdated.forEach(function(item){var line=el("div","");line.className="rowline";line.appendChild(el("span",item.memory_key+" · "+(item.reason==="expired"?"Expirada":"Sem revisão há "+item.age_days+" dias")+" · "+(item.source_app_id||"memória central")));host.appendChild(line)});
 }catch(error){host.appendChild(el("p","Não foi possível analisar memórias: "+error.message))}
 };
+var loadOwnerProfile=async function(){
+var host=byId("owner-profile");host.replaceChildren();
+if(!byId("memory").checked){host.appendChild(el("p","Ative a memória privada para montar o perfil."));return}
+try{
+var data=await api("/v1/owner/profile");
+host.appendChild(el("p","Memórias autorizadas: "+data.analyzed_records+" · Chamadas de IA: "+data.inference_calls+" · Alterações automáticas: não"));
+var labels={preferences:"Preferências",communication:"Comunicação",work:"Trabalho e projetos",interests:"Interesses",routines:"Rotinas",personal_context:"Contexto pessoal",other:"Outros"};
+Object.keys(labels).forEach(function(key){
+var entries=(data.profile||{})[key]||[];if(!entries.length)return;
+host.appendChild(el("strong",labels[key]+" ("+entries.length+")"));
+entries.forEach(function(item){var line=el("div","");line.className="rowline";var details=el("div","");details.style.flex="1";details.appendChild(el("strong",item.memory_key));details.appendChild(el("div",item.value));details.appendChild(el("small","Origem: "+(item.source_app_id||"memória central")+" · Atualizada: "+dateText(item.updated_at)));line.appendChild(details);host.appendChild(line)});
+});
+var recurring=data.recurring_preferences||[];host.appendChild(el("strong","Preferências recorrentes ("+recurring.length+")"));
+if(!recurring.length)host.appendChild(el("p","Ainda não há termos repetidos em memórias distintas."));
+recurring.forEach(function(item){host.appendChild(el("div",item.term+" · presente em "+item.occurrences+" memórias ("+item.memory_keys.join(", ")+")"))});
+var suggestions=data.review_suggestions||[];host.appendChild(el("strong","Sugestões para sua revisão ("+suggestions.length+")"));
+if(!suggestions.length)host.appendChild(el("p","Nenhum item precisa de revisão neste momento."));
+suggestions.forEach(function(item){var card=el("div","");card.className="rowline";var details=el("div","");details.style.flex="1";details.appendChild(el("strong",item.type==="possible_conflict"?"Possível conflito":"Memória antiga ou expirada"));details.appendChild(el("div",item.reason));details.appendChild(el("small",item.memory_keys.join(", ")+" · exige sua confirmação"));card.appendChild(details);host.appendChild(card)});
+}catch(error){host.appendChild(el("p","Não foi possível montar o perfil: "+error.message))}
+};
 var loadMemoryHistory=async function(){
 var host=byId("memory-history");host.replaceChildren();
 if(!byId("memory").checked){host.appendChild(el("p","Ative a memória privada para consultar o histórico."));return}
@@ -213,15 +234,16 @@ if(!events.length){host.appendChild(el("p","Nenhuma alteração registrada neste
 events.forEach(function(item){var line=el("div","");line.className="rowline";var label={created:"Memória criada",updated:"Memória atualizada",deleted:"Memória excluída",review_approved:"Proposta aprovada",review_rejected:"Proposta rejeitada"}[item.action]||item.action;line.appendChild(el("strong",label+" · "+item.memory_key));line.appendChild(el("small",dateText(item.occurred_at)+" · App responsável: "+item.actor_app_id));host.appendChild(line)});
 }catch(error){host.appendChild(el("p","Não foi possível carregar o histórico: "+error.message))}
 };
-var refresh=async function(){var data=await api("/v1/owner/dashboard");render(data);await loadAvailableApps();await loadMemories();await loadMemoryReviews();await loadMemoryInsights();await loadMemoryHistory()};
+var refresh=async function(){var data=await api("/v1/owner/dashboard");render(data);await loadAvailableApps();await loadMemories();await loadMemoryReviews();await loadMemoryInsights();await loadOwnerProfile();await loadMemoryHistory()};
 byId("connect").addEventListener("click",async function(){var value=byId("token").value.trim();if(value.length<32){loginSay("Informe um token válido.");return}token=value;byId("connect").disabled=true;loginSay("Verificando acesso...");try{await refresh();byId("login").style.display="none";byId("app").style.display="block";byId("logout").style.display="inline-block";byId("token").value="";loginSay("")}catch(e){token=null;loginSay(e.message)}finally{byId("connect").disabled=false}});
 byId("refresh").addEventListener("click",async function(){try{await refresh();say("Dados atualizados.")}catch(e){say(e.message)}});
 byId("memory-search-button").addEventListener("click",function(){loadMemories();loadMemoryReviews()});
 byId("memory-insights-refresh").addEventListener("click",function(){loadMemoryInsights()});
+byId("owner-profile-refresh").addEventListener("click",function(){loadOwnerProfile()});
 byId("memory-history-refresh").addEventListener("click",function(){loadMemoryHistory()});
 byId("memory-scope").addEventListener("change",function(){loadMemories();loadMemoryReviews();loadMemoryHistory()});
 byId("memory-expired").addEventListener("change",function(){loadMemories()});
-byId("memory").addEventListener("change",function(){loadMemories();loadMemoryReviews();loadMemoryInsights();loadMemoryHistory()});
+byId("memory").addEventListener("change",function(){loadMemories();loadMemoryReviews();loadMemoryInsights();loadOwnerProfile();loadMemoryHistory()});
 
 byId("logout").addEventListener("click",function(){token=null;dashboard=null;byId("app").style.display="none";byId("login").style.display="block";byId("logout").style.display="none";byId("token").value="";say("");loginSay("Sessão encerrada.")});
 byId("connect-app").addEventListener("click",async function(){var appId=byId("available-apps").value;if(!appId){say("Selecione um aplicativo habilitado.");return}var button=byId("connect-app");button.disabled=true;try{var result=await api("/v1/owner/apps/connect","POST",{app_id:appId});byId("registration-code").value=result.registration_invitation_code;byId("pairing-code").value=result.pairing_invitation_code;byId("connection-expiry").textContent="Validade dos dois códigos: até "+dateText(result.expires_at)+". Cada código só pode ser usado uma vez.";byId("connection-result").style.display="block";say("Convites gerados. Copie e encaminhe os códigos com segurança.")}catch(e){say(e.message)}finally{button.disabled=false}});
