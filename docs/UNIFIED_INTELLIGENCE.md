@@ -146,3 +146,10 @@ A classificação é determinística e não faz chamada extra de inferência. At
 O endpoint autenticado `POST /v1/owner/memory/candidates` prepara uma proposta de memória a partir de um trecho fornecido pelo app. O app deve indicar `source_role: "user"`; a API rejeita conteúdo atribuído ao assistente e exige que o valor proposto seja um trecho verificável do texto do usuário (comparação sem distinção de acentos/caixa e com espaços normalizados). Chaves e valores passam pelas mesmas validações da memória curada, incluindo rejeição de padrões óbvios de credenciais.
 
 A proposta é apenas uma prévia: `stored: false`, `persisted: false`, `requires_confirmation: true`. A API não grava o texto de origem, não cria memória, não chama IA e não registra histórico. O app deve mostrar a proposta ao proprietário e, somente após confirmação explícita, chamar a API existente `POST /v1/owner/memory` com `consent: "curated"`. O escopo do proprietário exige concessão ativa `memory_write`; o escopo do app é limitado ao próprio app. A preparação respeita o interruptor de memória e a identidade pareada do dispositivo.
+
+
+## Gerenciamento de memória curada (etapa 27)
+
+A API autenticada de memória agora oferece busca textual por chave/conteúdo via `GET /v1/owner/memory?scope=app&q=...` e `scope=owner`, com opção `include_expired=true` para revisar registros expirados. O limite continua em 200 registros por escopo. Edição usa `PATCH /v1/owner/memory?scope=...` com `memory_id`, `key`, `value`, `consent: "curated"` e validade opcional. `valid_hours: null` remove a expiração; um inteiro de 1 a 8760 renova/define a validade; omitir mantém a validade atual. Exclusão continua sendo lógica (soft delete), removendo imediatamente o registro das consultas e da recuperação contextual.
+
+O painel privado inclui busca, seleção entre memória do app e memória central, opção para mostrar expiradas, edição e exclusão. Cada escopo mantém a autorização existente: o próprio app pode gerenciar sua memória; memória central ou de outro app exige concessão ativa de leitura/escrita correspondente. O endpoint não oferece acesso cruzado implícito. Nenhuma migration nova foi necessária.
