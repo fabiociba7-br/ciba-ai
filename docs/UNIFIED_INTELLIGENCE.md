@@ -217,3 +217,12 @@ O pacote aceita até 8 itens de tipos controlados (`preference`, `project`, `con
 Os pacotes usam a fila já existente, escopo `context`, TTL de 1 a 72 horas (24 por padrão), idempotência por `client_message_id` e limite de fila já aplicado aos demais envios. O destino recebe pelo inbox comum e confirma com o endpoint de ack. A expiração e a limpeza da fila existente continuam valendo. O SDK oferece `shareContextPackage()`.
 
 A validação estrutural não prova que a origem declarada de cada item é verdadeira; o aplicativo remetente deve atribuir a proveniência corretamente. O conteúdo recebido continua sendo dado não confiável, nunca instrução executável. Nenhuma inferência de IA ou migration nova é necessária.
+
+
+## Contexto contextual automático na distribuição de tarefas (etapa 35)
+
+O SDK aceita `dispatchTask({ includeContext: true })`. Quando solicitado, o coordenador seleciona até cinco memórias relevantes para a instrução e o tipo da tarefa, após deduplicação determinística. A seleção usa somente registros que o aplicativo de origem já pode ler: memória própria, memórias de outros apps com concessão ativa `memory_read/app_memory`, e memória do proprietário com concessão ativa `memory_read/owner_memory`.
+
+Além das concessões de tarefa (`send`/`receive`, escopo `task`), o compartilhamento exige concessões direcionais ativas (`send`/`receive`, escopo `context`) entre origem e destino. A memória precisa estar habilitada. Se faltar autorização, o despacho com contexto solicitado é recusado; sem memórias relevantes, a tarefa segue sem pacote. O destino recebe `context_package` dentro do pedido de tarefa. O inbox revalida também as concessões de contexto no momento da entrega, de modo que uma revogação posterior ao despacho impede a exposição do pacote.
+
+O pacote tem até cinco itens, limites do protocolo compartilhado, proveniência `curated_memory` e não contém histórico de conversa. O fluxo é determinístico, sem inferência adicional, sem escrita de memória e sem migration. O campo `includeContext` é opt-in e permanece falso por padrão.
