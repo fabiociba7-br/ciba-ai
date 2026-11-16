@@ -108,6 +108,20 @@ function readAbortSignalAborted(value: unknown): boolean | null {
   }
 }
 
+function readUint8ArrayByteLength(value: unknown): number | null {
+  try {
+    if (value === null || typeof value !== "object" ||
+        Object.getPrototypeOf(value) !== Uint8Array.prototype) return null;
+    const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype);
+    const getter = Object.getOwnPropertyDescriptor(typedArrayPrototype, "byteLength")?.get;
+    if (typeof getter !== "function") return null;
+    const length = getter.call(value);
+    return Number.isSafeInteger(length) && length >= 0 ? length : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Creates a fail-closed registry for the first planned transcription engine.
  * It does not install whisper.cpp, download model weights, or enable remote
@@ -267,9 +281,9 @@ function snapshotSpeechToTextRequest(
     const timestamps = source.timestamps;
     const signal = source.signal;
 
-    if (!(audio instanceof Uint8Array) ||
-        Object.getPrototypeOf(audio) !== Uint8Array.prototype ||
-        audio.byteLength === 0 || audio.byteLength > maxAudioBytes ||
+    const audioByteLength = readUint8ArrayByteLength(audio);
+    if (audioByteLength === null ||
+        audioByteLength === 0 || audioByteLength > maxAudioBytes ||
         typeof mimeType !== "string" || !MIME_TYPES.has(mimeType as SpeechToTextRequest["mimeType"]) ||
         (language !== undefined &&
           (typeof language !== "string" || !/^[a-z]{2,3}(-[A-Z]{2})?$/.test(language))) ||
@@ -288,8 +302,10 @@ function snapshotSpeechToTextRequest(
     if (granted !== true || purpose !== "transcription" ||
         sourceAction !== "explicit_user_action") return null;
 
-    const audioCopy = Uint8Array.prototype.slice.call(audio) as Uint8Array;
-    if (audioCopy.byteLength !== audio.byteLength) return null;
+    // Avoid TypedArray species/constructor hooks and shadowed byteLength accessors.
+    const audioCopy = new Uint8Array(audioByteLength);
+    Uint8Array.prototype.set.call(audioCopy, audio);
+    if (audioCopy.byteLength !== audioByteLength) return null;
     return {
       audio: audioCopy,
       consent: { granted: true, purpose: "transcription", source: "explicit_user_action" },
