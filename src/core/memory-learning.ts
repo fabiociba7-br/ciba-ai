@@ -10,8 +10,8 @@ export function classifyMemoryProposal(
   existing: ExistingMemoryValue | null,
 ): { classification: MemoryProposalClassification; existing_memory_id: string | null; existing_value_snapshot: string | null } {
   if (!existing) return { classification: "new", existing_memory_id: null, existing_value_snapshot: null };
-  const normalize = (value: string) => value.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
-    .toLocaleLowerCase("pt-BR").replace(/\\s+/g, " ").trim().replace(/[.!?]+$/g, "");
+  const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim().replace(/[.!?]+$/g, "");
   const same = normalize(proposedValue) === normalize(existing.value);
   return {
     classification: same ? "unchanged" : "possible_conflict",
