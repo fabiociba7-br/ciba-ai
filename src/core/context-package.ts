@@ -81,7 +81,12 @@ export function buildContextPackage(
         !["curated_memory", "task_state", "user_confirmed"].includes(item.origin as string)) {
       throw new Error("invalid_context_item");
     }
-    return { key: item.key, value: item.value.trim(), kind: item.kind, origin: item.origin };
+    return {
+      key: item.key,
+      value: item.value.trim(),
+      kind: item.kind as ContextItemKind,
+      origin: item.origin as ContextItemOrigin
+    };
   });
 
   const result: ContextPackage = {

@@ -148,13 +148,13 @@ export function assessDeviceCompatibility(
       "gpuAvailable", "androidApiLevel", "collectedAt", "source"],
     ["platform", "architecture", "totalRamMb", "availableRamMb", "logicalCpuCores",
       "gpuAvailable", "collectedAt", "source"]
-  )!;
+  ) as unknown as DeviceCapabilityProfile;
   const requirementData = readOwnDataRecord(
     requirements,
     ["runtime", "minimumRamMb", "minimumAvailableRamMb", "minimumCpuCores",
       "requiresGpu", "architectures", "platforms", "minimumAndroidApiLevel"],
     ["runtime", "minimumRamMb"]
-  )!;
+  ) as unknown as DeviceCapabilityRequirements;
   const architectureList = requirementData.architectures === undefined ? undefined
     : snapshotStringArray(requirementData.architectures, ["arm64", "arm32", "x64", "x86", "unknown"]);
   const platformList = requirementData.platforms === undefined ? undefined

@@ -82,7 +82,7 @@ function snapshotProvider(value: unknown): ModelProvider {
         !enabledField || !("value" in enabledField) || !enabledField.enumerable) {
       throw new Error("invalid_ensemble_provider");
     }
-    let generateField = own.generate;
+    let generateField: PropertyDescriptor | undefined = own.generate;
     if (!generateField) {
       const prototype = Object.getPrototypeOf(value);
       if (prototype && prototype !== Object.prototype) {
@@ -99,7 +99,8 @@ function snapshotProvider(value: unknown): ModelProvider {
     return Object.freeze({
       id,
       enabled: true,
-      generate: (request) => generate.call(value, request) as ReturnType<ModelProvider["generate"]>
+      generate: (request: Parameters<ModelProvider["generate"]>[0]) =>
+        generate.call(value, request) as ReturnType<ModelProvider["generate"]>
     });
   } catch {
     throw new Error("invalid_ensemble_provider");
@@ -308,7 +309,7 @@ export async function runMultiModelEnsemble(input: {
   );
   if (successful.length === 0) throw new Error("all_ensemble_members_failed");
 
-  const evidence = successful.map(({ role, result }: { role: CibaRole; result: InferenceResult }, index) =>
+  const evidence = successful.map(({ role, result }, index) =>
     "RELATÓRIO " + (index + 1) + " — " + role + " (" + result.provider + "/" + result.model + ")\n" + result.text
   ).join("\n\n");
   if (evidence.length > MAX_REPORT_CHARS * 3) throw new Error("ensemble_evidence_too_large");
