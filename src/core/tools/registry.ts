@@ -10,7 +10,12 @@ const MAX_JSON_STRING_CHARS = MAX_OUTPUT_BYTES;
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_CONCURRENT_EXECUTIONS = 8;
 
-export interface CibaToolAuthorizationRequest {
+export interface CibaToolInvocationContext {
+  conversationId: string;
+  invocationId: string;
+}
+
+export interface CibaToolAuthorizationRequest extends CibaToolInvocationContext {
   toolId: string;
   risk: CibaToolRisk;
   requiresApproval: boolean;
@@ -28,7 +33,7 @@ export interface CibaToolRegistryOptions {
   maxConcurrentExecutions?: number;
 }
 
-export interface CibaToolInvocationPlan {
+export interface CibaToolInvocationPlan extends CibaToolInvocationContext {
   toolId: string;
   risk: CibaToolRisk;
   requiresApproval: boolean;
@@ -37,14 +42,45 @@ export interface CibaToolInvocationPlan {
 
 export interface ExecutableCibaToolRegistry extends CibaToolRegistry {
   /** Validates and snapshots a proposed call without authorizing or executing it. */
-  prepare(toolId: string, input: unknown): CibaToolInvocationPlan;
-  execute(toolId: string, input: unknown): Promise<unknown>;
+  prepare(toolId: string, input: unknown, context?: CibaToolInvocationContext): CibaToolInvocationPlan;
+  execute(toolId: string, input: unknown, context?: CibaToolInvocationContext): Promise<unknown>;
 }
 
 const VALID_RISKS: CibaToolRisk[] = ["read", "write", "external"];
 
 function validId(value: unknown): value is string {
   return typeof value === "string" && /^[a-z][a-z0-9._-]{0,63}$/.test(value);
+}
+
+function snapshotInvocationContext(value: unknown): CibaToolInvocationContext {
+  if (value === null || typeof value !== "object" || Array.isArray(value) ||
+      Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new Error("tool_invocation_context_required");
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const allowed = new Set(["conversationId", "invocationId"]);
+  const keys = Reflect.ownKeys(descriptors);
+  if (keys.length !== 2 || keys.some((key) => typeof key !== "string" || !allowed.has(key))) {
+    throw new Error("invalid_tool_invocation_context");
+  }
+  const fields: Record<string, unknown> = Object.create(null);
+  for (const key of keys as string[]) {
+    const descriptor = descriptors[key];
+    if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+      throw new Error("invalid_tool_invocation_context");
+    }
+    fields[key] = descriptor.value;
+  }
+  if (typeof fields.conversationId !== "string" || !fields.conversationId.trim() ||
+      fields.conversationId.length > 128 ||
+      typeof fields.invocationId !== "string" || !fields.invocationId.trim() ||
+      fields.invocationId.length > 128) {
+    throw new Error("invalid_tool_invocation_context");
+  }
+  return Object.freeze({
+    conversationId: fields.conversationId,
+    invocationId: fields.invocationId
+  });
 }
 
 function readPlainRecord(value: unknown, allowedKeys: string[]): Record<string, unknown> {
@@ -390,9 +426,12 @@ export function createCibaToolRegistry(
         requiresApproval: definition.requiresApproval
       }));
     },
-    prepare(toolId: string, input: unknown) {
+    prepare(toolId: string, input: unknown, rawContext?: CibaToolInvocationContext) {
       const item = registered.get(toolId);
       if (!item) throw new Error("tool_not_allowlisted");
+      const context = item.definition.requiresApproval
+        ? snapshotInvocationContext(rawContext)
+        : rawContext === undefined ? undefined : snapshotInvocationContext(rawContext);
       let safeInput: unknown;
       try {
         safeInput = cloneJson(input);
@@ -405,12 +444,16 @@ export function createCibaToolRegistry(
         toolId,
         risk: item.definition.risk,
         requiresApproval: item.definition.requiresApproval,
+        ...(context ?? {}),
         input: deepFreeze(safeInput)
       });
     },
-    async execute(toolId: string, input: unknown) {
+    async execute(toolId: string, input: unknown, rawContext?: CibaToolInvocationContext) {
       const item = registered.get(toolId);
       if (!item) throw new Error("tool_not_allowlisted");
+      const context = item.definition.requiresApproval
+        ? snapshotInvocationContext(rawContext)
+        : rawContext === undefined ? undefined : snapshotInvocationContext(rawContext);
 
       let safeInput: unknown;
       try {
@@ -432,6 +475,7 @@ export function createCibaToolRegistry(
           toolId,
           risk: item.definition.risk,
           requiresApproval: item.definition.requiresApproval,
+          ...(context ?? {}),
           input: authorizationInput
         });
         if (authorized !== true) throw new Error("tool_authorization_denied");
