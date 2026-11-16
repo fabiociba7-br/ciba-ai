@@ -128,7 +128,9 @@ export function validateMemoryRecord(record: MemoryRecord): MemoryRecord {
     }
     const scopeType = scopeValue.type;
     const scopeOwnerId = scopeValue.ownerId;
-    const scopeAppId = scopeType === "app" ? scopeValue.appId : undefined;
+    const scopeAppId = scopeType === "app"
+      ? (scopeValue as { appId?: unknown }).appId
+      : undefined;
     if (!isNonEmptyString(scopeOwnerId) || scopeOwnerId !== ownerId ||
         (scopeType !== "owner" && scopeType !== "app") ||
         (scopeType === "app" && !isNonEmptyString(scopeAppId)) ||
