@@ -76,6 +76,46 @@ describe("Android Whisper.cpp bridge contract", () => {
     await expect(adapter.transcribe(request)).resolves.toEqual(result);
   });
 
+  it("reads each native status accessor exactly once", async () => {
+    const reads: Record<string, number> = {};
+    const values = {
+      nativeLibraryReady: true,
+      modelLoaded: true,
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      engineVersion: "test",
+    };
+    const status = Object.fromEntries(
+      Object.entries(values).map(([key, value]) => [
+        key,
+        {
+          enumerable: true,
+          get() {
+            reads[key] = (reads[key] ?? 0) + 1;
+            return reads[key] === 1 ? value : undefined;
+          },
+        },
+      ]),
+    );
+    const adapter = createAndroidWhisperCppAdapter(bridge({
+      getStatus: async () => Object.defineProperties({}, status),
+    }), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+
+    await expect(adapter.transcribe(request)).resolves.toEqual(result);
+    expect(reads).toEqual({
+      nativeLibraryReady: 1,
+      modelLoaded: 1,
+      modelId: 1,
+      modelSha256: 1,
+      engineVersion: 1,
+    });
+  });
+
   it("rejects malformed native bridge status before transcribing", async () => {
     const malformedStatuses = [
       null,
