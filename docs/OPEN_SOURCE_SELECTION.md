@@ -78,6 +78,11 @@ O módulo TypeScript agora define a interface que uma implementação Android/JN
 A ponte não carrega bibliotecas, não instala APKs, não baixa pesos e não escolhe arquivos no dispositivo. O app Android ainda precisa implementar o lado JNI/NDK e fornecer um modelo compatível. Sem biblioteca e modelo prontos, a chamada falha de forma explícita; não há fallback remoto automático.
 
 
+### Consentimento explícito para transcrição
+
+Toda solicitação de transcrição deve carregar um consentimento explícito, associado à ação do usuário e limitado à finalidade de transcrição. O núcleo rejeita solicitações sem a declaração `granted: true`, finalidade `transcription` e origem `explicit_user_action` antes de consultar ou executar o adapter. Essa declaração é um contrato de fluxo, não uma prova criptográfica de identidade nem substitui a interface de permissões do aplicativo. O áudio não é persistido pelo núcleo e não existe encaminhamento remoto automático.
+
+
 ### Fluxo único e protegido de transcrição
 
 A função `runWhisperCppTranscription` centraliza a validação do áudio, a avaliação do perfil do dispositivo, a resolução de um adapter já registrado e a validação do resultado. Se o hardware não for compatível ou não houver adapter, retorna motivos explícitos sem executar transcrição. Erros do adapter não provocam fallback remoto. O limite de bytes é aplicado antes da chamada ao motor.
