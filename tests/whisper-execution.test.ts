@@ -45,6 +45,13 @@ const adapter: SpeechToTextAdapter = {
   engine: "whisper.cpp",
   runtime: "android_embedded",
   modelId: "ggml-tiny",
+  deviceRequirements: {
+    runtime: "android_embedded",
+    minimumRamMb: 1024,
+    minimumAvailableRamMb: 512,
+    minimumCpuCores: 2,
+    minimumAndroidApiLevel: 26,
+  },
   transcribe: async () => ({
     text: "Olá",
     language: "pt",
