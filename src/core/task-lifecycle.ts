@@ -41,6 +41,8 @@ function readInputSnapshot(value: unknown): Record<string, unknown> {
   return result;
 }
 
+function validTimestamp(value: unknown): value is string;
+function validTimestamp(value: unknown, nullable: true): value is string | null;
 function validTimestamp(value: unknown, nullable = false): value is string | null {
   if (nullable && value === null) return true;
   return typeof value === "string" && value.length > 0 &&
