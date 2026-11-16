@@ -139,39 +139,82 @@ export function createWhisperCppRegistry(
   const safeMaxAudioBytes = maxAudioBytes as number;
   const maxConcurrent = (maxConcurrentTranscriptions as number | undefined) ?? 1;
   let activeExecutions = 0;
-  for (const adapter of adapterValues as SpeechToTextAdapter[]) {
-    if (adapter.engine !== "whisper.cpp" ||
-        !supportedRuntimes.includes(adapter.runtime) ||
-        !adapter.modelId.trim() ||
-        adapter.deviceRequirements.runtime !== adapter.runtime ||
-        adapterMap.has(adapter.runtime)) {
+  for (const adapterValue of adapterValues) {
+    const adapter = readOwnDataRecord(
+      adapterValue,
+      ["engine", "runtime", "modelId", "deviceRequirements", "transcribe"],
+      ["engine", "runtime", "modelId", "deviceRequirements", "transcribe"]
+    );
+    if (!adapter || adapter.engine !== "whisper.cpp" ||
+        typeof adapter.runtime !== "string" ||
+        !validRuntimes.has(adapter.runtime as SpeechToTextRuntime) ||
+        !supportedRuntimes.includes(adapter.runtime as SpeechToTextRuntime) ||
+        typeof adapter.modelId !== "string" || !adapter.modelId.trim() ||
+        adapter.modelId.length > 200 || typeof adapter.transcribe !== "function" ||
+        adapterMap.has(adapter.runtime as SpeechToTextRuntime)) {
       throw new Error("invalid_whisper_cpp_adapter");
     }
-    try {
-      validateDeviceCapabilityRequirements(adapter.deviceRequirements);
-    } catch {
+
+    const rawRequirements = readOwnDataRecord(
+      adapter.deviceRequirements,
+      ["runtime", "minimumRamMb", "minimumAvailableRamMb", "minimumCpuCores",
+        "requiresGpu", "architectures", "platforms", "minimumAndroidApiLevel"],
+      ["runtime", "minimumRamMb"]
+    );
+    if (!rawRequirements) throw new Error("invalid_whisper_cpp_adapter");
+    const architectures = rawRequirements.architectures === undefined
+      ? undefined
+      : snapshotDenseArray(rawRequirements.architectures, 5);
+    const platforms = rawRequirements.platforms === undefined
+      ? undefined
+      : snapshotDenseArray(rawRequirements.platforms, 5);
+    if ((rawRequirements.architectures !== undefined && !architectures) ||
+        (rawRequirements.platforms !== undefined && !platforms)) {
       throw new Error("invalid_whisper_cpp_adapter");
     }
     const requirementsSnapshot: DeviceCapabilityRequirements = Object.freeze({
-      ...adapter.deviceRequirements,
-      ...(adapter.deviceRequirements.architectures
-        ? { architectures: Object.freeze([...adapter.deviceRequirements.architectures]) as unknown as DeviceArchitecture[] }
-        : {}),
-      ...(adapter.deviceRequirements.platforms
-        ? { platforms: Object.freeze([...adapter.deviceRequirements.platforms]) as unknown as DevicePlatform[] }
-        : {}),
+      runtime: rawRequirements.runtime as DeviceCapabilityRequirements["runtime"],
+      minimumRamMb: rawRequirements.minimumRamMb as number,
+      ...(rawRequirements.minimumAvailableRamMb === undefined ? {} : {
+        minimumAvailableRamMb: rawRequirements.minimumAvailableRamMb as number
+      }),
+      ...(rawRequirements.minimumCpuCores === undefined ? {} : {
+        minimumCpuCores: rawRequirements.minimumCpuCores as number
+      }),
+      ...(rawRequirements.requiresGpu === undefined ? {} : {
+        requiresGpu: rawRequirements.requiresGpu as boolean
+      }),
+      ...(architectures === undefined ? {} : {
+        architectures: Object.freeze(architectures) as unknown as DeviceArchitecture[]
+      }),
+      ...(platforms === undefined ? {} : {
+        platforms: Object.freeze(platforms) as unknown as DevicePlatform[]
+      }),
+      ...(rawRequirements.minimumAndroidApiLevel === undefined ? {} : {
+        minimumAndroidApiLevel: rawRequirements.minimumAndroidApiLevel as number
+      })
     });
-    // Capture the approved implementation itself, not a dynamic property
-    // lookup on the caller-owned adapter object.
-    const transcribe = adapter.transcribe.bind(adapter);
+    if (requirementsSnapshot.runtime !== adapter.runtime) {
+      throw new Error("invalid_whisper_cpp_adapter");
+    }
+    try {
+      validateDeviceCapabilityRequirements(requirementsSnapshot);
+    } catch {
+      throw new Error("invalid_whisper_cpp_adapter");
+    }
+
+    const runtime = adapter.runtime as SpeechToTextRuntime;
+    const modelId = adapter.modelId;
+    // Capture the approved implementation once; never resolve it dynamically.
+    const transcribe = (adapter.transcribe as SpeechToTextAdapter["transcribe"]).bind(adapterValue);
     const registeredAdapter: SpeechToTextAdapter = Object.freeze({
-      engine: adapter.engine,
-      runtime: adapter.runtime,
-      modelId: adapter.modelId,
+      engine: "whisper.cpp",
+      runtime,
+      modelId,
       deviceRequirements: requirementsSnapshot,
       transcribe,
     });
-    adapterMap.set(adapter.runtime, registeredAdapter);
+    adapterMap.set(runtime, registeredAdapter);
   }
 
   // Freeze the public registry surface so callers cannot replace lookup,
