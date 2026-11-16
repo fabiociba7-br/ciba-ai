@@ -10,9 +10,9 @@ export interface CibaToolDefinition<Input = unknown, Output = unknown> {
 }
 
 /**
- * Tool registration contract only. No tools are registered or executable by
- * the chat model by default. The future registry must enforce an explicit
- * allowlist, schema validation, scopes, timeouts and approval for side effects.
+ * Tool definition contract. Definitions are inert until passed to the registry
+ * with an explicit allowlist and a trusted application authorization callback.
+ * The registry validates input/output and applies execution time limits.
  */
 export interface CibaToolRegistry {
   get(toolId: string): CibaToolDefinition | undefined;
