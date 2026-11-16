@@ -21,7 +21,7 @@ export type { AppMessageAccessRequest, AppMessageEnvelope, AppMessageGrant, AppM
 export { canDeviceActForOwner, canPairDevice, canUseOwnerPairingInvitation } from "./owner";
 export type { OwnerBoundDevice, OwnerIdentity, OwnerPairingInvitation, OwnerStatus } from "./owner";
 
-export { canUseAppAccessGrant } from "./access-grants";
+export { canUseAppAccessGrant, validateAppAccessGrant } from "./access-grants";
 export type { AppAccessGrant, AppAccessPermission, AppAccessRequest, AppAccessScope } from "./access-grants";
 
 export { APP_TYPES, APP_CAPABILITIES, APP_TASK_TYPES, validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./apps/registry";
