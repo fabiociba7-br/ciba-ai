@@ -218,10 +218,19 @@ describe("Android Whisper.cpp bridge contract", () => {
     await expect(adapter.transcribe(request)).resolves.toEqual(result);
   });
 
-  it("rejects invalid adapter configuration", () => {
+  it("rejects invalid adapter configuration and malformed model digests", () => {
     expect(() => createAndroidWhisperCppAdapter(bridge(), {
       modelId: " ", modelSha256: MODEL_SHA256, maxAudioBytes: 1024,
       deviceRequirements,
     })).toThrow("invalid_android_whisper_options");
+
+    for (const modelSha256 of ["", "a".repeat(63), "a".repeat(65), "A".repeat(64), "g".repeat(64)]) {
+      expect(() => createAndroidWhisperCppAdapter(bridge(), {
+        modelId: "ggml-tiny",
+        modelSha256,
+        maxAudioBytes: 1024,
+        deviceRequirements,
+      })).toThrow("invalid_android_whisper_options");
+    }
   });
 });
