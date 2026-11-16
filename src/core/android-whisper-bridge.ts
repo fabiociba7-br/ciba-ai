@@ -110,7 +110,7 @@ export function createAndroidWhisperCppAdapter(
       typeof options.modelSha256 !== "string" ||
       !/^[a-f0-9]{64}$/.test(options.modelSha256) ||
       !Number.isInteger(options.maxAudioBytes) ||
-      options.maxAudioBytes < 1 ||
+      options.maxAudioBytes < 1 || options.maxAudioBytes > 25 * 1024 * 1024 ||
       options.deviceRequirements === null ||
       typeof options.deviceRequirements !== "object" ||
       options.deviceRequirements.runtime !== "android_embedded" ||
