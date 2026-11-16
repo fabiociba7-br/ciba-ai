@@ -2,6 +2,7 @@ export type { CibaToolDefinition, CibaToolMetadata, CibaToolRegistry, CibaToolRi
 export { createCibaToolRegistry } from "./registry";
 export type {
   CibaToolAuthorizationRequest,
+  CibaToolInvocationPlan,
   CibaToolRegistryOptions,
   ExecutableCibaToolRegistry
 } from "./registry";
