@@ -186,7 +186,7 @@ details.appendChild(el("strong",p.memory_key+" · "+(p.classification==="new"?"N
 details.appendChild(el("div","Proposta: "+p.proposed_value));
 if(p.existing_value_snapshot)details.appendChild(el("small","Memória atual: "+p.existing_value_snapshot));
 details.appendChild(el("small","Evidência apresentada: "+p.evidence_excerpt+" · App: "+p.proposed_by_app_id));
-var actions=el("div","");actions.className="actions";
+if(item.status==="pending"){var actions=el("div","");actions.className="actions";
 var approve=el("button","Aprovar");approve.addEventListener("click",async function(){if(!confirm("Aprovar esta informação e "+(p.classification==="possible_conflict"?"atualizar a memória existente?":"salvá-la na memória")+"?"))return;try{await api("/v1/owner/memory/reviews?scope="+encodeURIComponent(scope),"PATCH",{proposal_id:p.proposal_id,decision:"approve"});say("Proposta aprovada.");await loadMemories();await loadMemoryReviews()}catch(e){say(e.message)}});
 var reject=el("button","Rejeitar");reject.className="danger";reject.addEventListener("click",async function(){if(!confirm("Rejeitar esta proposta? A memória não será alterada."))return;try{await api("/v1/owner/memory/reviews?scope="+encodeURIComponent(scope),"PATCH",{proposal_id:p.proposal_id,decision:"reject"});say("Proposta rejeitada.");await loadMemoryReviews()}catch(e){say(e.message)}});
 actions.appendChild(approve);actions.appendChild(reject);card.appendChild(details);card.appendChild(actions);host.appendChild(card);
@@ -269,7 +269,7 @@ approve.disabled=true;reject.disabled=true;
 try{await api("/v1/owner/tool-approvals/"+encodeURIComponent(item.approval_id)+"/decision","POST",{allow:false});say("Solicitação rejeitada.");await loadToolApprovals()}
 catch(error){say(error.message);approve.disabled=false;reject.disabled=false}
 });
-actions.appendChild(approve);actions.appendChild(reject);card.appendChild(actions);host.appendChild(card);
+actions.appendChild(approve);actions.appendChild(reject);card.appendChild(actions);}else{card.appendChild(el("small","Autorizada. Aguardando execução; esta tela não executa ferramentas."));}host.appendChild(card);
 });
 }catch(error){host.appendChild(el("p","Não foi possível carregar as aprovações: "+error.message))}
 };
