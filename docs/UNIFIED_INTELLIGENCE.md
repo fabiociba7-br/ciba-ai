@@ -226,3 +226,12 @@ O SDK aceita `dispatchTask({ includeContext: true })`. Quando solicitado, o coor
 Além das concessões de tarefa (`send`/`receive`, escopo `task`), o compartilhamento exige concessões direcionais ativas (`send`/`receive`, escopo `context`) entre origem e destino. A memória precisa estar habilitada. Se faltar autorização, o despacho com contexto solicitado é recusado; sem memórias relevantes, a tarefa segue sem pacote. O destino recebe `context_package` dentro do pedido de tarefa. O inbox revalida também as concessões de contexto no momento da entrega, de modo que uma revogação posterior ao despacho impede a exposição do pacote.
 
 O pacote tem até cinco itens, limites do protocolo compartilhado, proveniência `curated_memory` e não contém histórico de conversa. O fluxo é determinístico, sem inferência adicional, sem escrita de memória e sem migration. O campo `includeContext` é opt-in e permanece falso por padrão.
+
+
+## Recepção e consumo seguro de tarefas (etapa 36)
+
+O SDK oferece `consumeTaskMessage(message)` para validar mensagens recebidas no inbox com escopo `task`. O consumidor verifica protocolo, ID, tipo e instrução da tarefa; valida separadamente o pacote contextual opcional usando as regras do protocolo de contexto. Um pacote inválido é descartado sem invalidar uma tarefa válida, e o resultado informa o motivo.
+
+Quando válido, o contexto fica disponível em `context.items`, acompanhado de sua finalidade e de uma orientação explícita para tratá-lo como dado não confiável. Os valores do pacote nunca são promovidos a instruções, políticas ou comandos. A aplicação de destino deve usar esses itens como referências auxiliares no seu próprio processamento, mantendo suas próprias regras de segurança e autorização. Mensagens que não sejam do escopo `task` não são aceitas por esse consumidor.
+
+A validação é local e determinística: não chama IA, não executa ações, não altera memória e não persiste conversas.
