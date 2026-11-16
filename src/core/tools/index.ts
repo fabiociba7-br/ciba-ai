@@ -2,6 +2,7 @@ export type { CibaToolDefinition, CibaToolMetadata, CibaToolModelDescriptor, Cib
 export { createCibaToolRegistry } from "./registry";
 export type {
   CibaToolAuthorizationRequest,
+  CibaToolExecutionAuthorization,
   CibaToolInvocationPlan,
   CibaToolInvocationContext,
   CibaToolRegistryOptions,
@@ -17,8 +18,13 @@ export type { CibaToolModelProposal } from "./model-proposal";
 export type { CibaToolApprovalFlow, CibaToolApprovalState, CibaToolProposal } from "./approval-flow";
 
 export { createD1ToolApprovalStore } from "./durable-consent";
-export { createDurableCibaToolApprovalFlow } from "./durable-approval-flow";
-export type { DurableCibaToolApprovalFlow, DurableCibaToolProposal, DurableCibaToolApprovalState } from "./durable-approval-flow";
+export { createDurableCibaToolApprovalFlow, createDurableCibaToolRegistry } from "./durable-approval-flow";
+export type {
+  DurableCibaToolApprovalFlow,
+  DurableCibaToolProposal,
+  DurableCibaToolApprovalState,
+  DurableCibaToolRegistryOptions
+} from "./durable-approval-flow";
 export type {
   DurableToolApprovalIdentity,
   DurableToolApprovalRequest,
