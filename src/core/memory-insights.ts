@@ -41,13 +41,15 @@ function snapshotInsightRecords(value: unknown): MemoryInsightRecord[] | null {
         if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
         fields[key] = descriptor.value;
       }
-      if (typeof fields.memory_id !== "string" || fields.memory_id.length > 200 ||
+      if (typeof fields.memory_id !== "string" || !fields.memory_id || fields.memory_id.length > 200 ||
           (fields.scope !== "app" && fields.scope !== "owner") ||
-          !(fields.source_app_id === null || (typeof fields.source_app_id === "string" && fields.source_app_id.length <= 200)) ||
-          typeof fields.memory_key !== "string" || fields.memory_key.length > 200 ||
+          !(fields.source_app_id === null || (typeof fields.source_app_id === "string" &&
+            fields.source_app_id.length > 0 && fields.source_app_id.length <= 128)) ||
+          typeof fields.memory_key !== "string" || !fields.memory_key || fields.memory_key.length > 200 ||
           typeof fields.value !== "string" || fields.value.length > 8_000 ||
-          typeof fields.updated_at !== "string" || fields.updated_at.length > 100 ||
-          !(fields.expires_at === null || (typeof fields.expires_at === "string" && fields.expires_at.length <= 100))) return null;
+          typeof fields.updated_at !== "string" || !fields.updated_at || fields.updated_at.length > 64 ||
+          !(fields.expires_at === null || (typeof fields.expires_at === "string" &&
+            fields.expires_at.length > 0 && fields.expires_at.length <= 64))) return null;
       result.push(Object.freeze({
         memory_id: fields.memory_id,
         scope: fields.scope,
@@ -95,8 +97,9 @@ export function analyzeMemoryRelationships(
     inference_calls: 0 as const,
   };
   if (!(now instanceof Date) || !Number.isFinite(now.getTime()) ||
-      !Number.isFinite(staleAfterDays) || !Number.isFinite(maxPairs) ||
-      !Number.isSafeInteger(maxPairs)) return empty;
+      !Number.isFinite(staleAfterDays) || !Number.isSafeInteger(staleAfterDays) ||
+      staleAfterDays < 1 || staleAfterDays > 3_650 ||
+      !Number.isFinite(maxPairs) || !Number.isSafeInteger(maxPairs)) return empty;
   const bounded = snapshotInsightRecords(records);
   if (!bounded) return empty;
   const pairLimit = Math.min(Math.max(maxPairs, 0), 30);
@@ -105,7 +108,7 @@ export function analyzeMemoryRelationships(
   }
   const conflicts: MemoryInsightPair[] = [];
   const related: MemoryInsightPair[] = [];
-  const staleMs = Math.max(1, staleAfterDays) * 86400000;
+  const staleMs = staleAfterDays * 86400000;
   const outdated = bounded.flatMap((record) => {
     const updated = Date.parse(record.updated_at);
     if (!Number.isFinite(updated)) return [];
@@ -114,17 +117,13 @@ export function analyzeMemoryRelationships(
     if (!expired && now.getTime() - updated < staleMs) return [];
     return [{ ...record, reason: expired ? "expired" as const : "not_reviewed_recently" as const, age_days: age }];
   });
-  const seen = new Set<string>();
   for (let i = 0; i < bounded.length; i += 1) {
     for (let j = i + 1; j < bounded.length; j += 1) {
       const first = bounded[i], second = bounded[j];
-      const pairId = [first.memory_id, second.memory_id].sort().join(":");
-      if (seen.has(pairId)) continue;
       const sameKey = normalize(first.memory_key) === normalize(second.memory_key);
       const firstValue = normalize(first.value), secondValue = normalize(second.value);
       if (sameKey && firstValue !== secondValue) {
         conflicts.push({ first, second, shared_terms: [], similarity: 1, reason: "same_key_different_value" });
-        seen.add(pairId);
         continue;
       }
       const a = tokens(first.memory_key + " " + first.value);
@@ -134,7 +133,6 @@ export function analyzeMemoryRelationships(
       const similarity = union ? shared.length / union : 0;
       if (shared.length >= 2 && similarity >= 0.3) {
         related.push({ first, second, shared_terms: shared.slice(0, 8), similarity, reason: "related_content" });
-        seen.add(pairId);
       }
     }
   }
