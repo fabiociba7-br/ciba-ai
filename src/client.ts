@@ -112,6 +112,22 @@ export interface CibaClientOptions {
   fetcher?: typeof fetch;
 }
 
+
+export interface CibaContextPackageItem {
+  key: string;
+  value: string;
+  kind: "preference" | "project" | "constraint" | "fact" | "summary";
+  origin: "curated_memory" | "task_state" | "user_confirmed";
+}
+
+export interface CibaContextShareInput {
+  destinationAppId: string;
+  clientMessageId: string;
+  purpose: string;
+  items: CibaContextPackageItem[];
+  ttlHours?: number;
+}
+
 export interface CibaMessageInput<T = unknown> {
   destinationAppId: string;
   clientMessageId: string;
@@ -390,6 +406,34 @@ export class CibaClient {
         task_id: input.taskId,
         scope: input.scope,
         payload: input.payload,
+        ...(input.ttlHours === undefined ? {} : { ttl_hours: input.ttlHours }),
+      }),
+    });
+  }
+
+
+  shareContextPackage(input: CibaContextShareInput): Promise<{
+    shared: true;
+    duplicate: boolean;
+    message: {
+      message_id: string;
+      context_id?: string;
+      source_app_id?: string;
+      destination_app_id?: string;
+      scope: "context";
+      item_count?: number;
+      conversation_history_included?: false;
+      created_at: string;
+      expires_at: string;
+    };
+  }> {
+    return this.request("/v1/apps/context/share", {
+      method: "POST",
+      body: JSON.stringify({
+        destination_app_id: input.destinationAppId,
+        client_message_id: input.clientMessageId,
+        purpose: input.purpose,
+        items: input.items,
         ...(input.ttlHours === undefined ? {} : { ttl_hours: input.ttlHours }),
       }),
     });
