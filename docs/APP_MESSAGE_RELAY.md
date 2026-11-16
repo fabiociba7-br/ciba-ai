@@ -47,3 +47,7 @@ Aceita até 50 IDs por chamada. Só confirma mensagens pertencentes ao propriet�
 - Não existe acesso automático: origem e destino precisam de concessões explícitas, compatíveis e válidas.
 - Mensagens não são incluídas no histórico do chat e não armazenam conversas completas por padrão.
 - A migration `0009_private_app_message_queue.sql` ainda precisa ser aplicada ao D1 e o Worker ainda precisa ser publicado. Até lá, o relay não está ativo em produção.
+
+## Validação defensiva das concessões
+
+O núcleo TypeScript cria snapshots próprios das solicitações e das concessões antes de decidir o relay. Objetos com protótipos personalizados, getters/setters, propriedades inesperadas ou não enumeráveis são rejeitados. Arrays de permissões, escopos e concessões precisam ser densos, sem índices ausentes ou propriedades extras. Cada concessão é normalizada e validada isoladamente; concessões inválidas nunca autorizam uma operação. Qualquer falha inesperada na avaliação resulta em `false` (negação). Essa validação estrutural não substitui a autenticação do dispositivo nem a consulta das concessões persistidas pelo gateway.
