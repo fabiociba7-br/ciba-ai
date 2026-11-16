@@ -213,3 +213,33 @@ The Worker exposes owner-scoped approval management endpoints. All routes requir
 - `POST /v1/owner/tool-approvals/{approval_id}/cancel`: cancels a pending or approved request only when called by the active originating device.
 
 The API does not execute tools. Approval is not equivalent to execution, and no tool registry, public chat route or production handler is connected. A client must present the full tool name, risk and exact input to the owner before sending a decision; never treat a model-generated preview as a trusted confirmation screen. The API is limited to the same app ID because the durable schema binds both source and approving devices to the same owner/app pair.
+
+
+## Durable execution guard (required for D1-backed approvals)
+
+Do not combine `createDurableCibaToolApprovalFlow` with a registry created by the generic `createCibaToolRegistry`. That arrangement consumes approval in the flow before calling `registry.execute`, while the registry's independent authorizer may either omit approval checks (a bypass) or try to consume the same one-use approval a second time.
+
+For durable approvals, create the registry with `createDurableCibaToolRegistry` and pass the same durable store to both factories:
+
+```ts
+const approvals = createD1ToolApprovalStore(env.DB);
+
+const registry = createDurableCibaToolRegistry(toolDefinitions, {
+  allowlist: enabledToolIds,
+  approvals,
+  authorize: async (request) => {
+    // Verify current owner/app grants, tool scopes, device state and policy.
+    // Approval-required calls arrive here only after the D1 approval was
+    // atomically consumed for this exact identity, invocation, tool and input.
+    return await applicationPolicyAllows(request);
+  }
+});
+
+const flow = createDurableCibaToolApprovalFlow(registry, approvals);
+```
+
+The durable registry factory wraps the trusted authorizer. For `write` and `external` tools it requires an execution authorization context, atomically consumes the matching D1 approval immediately before the independent application policy check, and fails closed when the approval is absent, expired, altered, already consumed, or bound to another owner/app/device/invocation. The registry rejects protected `execute` calls without that context. The approval is consumed once; the flow does not consume it a second time.
+
+The authorization context is supplied only by trusted application code through `flow.execute({ identity, approvalId, plan, context })`. Never construct identity from model output or request-body identifiers. The SDK approval endpoints only record a decision; they do not invoke the tool. A failed application-policy check leaves the approval spent, which is intentional fail-closed behavior.
+
+Tests must cover direct registry execution without approval, altered input, wrong identity, replay/concurrent consumption, expiry, and application-policy denial. This factory remains an application integration primitive; it does not activate tools in the public Worker or perform migrations/deployments.
