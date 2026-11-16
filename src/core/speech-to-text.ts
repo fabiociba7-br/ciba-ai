@@ -34,6 +34,8 @@ export interface SpeechToTextAdapter {
   readonly engine: "whisper.cpp";
   readonly runtime: SpeechToTextRuntime;
   readonly modelId: string;
+  /** Hardware floor for this exact model, separate from runtime-level limits. */
+  readonly deviceRequirements: DeviceCapabilityRequirements;
   transcribe(request: SpeechToTextRequest): Promise<SpeechToTextResult>;
 }
 
@@ -80,7 +82,9 @@ export function createWhisperCppRegistry(
   for (const adapter of adapters) {
     if (adapter.engine !== "whisper.cpp" ||
         !policy.supportedRuntimes.includes(adapter.runtime) ||
-        !adapter.modelId.trim() || adapterMap.has(adapter.runtime)) {
+        !adapter.modelId.trim() ||
+        adapter.deviceRequirements.runtime !== adapter.runtime ||
+        adapterMap.has(adapter.runtime)) {
       throw new Error("invalid_whisper_cpp_adapter");
     }
     adapterMap.set(adapter.runtime, adapter);
@@ -137,6 +141,10 @@ export function resolveWhisperCppRuntime(
   const runtime = requirements.runtime as SpeechToTextRuntime;
   const adapter = registry.getAdapter(runtime);
   if (!adapter) return { available: false, reasons: ["adapter_not_installed"] };
+  const modelDecision = assessDeviceCompatibility(profile, adapter.deviceRequirements);
+  if (!modelDecision.compatible) {
+    return { available: false, reasons: modelDecision.reasons };
+  }
   return { available: true, adapter, reasons: [] };
 }
 
