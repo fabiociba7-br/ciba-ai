@@ -73,6 +73,7 @@ export function createWhisperCppRegistry(
     "android_embedded", "desktop_local", "local_service",
   ]);
   if (!Number.isInteger(policy.maxAudioBytes) || policy.maxAudioBytes < 1 ||
+      policy.maxAudioBytes > 25 * 1024 * 1024 ||
       supportedRuntimes.length === 0 ||
       supportedRuntimes.some((runtime) => !validRuntimes.has(runtime)) ||
       new Set(supportedRuntimes).size !== supportedRuntimes.length ||
@@ -326,9 +327,13 @@ export async function runWhisperCppTranscription(
   request: SpeechToTextRequest,
   maxAudioBytes?: number,
 ): Promise<SpeechToTextExecution> {
+  const effectiveAudioLimit = maxAudioBytes ?? registry.maxAudioBytes;
+  if (!Number.isInteger(effectiveAudioLimit) || effectiveAudioLimit < 1) {
+    throw new Error("invalid_speech_to_text_request");
+  }
   const safeRequest = snapshotSpeechToTextRequest(
     request,
-    maxAudioBytes ?? registry.maxAudioBytes
+    Math.min(effectiveAudioLimit, registry.maxAudioBytes)
   );
   if (!safeRequest) throw new Error("invalid_speech_to_text_request");
   const audioBuffer = safeRequest.audio;
