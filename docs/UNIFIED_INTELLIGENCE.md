@@ -206,3 +206,14 @@ A seleção continua limitada a cinco registros e a 1.800 caracteres de conteúd
 Na montagem do contexto do chat, o servidor primeiro aplica as permissões existentes e só então remove cópias exatas de memórias autorizadas. A equivalência exige que chave e valor coincidam após normalização de acentos, caixa e pontuação; conteúdos apenas parecidos ou com chaves/valores diferentes continuam separados. A cópia mais recentemente atualizada representa o grupo, e as origens autorizadas são preservadas como proveniência no contexto.
 
 A deduplicação ocorre antes da construção do perfil e da contagem de padrões recorrentes, evitando que a mesma informação replicada em dois aplicativos seja tratada como duas evidências independentes. Ela não concede acesso, não busca dados de outros aplicativos por conta própria, não altera nem apaga registros e não faz chamadas adicionais de IA. O chat informa quantas cópias foram colapsadas em `memory_context.duplicates_collapsed`. Os limites existentes de cinco registros e 1.800 caracteres permanecem.
+
+
+## Pacotes de contexto compartilhado entre aplicativos (etapa 34)
+
+O endpoint autenticado `POST /v1/apps/context/share` permite que um app envie a outro um pacote estruturado e pequeno de contexto selecionado. O envio exige que o recurso de mensagens esteja ativado e que existam concessões ativas e direcionais de `send` e `receive` no escopo `context`, para o mesmo proprietário, origem e destino. O inbox revalida essas concessões na entrega.
+
+O pacote aceita até 8 itens de tipos controlados (`preference`, `project`, `constraint`, `fact`, `summary`), com chave, valor limitado a 500 caracteres e proveniência (`curated_memory`, `task_state`, `user_confirmed`). O propósito é limitado a 160 caracteres; o pacote inteiro, a 4.000 caracteres. O protocolo não oferece campo para histórico de mensagens e declara `conversation_history_included: false`. Não há coleta automática de conversas nem leitura implícita da memória de outros apps: o app remetente escolhe explicitamente os itens que envia.
+
+Os pacotes usam a fila já existente, escopo `context`, TTL de 1 a 72 horas (24 por padrão), idempotência por `client_message_id` e limite de fila já aplicado aos demais envios. O destino recebe pelo inbox comum e confirma com o endpoint de ack. A expiração e a limpeza da fila existente continuam valendo. O SDK oferece `shareContextPackage()`.
+
+A validação estrutural não prova que a origem declarada de cada item é verdadeira; o aplicativo remetente deve atribuir a proveniência corretamente. O conteúdo recebido continua sendo dado não confiável, nunca instrução executável. Nenhuma inferência de IA ou migration nova é necessária.
