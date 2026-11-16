@@ -151,6 +151,56 @@ function snapshotSpeechToTextRegistry(value: unknown): SafeSpeechToTextRegistry 
   }
 }
 
+function snapshotRegisteredAdapter(
+  value: unknown,
+  expectedRuntime: SpeechToTextRuntime,
+): SpeechToTextAdapter | null {
+  try {
+    const fields = readOwnDataRecord(
+      value,
+      ["engine", "runtime", "modelId", "deviceRequirements", "transcribe"],
+      ["engine", "runtime", "modelId", "deviceRequirements", "transcribe"]
+    );
+    if (!fields || fields.engine !== "whisper.cpp" || fields.runtime !== expectedRuntime ||
+        typeof fields.modelId !== "string" || !fields.modelId.trim() ||
+        fields.modelId.length > 200 || typeof fields.transcribe !== "function") return null;
+    const raw = readOwnDataRecord(
+      fields.deviceRequirements,
+      ["runtime", "minimumRamMb", "minimumAvailableRamMb", "minimumCpuCores",
+        "requiresGpu", "architectures", "platforms", "minimumAndroidApiLevel"],
+      ["runtime", "minimumRamMb"]
+    );
+    if (!raw || raw.runtime !== expectedRuntime) return null;
+    const architectures = raw.architectures === undefined ? undefined
+      : snapshotDenseArray(raw.architectures, 5);
+    const platforms = raw.platforms === undefined ? undefined
+      : snapshotDenseArray(raw.platforms, 5);
+    if ((raw.architectures !== undefined && !architectures) ||
+        (raw.platforms !== undefined && !platforms)) return null;
+    const deviceRequirements: DeviceCapabilityRequirements = Object.freeze({
+      runtime: raw.runtime as DeviceCapabilityRequirements["runtime"],
+      minimumRamMb: raw.minimumRamMb as number,
+      ...(raw.minimumAvailableRamMb === undefined ? {} : { minimumAvailableRamMb: raw.minimumAvailableRamMb as number }),
+      ...(raw.minimumCpuCores === undefined ? {} : { minimumCpuCores: raw.minimumCpuCores as number }),
+      ...(raw.requiresGpu === undefined ? {} : { requiresGpu: raw.requiresGpu as boolean }),
+      ...(architectures === undefined ? {} : { architectures: Object.freeze(architectures) as unknown as DeviceArchitecture[] }),
+      ...(platforms === undefined ? {} : { platforms: Object.freeze(platforms) as unknown as DevicePlatform[] }),
+      ...(raw.minimumAndroidApiLevel === undefined ? {} : { minimumAndroidApiLevel: raw.minimumAndroidApiLevel as number }),
+    });
+    validateDeviceCapabilityRequirements(deviceRequirements);
+    const transcribe = (fields.transcribe as SpeechToTextAdapter["transcribe"]).bind(value);
+    return Object.freeze({
+      engine: "whisper.cpp",
+      runtime: expectedRuntime,
+      modelId: fields.modelId,
+      deviceRequirements,
+      transcribe,
+    });
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Creates a fail-closed registry for the first planned transcription engine.
  * It does not install whisper.cpp, download model weights, or enable remote
@@ -379,8 +429,15 @@ export function resolveWhisperCppRuntime(
   const decision = assessDeviceCompatibility(profile, requirements);
   if (!decision.compatible) return { available: false, reasons: decision.reasons };
   const runtime = requirements.runtime as SpeechToTextRuntime;
-  const adapter = safeRegistry.getAdapter(runtime);
-  if (!adapter) return { available: false, reasons: ["adapter_not_installed"] };
+  let adapterValue: unknown;
+  try {
+    adapterValue = safeRegistry.getAdapter(runtime);
+  } catch {
+    return { available: false, reasons: ["adapter_lookup_failed"] };
+  }
+  if (adapterValue === undefined) return { available: false, reasons: ["adapter_not_installed"] };
+  const adapter = snapshotRegisteredAdapter(adapterValue, runtime);
+  if (!adapter) return { available: false, reasons: ["invalid_whisper_cpp_adapter"] };
   const modelDecision = assessDeviceCompatibility(profile, adapter.deviceRequirements);
   if (!modelDecision.compatible) {
     return { available: false, reasons: modelDecision.reasons };
