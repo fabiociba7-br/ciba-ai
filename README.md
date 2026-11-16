@@ -11,7 +11,7 @@ Gateway privado de IA compartilhada para aplicativos da família Ciba.
 - Perfis especialistas selecionados sem chamadas adicionais no modo econômico single-pass.
 - Memória limitada ao contexto enviado; conversas não são persistidas pelo gateway.
 - Primitiva opt-in de ensemble para até três especialistas independentes e uma síntese, ainda desativada sem providers configurados.
-- Registro de providers e contratos tipados para futuras ferramentas controladas.
+- Registro de providers e ferramentas opt-in com allowlist, validação de entrada/saída e autorização pela aplicação.
 - Sem fallback pago, cobrança automática ou uso de credenciais Google do mantenedor.
 - Limites diários por dispositivo, aplicativo e instalação.
 - Não persistir o conteúdo das conversas.
@@ -22,7 +22,7 @@ A franquia gratuita documentada pela Cloudflare é de 10.000 Neurons por dia. No
 
 ## Estado do projeto
 
-A base do Worker, autenticação por dispositivo, cotas, administração, API de configurações e testes locais de integração estão implementados. O CI valida o TypeScript e executa testes unitários e de integração. Ainda exige provisionamento da conta Cloudflare, criação do banco D1, aplicação das migrations, definição dos segredos, confirmação dos package IDs Android e teste real de inferência antes de uso.
+A base do Worker, autenticação por dispositivo, cotas, administração e API de configurações estão implementadas. O workflow de CI está configurado para execução manual e validação de TypeScript; não executa testes nem gera APK automaticamente. O registro de ferramentas do núcleo é uma primitiva opt-in e ainda não está conectado ao orquestrador ou à chamada do modelo. Ainda exige provisionamento da conta Cloudflare, criação do banco D1, aplicação das migrations, definição dos segredos, confirmação dos package IDs Android e teste real de inferência antes de uso.
 
 ## Arquitetura
 
@@ -92,7 +92,7 @@ O nome do modelo é configurado em `AI_MODEL`. Antes de produção, confirme no 
 - `GET /v1/admin/settings`
 - `POST /v1/admin/settings`
 
-Consulte [PROVISIONING.md](docs/PROVISIONING.md) para o roteiro de ativação sem provisionamento automático. Consulte [TESTING.md](docs/TESTING.md) para executar os testes locais sem credenciais Cloudflare. Consulte [APP_INTEGRATION.md](docs/APP_INTEGRATION.md) para o contrato de integração dos clientes. Consulte [SECURITY.md](docs/SECURITY.md) antes de disponibilizar convites ou distribuir os aplicativos. A futura tela Configurações deve usar a API descrita em [SETTINGS.md](docs/SETTINGS.md); segredos de infraestrutura nunca devem ser enviados ao cliente.
+Consulte [TOOLS.md](docs/TOOLS.md) para ativar ferramentas com autorização explícita e conhecer os limites do registro. Consulte [PROVISIONING.md](docs/PROVISIONING.md) para o roteiro de ativação sem provisionamento automático. Consulte [TESTING.md](docs/TESTING.md) para executar os testes locais sem credenciais Cloudflare. Consulte [APP_INTEGRATION.md](docs/APP_INTEGRATION.md) para o contrato de integração dos clientes. Consulte [SECURITY.md](docs/SECURITY.md) antes de disponibilizar convites ou distribuir os aplicativos. A futura tela Configurações deve usar a API descrita em [SETTINGS.md](docs/SETTINGS.md); segredos de infraestrutura nunca devem ser enviados ao cliente.
 
 
 ## Proteções de uso
