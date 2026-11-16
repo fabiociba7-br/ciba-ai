@@ -66,6 +66,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <div class="switchrow"><div><strong>Incluir memórias expiradas</strong><div class="small muted">Permite revisar e renovar a validade.</div></div><input id="memory-expired" type="checkbox" aria-label="Incluir memórias expiradas"></div>
 <div class="actions"><button id="memory-search-button" class="secondary">Pesquisar memórias</button></div>
 <div id="memory-list" class="muted small">Ative a memória para gerenciar os registros.</div>
+<h3 style="margin-top:22px">Aprendizado aguardando revisão</h3><p class="small muted">Novas informações e possíveis conflitos só entram na memória após sua aprovação.</p><div id="memory-reviews" class="muted small">Nenhuma proposta carregada.</div>
 </section>
 <section class="panel" style="margin-bottom:16px"><h3>Aplicativos conectados</h3><div id="apps-list" class="muted small">Nenhum dado carregado.</div></section>
 <section class="panel" style="margin-bottom:16px"><h3>Conectar novo aplicativo</h3>
@@ -161,13 +162,35 @@ actions.appendChild(edit);actions.appendChild(remove);card.appendChild(details);
 });
 }catch(error){host.appendChild(el("p","Não foi possível carregar este escopo: "+error.message))}
 };
-var refresh=async function(){var data=await api("/v1/owner/dashboard");render(data);await loadAvailableApps();await loadMemories()};
+var loadMemoryReviews=async function(){
+var host=byId("memory-reviews");host.replaceChildren();
+if(!byId("memory").checked){host.appendChild(el("p","Ative a memória privada para revisar propostas."));return}
+var scope=byId("memory-scope").value;
+try{
+var data=await api("/v1/owner/memory/reviews?scope="+encodeURIComponent(scope));
+var proposals=data.proposals||[];
+if(!proposals.length){host.appendChild(el("p","Nenhuma proposta aguardando revisão."));return}
+proposals.forEach(function(p){
+var card=el("div","");card.className="rowline";card.style.alignItems="flex-start";
+var details=el("div","");details.style.flex="1";details.style.minWidth="0";
+details.appendChild(el("strong",p.memory_key+" · "+(p.classification==="new"?"Nova informação":p.classification==="unchanged"?"Informação já existente":"Possível conflito")));
+details.appendChild(el("div","Proposta: "+p.proposed_value));
+if(p.existing_value_snapshot)details.appendChild(el("small","Memória atual: "+p.existing_value_snapshot));
+details.appendChild(el("small","Evidência apresentada: "+p.evidence_excerpt+" · App: "+p.proposed_by_app_id));
+var actions=el("div","");actions.className="actions";
+var approve=el("button","Aprovar");approve.addEventListener("click",async function(){if(!confirm("Aprovar esta informação e "+(p.classification==="possible_conflict"?"atualizar a memória existente?":"salvá-la na memória")+"?"))return;try{await api("/v1/owner/memory/reviews?scope="+encodeURIComponent(scope),"PATCH",{proposal_id:p.proposal_id,decision:"approve"});say("Proposta aprovada.");await loadMemories();await loadMemoryReviews()}catch(e){say(e.message)}});
+var reject=el("button","Rejeitar");reject.className="danger";reject.addEventListener("click",async function(){if(!confirm("Rejeitar esta proposta? A memória não será alterada."))return;try{await api("/v1/owner/memory/reviews?scope="+encodeURIComponent(scope),"PATCH",{proposal_id:p.proposal_id,decision:"reject"});say("Proposta rejeitada.");await loadMemoryReviews()}catch(e){say(e.message)}});
+actions.appendChild(approve);actions.appendChild(reject);card.appendChild(details);card.appendChild(actions);host.appendChild(card);
+});
+}catch(error){host.appendChild(el("p","Não foi possível carregar as propostas: "+error.message))}
+};
+var refresh=async function(){var data=await api("/v1/owner/dashboard");render(data);await loadAvailableApps();await loadMemories();await loadMemoryReviews()};
 byId("connect").addEventListener("click",async function(){var value=byId("token").value.trim();if(value.length<32){loginSay("Informe um token válido.");return}token=value;byId("connect").disabled=true;loginSay("Verificando acesso...");try{await refresh();byId("login").style.display="none";byId("app").style.display="block";byId("logout").style.display="inline-block";byId("token").value="";loginSay("")}catch(e){token=null;loginSay(e.message)}finally{byId("connect").disabled=false}});
 byId("refresh").addEventListener("click",async function(){try{await refresh();say("Dados atualizados.")}catch(e){say(e.message)}});
-byId("memory-search-button").addEventListener("click",function(){loadMemories()});
-byId("memory-scope").addEventListener("change",function(){loadMemories()});
+byId("memory-search-button").addEventListener("click",function(){loadMemories();loadMemoryReviews()});
+byId("memory-scope").addEventListener("change",function(){loadMemories();loadMemoryReviews()});
 byId("memory-expired").addEventListener("change",function(){loadMemories()});
-byId("memory").addEventListener("change",function(){loadMemories()});
+byId("memory").addEventListener("change",function(){loadMemories();loadMemoryReviews()});
 
 byId("logout").addEventListener("click",function(){token=null;dashboard=null;byId("app").style.display="none";byId("login").style.display="block";byId("logout").style.display="none";byId("token").value="";say("");loginSay("Sessão encerrada.")});
 byId("connect-app").addEventListener("click",async function(){var appId=byId("available-apps").value;if(!appId){say("Selecione um aplicativo habilitado.");return}var button=byId("connect-app");button.disabled=true;try{var result=await api("/v1/owner/apps/connect","POST",{app_id:appId});byId("registration-code").value=result.registration_invitation_code;byId("pairing-code").value=result.pairing_invitation_code;byId("connection-expiry").textContent="Validade dos dois códigos: até "+dateText(result.expires_at)+". Cada código só pode ser usado uma vez.";byId("connection-result").style.display="block";say("Convites gerados. Copie e encaminhe os códigos com segurança.")}catch(e){say(e.message)}finally{button.disabled=false}});
