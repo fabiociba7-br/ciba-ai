@@ -22,7 +22,7 @@ describe("deterministic owner profile", () => {
   it("finds recurring terms only when supported by distinct memories", () => {
     const result = buildOwnerProfile([
       record("a", "response_style", "Prefere respostas diretas e objetivas"),
-      record("b", "work_style", "Prefere comunicação direta e objetiva"),
+      record("b", "work_style", "Prefere respostas diretas e objetivas"),
       record("c", "other", "Uma anotação isolada"),
     ], new Date("2026-11-01T00:00:00.000Z"));
     const terms = result.recurring_preferences.map((item) => item.term);
