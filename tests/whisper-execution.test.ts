@@ -208,6 +208,7 @@ describe("guarded Whisper.cpp transcription execution", () => {
       ...adapter,
       transcribe: async () => {
         adapterCalls += 1;
+        if (adapterCalls > 1) return adapter.transcribe(request);
         return new Promise<SpeechToTextResult>((resolve) => {
           finish = resolve;
           markStarted?.();
