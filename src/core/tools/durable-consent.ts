@@ -155,7 +155,7 @@ export function createD1ToolApprovalStore(
     throw new Error("invalid_tool_approval_ttl");
   }
 
-  return Object.freeze({
+  return Object.freeze<DurableToolApprovalStore>({
     async request(identity, request) {
       validateIdentity(identity);
       const { inputJson } = validateRequest(request);
