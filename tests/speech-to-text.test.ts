@@ -60,6 +60,34 @@ describe("Garcia Whisper.cpp integration contract", () => {
     expect(registry.getAdapter("android_embedded")?.modelId).toBe("ggml-tiny");
   });
 
+  it("keeps the registered adapter inventory isolated from source and returned arrays", () => {
+    const sourceAdapters: SpeechToTextAdapter[] = [adapter];
+    const registry = createWhisperCppRegistry({
+      ...policy,
+      licenseStatus: "approved",
+    }, sourceAdapters);
+
+    sourceAdapters.length = 0;
+    sourceAdapters.push({
+      ...adapter,
+      runtime: "desktop_local",
+      modelId: "replacement-model",
+      deviceRequirements: {
+        ...adapter.deviceRequirements,
+        runtime: "desktop_local",
+      },
+    });
+
+    const firstListing = registry.listAvailableRuntimes();
+    expect(firstListing).toEqual(["android_embedded"]);
+    firstListing.push("desktop_local");
+    firstListing.splice(0, 1);
+
+    expect(registry.listAvailableRuntimes()).toEqual(["android_embedded"]);
+    expect(registry.getAdapter("android_embedded")?.modelId).toBe("ggml-tiny");
+    expect(registry.getAdapter("desktop_local")).toBeUndefined();
+  });
+
   it("registers only explicitly approved adapters on supported runtimes", () => {
     const registry = createWhisperCppRegistry({
       ...policy,
