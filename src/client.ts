@@ -156,6 +156,17 @@ export interface CibaMemoryReviewProposal {
   inference_calls: 0;
   existing_memory_id: string | null;
 }
+export interface CibaOwnerProfile<T = Record<string, unknown>> {
+  profile: Record<"preferences" | "communication" | "work" | "interests" | "routines" | "personal_context" | "other", T[]>;
+  recurring_preferences: Array<{ term: string; occurrences: number; memory_ids: string[]; memory_keys: string[] }>;
+  review_suggestions: Array<{ type: "possible_conflict" | "stale_memory"; memory_ids: string[]; memory_keys: string[]; reason: string; requires_owner_confirmation: true }>;
+  analyzed_records: number;
+  inference_calls: 0;
+  automatic_changes: false;
+  cross_app_memory_requires_explicit_grant: true;
+  profile_is_inferred: false;
+}
+
 export interface CibaMemoryHistoryEvent {
   event_id: string;
   memory_id: string | null;
@@ -461,6 +472,10 @@ export class CibaClient {
 
   getMemoryInsights<T = Record<string, unknown>>(): Promise<CibaMemoryInsights<T>> {
     return this.request("/v1/owner/memory/insights");
+  }
+
+  getOwnerProfile<T = Record<string, unknown>>(): Promise<CibaOwnerProfile<T>> {
+    return this.request("/v1/owner/profile");
   }
 
   listMemory<T = Record<string, unknown>>(scope: CibaMemoryScope = "app", sourceAppId?: string, options: { search?: string; includeExpired?: boolean } = {}): Promise<{ memories: T[]; maximum: number; scope: CibaMemoryScope; search: string; include_expired: boolean }> {
