@@ -40,6 +40,26 @@ export type CibaTaskType =
   | "analyze" | "classify" | "draft" | "extract" | "organize"
   | "plan" | "research" | "summarize" | "transcribe" | "translate";
 
+/** A processor is implemented and owned by the receiving application. */
+export type CibaTaskProcessor = (
+  consumption: TaskRequestConsumption,
+) => Promise<Record<string, unknown>> | Record<string, unknown>;
+
+/** Only task types with a local callback are executable by this app instance. */
+export type CibaTaskProcessorRegistry = Partial<Record<CibaTaskType, CibaTaskProcessor>>;
+
+const CIBA_TASK_TYPES: readonly CibaTaskType[] = [
+  "analyze", "classify", "draft", "extract", "organize",
+  "plan", "research", "summarize", "transcribe", "translate",
+];
+
+export function getRegisteredTaskTypes(registry: CibaTaskProcessorRegistry): CibaTaskType[] {
+  return CIBA_TASK_TYPES.filter((taskType) =>
+    Object.prototype.hasOwnProperty.call(registry, taskType) &&
+    typeof registry[taskType] === "function"
+  );
+}
+
 export interface CibaTaskDispatchInput {
   taskType: CibaTaskType;
   instruction: string;
@@ -516,6 +536,25 @@ export class CibaClient {
       result,
       acknowledged: true,
     };
+  }
+
+  /**
+   * Executes a task only when this app has a locally registered processor for its exact type.
+   * Unsupported task messages are left unacknowledged for explicit handling or retry.
+   */
+  async executeRegisteredTaskMessage<T extends Record<string, unknown>>(
+    message: CibaInboxMessage<unknown>,
+    processors: CibaTaskProcessorRegistry,
+  ): Promise<CibaTaskExecutionResult<T>> {
+    const consumption = this.consumeTaskMessage(message);
+    if (!consumption.accepted || !consumption.task) {
+      throw new Error(consumption.errors[0] ?? "invalid_task_request");
+    }
+    const processor = processors[consumption.task.task_type];
+    if (typeof processor !== "function") {
+      throw new Error("task_type_not_supported_by_app");
+    }
+    return this.executeTaskMessage(message, processor as (value: TaskRequestConsumption) => Promise<T> | T);
   }
 
   /** Validate and prepare a task message from the inbox for the app's own task processor. */
