@@ -36,6 +36,43 @@ function validId(value: unknown): value is string {
   return typeof value === "string" && /^[a-z][a-z0-9._-]{0,63}$/.test(value);
 }
 
+function readPlainRecord(value: unknown, allowedKeys: string[]): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value) ||
+      Object.getPrototypeOf(value) !== Object.prototype) throw new Error("invalid_tool_definition");
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Reflect.ownKeys(descriptors);
+  if (keys.some((key) => typeof key !== "string" || !allowedKeys.includes(key))) {
+    throw new Error("invalid_tool_definition");
+  }
+  const result: Record<string, unknown> = Object.create(null);
+  for (const key of keys as string[]) {
+    const descriptor = descriptors[key];
+    if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+      throw new Error("invalid_tool_definition");
+    }
+    result[key] = descriptor.value;
+  }
+  return result;
+}
+
+function snapshotDenseArray(value: unknown, maxLength: number): unknown[] {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      value.length > maxLength) throw new Error("invalid_tool_definitions");
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  if (Reflect.ownKeys(descriptors).length !== value.length + 1) {
+    throw new Error("invalid_tool_definitions");
+  }
+  const result: unknown[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = descriptors[String(index)];
+    if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+      throw new Error("invalid_tool_definitions");
+    }
+    result.push(descriptor.value);
+  }
+  return result;
+}
+
 function jsonBytes(value: unknown): number {
   let serialized: string;
   try { serialized = JSON.stringify(value); }
@@ -229,26 +266,28 @@ export function createCibaToolRegistry(
   definitions: CibaToolDefinition[],
   options: CibaToolRegistryOptions
 ): ExecutableCibaToolRegistry {
-  if (!options || typeof options.authorize !== "function") {
-    throw new Error("tool_authorizer_required");
-  }
-  const authorize = options.authorize;
-  const allowlist = new Set((options.allowlist ?? []).filter(validId));
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const maxInputBytes = options.maxInputBytes ?? MAX_INPUT_BYTES;
-  const maxOutputBytes = options.maxOutputBytes ?? MAX_OUTPUT_BYTES;
-  const maxConcurrentExecutions = options.maxConcurrentExecutions ?? DEFAULT_MAX_CONCURRENT_EXECUTIONS;
+  const optionFields = readPlainRecord(options, [
+    "allowlist", "authorize", "timeoutMs", "maxInputBytes", "maxOutputBytes", "maxConcurrentExecutions"
+  ]);
+  const authorize = optionFields.authorize;
+  if (typeof authorize !== "function") throw new Error("tool_authorizer_required");
+  const rawAllowlist = optionFields.allowlist === undefined ? [] :
+    snapshotDenseArray(optionFields.allowlist, MAX_TOOLS);
+  if (!rawAllowlist.every(validId)) throw new Error("invalid_tool_allowlist");
+  const allowlist = new Set(rawAllowlist as string[]);
+  const timeoutMs = optionFields.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const maxInputBytes = optionFields.maxInputBytes ?? MAX_INPUT_BYTES;
+  const maxOutputBytes = optionFields.maxOutputBytes ?? MAX_OUTPUT_BYTES;
+  const maxConcurrentExecutions = optionFields.maxConcurrentExecutions ?? DEFAULT_MAX_CONCURRENT_EXECUTIONS;
 
-  if (!Number.isInteger(maxConcurrentExecutions) || maxConcurrentExecutions < 1 ||
-      maxConcurrentExecutions > 32 ||
-      !Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 120_000 ||
-      !Number.isInteger(maxInputBytes) || maxInputBytes < 1 || maxInputBytes > MAX_INPUT_BYTES ||
-      !Number.isInteger(maxOutputBytes) || maxOutputBytes < 1 || maxOutputBytes > MAX_OUTPUT_BYTES) {
+  if (!Number.isInteger(maxConcurrentExecutions) || (maxConcurrentExecutions as number) < 1 ||
+      (maxConcurrentExecutions as number) > 32 ||
+      !Number.isInteger(timeoutMs) || (timeoutMs as number) < 100 || (timeoutMs as number) > 120_000 ||
+      !Number.isInteger(maxInputBytes) || (maxInputBytes as number) < 1 || (maxInputBytes as number) > MAX_INPUT_BYTES ||
+      !Number.isInteger(maxOutputBytes) || (maxOutputBytes as number) < 1 || (maxOutputBytes as number) > MAX_OUTPUT_BYTES) {
     throw new Error("invalid_tool_registry_limits");
   }
-  if (!Array.isArray(definitions) || definitions.length > MAX_TOOLS) {
-    throw new Error("invalid_tool_definitions");
-  }
+  const safeDefinitions = snapshotDenseArray(definitions, MAX_TOOLS);
 
   const registered = new Map<string, {
     definition: CibaToolDefinition;
@@ -256,21 +295,29 @@ export function createCibaToolRegistry(
   }>();
   let activeExecutions = 0;
 
-  for (const definition of definitions) {
-    if (!definition || typeof definition !== "object" ||
-        !validId(definition.id) ||
-        typeof definition.description !== "string" ||
-        definition.description.trim().length === 0 ||
-        definition.description.length > 500 ||
-        !VALID_RISKS.includes(definition.risk) ||
-        typeof definition.requiresApproval !== "boolean" ||
-        typeof definition.execute !== "function" ||
-        (definition.risk !== "read" && definition.requiresApproval !== true) ||
-        registered.has(definition.id) ||
-        !allowlist.has(definition.id)) continue;
+  for (const rawDefinition of safeDefinitions) {
+    let fields: Record<string, unknown>;
+    try {
+      fields = readPlainRecord(rawDefinition, ["id", "description", "risk", "inputSchema", "requiresApproval", "execute"]);
+    } catch { continue; }
+    const id = fields.id;
+    const description = fields.description;
+    const risk = fields.risk;
+    const requiresApproval = fields.requiresApproval;
+    const execute = fields.execute;
+    if (!validId(id) ||
+        typeof description !== "string" ||
+        description.trim().length === 0 ||
+        description.length > 500 ||
+        !VALID_RISKS.includes(risk as CibaToolRisk) ||
+        typeof requiresApproval !== "boolean" ||
+        typeof execute !== "function" ||
+        (risk !== "read" && requiresApproval !== true) ||
+        registered.has(id) ||
+        !allowlist.has(id)) continue;
 
     let schema: Record<string, unknown>;
-    try { schema = cloneJson(definition.inputSchema) as Record<string, unknown>; }
+    try { schema = cloneJson(fields.inputSchema) as Record<string, unknown>; }
     catch { continue; }
 
     if (!schema || schema.type !== "object" ||
@@ -282,14 +329,14 @@ export function createCibaToolRegistry(
              Object.prototype.hasOwnProperty.call(schema.properties, key)))) ||
         schema.additionalProperties !== false) continue;
 
-    registered.set(definition.id, {
+    registered.set(id, {
       definition: Object.freeze({
-        id: definition.id,
-        description: definition.description,
-        risk: definition.risk,
+        id,
+        description,
+        risk: risk as CibaToolRisk,
         inputSchema: deepFreeze(schema),
-        requiresApproval: definition.requiresApproval,
-        execute: definition.execute
+        requiresApproval,
+        execute: execute as CibaToolDefinition["execute"]
       }),
       schema: deepFreeze(schema)
     });
