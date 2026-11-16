@@ -416,10 +416,28 @@ export class CibaClient {
     });
   }
 
-  listMemory<T = Record<string, unknown>>(scope: CibaMemoryScope = "app", sourceAppId?: string): Promise<{ memories: T[]; maximum: number; scope: CibaMemoryScope }> {
+  listMemory<T = Record<string, unknown>>(scope: CibaMemoryScope = "app", sourceAppId?: string, options: { search?: string; includeExpired?: boolean } = {}): Promise<{ memories: T[]; maximum: number; scope: CibaMemoryScope; search: string; include_expired: boolean }> {
     const params = new URLSearchParams({ scope });
     if (sourceAppId) params.set("source_app_id", sourceAppId);
+    if (options.search) params.set("q", options.search.slice(0, 100));
+    if (options.includeExpired) params.set("include_expired", "true");
     return this.request(`/v1/owner/memory?${params.toString()}`);
+  }
+
+  updateMemory(input: { memoryId: string; scope: CibaMemoryScope; key: string; value: string; sourceAppId?: string; validHours?: number | null }): Promise<{ updated: boolean; memory_id: string; scope: CibaMemoryScope }> {
+    if (!input.memoryId.trim() || input.memoryId.length > 100) throw new Error("invalid_memory_id");
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(input.key.trim())) throw new Error("invalid_memory_key");
+    if (!input.value.trim() || input.value.length > 500) throw new Error("invalid_memory_value");
+    if (input.validHours !== undefined && input.validHours !== null && (!Number.isInteger(input.validHours) || input.validHours < 1 || input.validHours > 8760)) throw new Error("invalid_memory_valid_hours");
+    const params = new URLSearchParams({ scope: input.scope });
+    if (input.sourceAppId) params.set("source_app_id", input.sourceAppId);
+    return this.request(`/v1/owner/memory?${params.toString()}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        memory_id: input.memoryId, key: input.key, value: input.value, consent: "curated",
+        ...(input.validHours === undefined ? {} : { valid_hours: input.validHours }),
+      }),
+    });
   }
 
   async retrieveMemory<T = Record<string, unknown>>(query: string, limit = 10): Promise<{
