@@ -98,7 +98,10 @@ describe("Android Whisper.cpp bridge contract", () => {
       ]),
     );
     const adapter = createAndroidWhisperCppAdapter(bridge({
-      getStatus: async () => Object.defineProperties({}, status),
+      getStatus: async () => Object.defineProperties(
+        { ...values },
+        status,
+      ) as Awaited<ReturnType<AndroidWhisperCppBridge["getStatus"]>>,
     }), {
       modelId: "ggml-tiny",
       modelSha256: MODEL_SHA256,
