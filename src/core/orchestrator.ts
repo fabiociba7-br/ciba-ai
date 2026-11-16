@@ -140,6 +140,7 @@ function snapshotInput(value: unknown): {
   maxOutputTokens: number;
   provider: ModelProvider;
   memoryContext?: string;
+  toolRuntime?: { registry: ExecutableCibaToolRegistry; context: CibaToolInvocationContext };
 } {
   const fields = readPlainRecord(
     value,
