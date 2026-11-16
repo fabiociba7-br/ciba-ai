@@ -6,3 +6,6 @@ export type {
   CibaToolRegistryOptions,
   ExecutableCibaToolRegistry
 } from "./registry";
+
+export { createCibaToolConsentStore } from "./consent";
+export type { CibaToolConsentRequest, CibaToolConsentStatus, CibaToolConsentStore } from "./consent";
