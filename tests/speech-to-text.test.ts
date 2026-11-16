@@ -132,6 +132,39 @@ describe("Garcia Whisper.cpp integration contract", () => {
     expect(Object.isFrozen(registered?.deviceRequirements)).toBe(true);
   });
 
+  it("keeps the approved transcriber implementation after registration", async () => {
+    let originalCalls = 0;
+    const sourceAdapter: SpeechToTextAdapter = {
+      ...adapter,
+      transcribe: async () => {
+        originalCalls += 1;
+        return {
+          text: "Original",
+          language: "pt",
+          segments: [],
+          engine: "whisper.cpp",
+          modelId: "ggml-tiny",
+        };
+      },
+    };
+    const registry = createWhisperCppRegistry({
+      ...policy, licenseStatus: "approved",
+    }, [sourceAdapter]);
+    sourceAdapter.transcribe = async () => {
+      throw new Error("replacement_transcriber_must_not_run");
+    };
+
+    const registered = registry.getAdapter("android_embedded");
+    expect(registered).toBeDefined();
+    const result = await registered!.transcribe({
+      audio: new Uint8Array([1]),
+      consent: { granted: true, purpose: "transcription", source: "explicit_user_action" },
+      mimeType: "audio/wav",
+    });
+    expect(result.text).toBe("Original");
+    expect(originalCalls).toBe(1);
+  });
+
   it("enforces the selected model hardware floor in addition to runtime requirements", () => {
     const profile = {
       platform: "android" as const, architecture: "arm64" as const,
