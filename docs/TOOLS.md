@@ -77,3 +77,42 @@ Inputs and outputs are cloned through a strict JSON-value boundary. Non-finite n
 The registry is currently an application-facing primitive. It is exported by the core package but is not connected to the orchestrator or to model tool-calling. Applications must invoke `registry.execute` themselves after their own policy checks. Never pass arbitrary model-provided function names directly to an executor, and never expose privileged application functions merely by adding them to a model prompt.
 
 No provider, external service, or tool is activated by importing this module.
+
+
+## Invocation-bound approval
+
+Approval-required tools (`write` and `external`) must be prepared and executed with an explicit `{ conversationId, invocationId }` context. The application should use the same context and the exact `plan.input` when requesting consent, then pass that context and input to `execute`.
+
+The exported `createCibaToolConsentStore()` provides a one-use in-memory consent boundary:
+
+```ts
+const consent = createCibaToolConsentStore();
+const context = { conversationId, invocationId };
+const plan = registry.prepare(toolId, proposedInput, context);
+
+const state = consent.request({
+  ...context,
+  toolId: plan.toolId,
+  risk: plan.risk,
+  input: plan.input
+});
+
+if (state === "approval_required") {
+  // Show the exact tool, risk and plan.input in trusted application UI.
+  // Only call answer after the user explicitly chooses Allow or Deny.
+  const allowed = consent.answer(
+    context.invocationId,
+    context.conversationId,
+    plan.toolId,
+    plan.input,
+    userExplicitlyAllowed
+  );
+  if (!allowed) throw new Error("tool_authorization_denied");
+}
+
+const result = await registry.execute(plan.toolId, plan.input, context);
+```
+
+The registry's trusted `authorize` callback must consume the matching one-use grant. For example, it can call `consent.consume(request)` for approval-required tools and apply the application's normal policy for read-only tools. A grant expires after five minutes, is bound to the canonical input and cannot be reused. Denial, cancellation or a changed input cannot authorize execution. The store is in-memory only; it does not persist grants or silently approve future calls.
+
+Do not set `userExplicitlyAllowed` from model output, a tool proposal, or a preview. It must come from the application's trusted user interaction.
