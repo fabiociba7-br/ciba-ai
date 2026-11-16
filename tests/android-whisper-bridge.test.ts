@@ -340,6 +340,26 @@ describe("Android Whisper.cpp bridge contract", () => {
     expect(segmentReads).toEqual({ startMs: 1, endMs: 1, text: 1 });
   });
 
+  it("does not invoke a native segments iterator", async () => {
+    const nativeSegments = [{ startMs: 0, endMs: 500, text: "Olá" }];
+    Object.defineProperty(nativeSegments, Symbol.iterator, {
+      get() { throw new Error("native_segments_iterator_must_not_run"); },
+    });
+    const adapter = createAndroidWhisperCppAdapter(bridge({
+      transcribe: async () => ({ ...result, segments: nativeSegments }) as SpeechToTextResult,
+    }), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+
+    await expect(adapter.transcribe(request)).resolves.toMatchObject({
+      text: "Olá",
+      segments: [{ startMs: 0, endMs: 500, text: "Olá" }],
+    });
+  });
+
   it("rejects native transcription results with throwing getters", async () => {
     const malformedResult = Object.defineProperty({}, "text", {
       enumerable: true,
