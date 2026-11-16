@@ -104,6 +104,12 @@ A resposta tipada `CibaAppIdentity` inclui o perfil do app autenticado, capacida
 O destino só pode responder a uma solicitação ativa originalmente encaminhada a ele. A resposta exige concessões direcionais inversas no escopo `task`; a consulta exige autenticação do proprietário pareado. O SDK não persiste resultados nem executa a consolidação semântica por conta própria.
 
 
+## Acompanhamento do ciclo de vida das tarefas (etapa 37)
+
+`getTaskStatus(taskId)` consulta `GET /v1/apps/tasks/status?task_id=...`. O endpoint só retorna tarefas originadas pelo aplicativo autenticado e exige proprietário pareado, mensagens habilitadas e concessões direcionais de tarefa ainda válidas.
+
+Os estados são `awaiting_delivery` (ainda não confirmada no inbox), `processing` (recebida, sem resposta), `completed`, `partial`, `failed` ou `expired`. A confirmação do inbox indica recebimento, não execução. O status de conclusão só muda quando o app destinatário envia um resultado correlacionado por `submitTaskResult()`. A consulta não executa, reenvia ou altera tarefas; utiliza os registros já existentes na fila e não requer nova tabela ou migration.
+
 ## Consolidação dos resultados de tarefas
 
 getTaskResults(taskId) continua retornando os resultados individuais e agora inclui consolidation, com status, contagens, fontes, consenso estrutural e indicação de divergência. O campo consensus_result só é preenchido quando existe uma única saída utilizável ou quando todas as saídas utilizáveis são estruturalmente idênticas. Em divergência, é null; o SDK não escolhe nem combina respostas por conta própria.
