@@ -28,8 +28,8 @@ export type { AppType, AppCapability, AppTaskType, AppIdentityProfile, AppProfil
 export { GARCIA_NATIVE_CAPABILITIES, createNativeCapabilityRegistry } from "./native-capabilities";
 export type { NativeCapabilityAdapter, NativeCapabilityCategory, NativeCapabilityDefinition, NativeCapabilityLicenseStatus, NativeCapabilityRegistry, NativeCapabilityRuntime, NativeCapabilityStatus } from "./native-capabilities";
 
-export { createWhisperCppRegistry, validateSpeechToTextRequest, resolveWhisperCppRuntime } from "./speech-to-text";
-export type { SpeechToTextRuntimeResolution } from "./speech-to-text";
+export { createWhisperCppRegistry, validateSpeechToTextRequest, resolveWhisperCppRuntime, runWhisperCppTranscription } from "./speech-to-text";
+export type { SpeechToTextRuntimeResolution, SpeechToTextExecution } from "./speech-to-text";
 export type { SpeechToTextAdapter, SpeechToTextEnginePolicy, SpeechToTextRegistry, SpeechToTextRequest, SpeechToTextResult, SpeechSegment, SpeechToTextRuntime } from "./speech-to-text";
 
 export { assessDeviceCompatibility, validateDeviceCapabilityProfile } from "./device-capabilities";
