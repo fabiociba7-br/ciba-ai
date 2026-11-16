@@ -392,6 +392,51 @@ describe("CibaClient", () => {
     expect(fetcher.mock.calls[1][0]).toBe("https://private.example/v1/apps/messages/ack");
   });
 
+  it("lists only locally implemented task processors in a stable order", async () => {
+    const { getRegisteredTaskTypes } = await import("../src/client");
+    const processors = {
+      summarize: async () => ({ summary: "ok" }),
+      analyze: () => ({ analysis: "ok" }),
+      draft: "not-a-function",
+    } as unknown as import("../src/client").CibaTaskProcessorRegistry;
+    expect(getRegisteredTaskTypes(processors)).toEqual(["analyze", "summarize"]);
+  });
+
+  it("does not execute or acknowledge a task type without a local processor", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const message = {
+      message_id: "message-unsupported", source_app_id: "com.source", destination_app_id: "com.destination",
+      task_id: "task-unsupported", scope: "task" as const, created_at: "2026-11-15T10:00:00.000Z",
+      expires_at: "2026-11-16T10:00:00.000Z",
+      payload: { protocol: "garcia.task.request", task_id: "task-unsupported", task_type: "summarize", instruction: "Resumir" },
+    };
+    await expect(client.executeRegisteredTaskMessage(message, {
+      analyze: () => ({ analysis: "não deve executar" }),
+    })).rejects.toThrow("task_type_not_supported_by_app");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("executes a registered task processor and reports only the supported type", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ accepted: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ acknowledged: 1, requested: 1 }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const message = {
+      message_id: "message-registered", source_app_id: "com.source", destination_app_id: "com.destination",
+      task_id: "task-registered", scope: "task" as const, created_at: "2026-11-15T10:00:00.000Z",
+      expires_at: "2026-11-16T10:00:00.000Z",
+      payload: { protocol: "garcia.task.request", task_id: "task-registered", task_type: "summarize", instruction: "Resumir" },
+    };
+    const processors = { summarize: ({ task }) => ({ summary: task.instruction }) };
+    const result = await client.executeRegisteredTaskMessage(message, processors);
+    expect(result.status).toBe("completed");
+    expect(result.result).toEqual({ summary: "Resumir" });
+    const { getRegisteredTaskTypes } = await import("../src/client");
+    expect(getRegisteredTaskTypes(processors)).toEqual(["summarize"]);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
   it("does not treat a context-scope inbox message as a task", () => {
     const client = new CibaClient({ baseUrl: "https://private.example" });
     const result = client.consumeTaskMessage({
