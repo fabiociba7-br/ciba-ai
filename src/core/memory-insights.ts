@@ -16,6 +16,54 @@ export interface MemoryInsightPair {
   reason: "same_key_different_value" | "related_content";
 }
 
+const MAX_INSIGHT_RECORDS = 200;
+
+function snapshotInsightRecords(value: unknown): MemoryInsightRecord[] | null {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+        value.length > MAX_INSIGHT_RECORDS) return null;
+    const arrayDescriptors = Object.getOwnPropertyDescriptors(value);
+    if (Reflect.ownKeys(arrayDescriptors).length !== value.length + 1) return null;
+    const result: MemoryInsightRecord[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+      const itemDescriptor = arrayDescriptors[String(index)];
+      if (!itemDescriptor || !("value" in itemDescriptor) || !itemDescriptor.enumerable) return null;
+      const item = itemDescriptor.value;
+      if (item === null || typeof item !== "object" || Array.isArray(item) ||
+          Object.getPrototypeOf(item) !== Object.prototype) return null;
+      const descriptors = Object.getOwnPropertyDescriptors(item);
+      const allowed = new Set(["memory_id", "scope", "source_app_id", "memory_key", "value", "updated_at", "expires_at"]);
+      const keys = Reflect.ownKeys(descriptors);
+      if (keys.length !== allowed.size || keys.some((key) => typeof key !== "string" || !allowed.has(key))) return null;
+      const fields: Record<string, unknown> = Object.create(null);
+      for (const key of keys as string[]) {
+        const descriptor = descriptors[key];
+        if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
+        fields[key] = descriptor.value;
+      }
+      if (typeof fields.memory_id !== "string" || fields.memory_id.length > 200 ||
+          (fields.scope !== "app" && fields.scope !== "owner") ||
+          !(fields.source_app_id === null || (typeof fields.source_app_id === "string" && fields.source_app_id.length <= 200)) ||
+          typeof fields.memory_key !== "string" || fields.memory_key.length > 200 ||
+          typeof fields.value !== "string" || fields.value.length > 8_000 ||
+          typeof fields.updated_at !== "string" || fields.updated_at.length > 100 ||
+          !(fields.expires_at === null || (typeof fields.expires_at === "string" && fields.expires_at.length <= 100))) return null;
+      result.push(Object.freeze({
+        memory_id: fields.memory_id,
+        scope: fields.scope,
+        source_app_id: fields.source_app_id,
+        memory_key: fields.memory_key,
+        value: fields.value,
+        updated_at: fields.updated_at,
+        expires_at: fields.expires_at,
+      }) as MemoryInsightRecord);
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 const STOP = new Set(["a","as","o","os","de","da","do","das","dos","e","em","no","na","nos","nas","para","por","com","que","um","uma","the","and","of","to"]);
 
 function normalize(value: string): string {
@@ -38,6 +86,66 @@ export function analyzeMemoryRelationships(
   outdated: Array<MemoryInsightRecord & { reason: "expired" | "not_reviewed_recently"; age_days: number }>;
   analyzed_records: number;
   inference_calls: 0;
+} {
+  const empty = {
+    possible_conflicts: [],
+    related: [],
+    outdated: [],
+    analyzed_records: 0,
+    inference_calls: 0 as const,
+  };
+  if (!(now instanceof Date) || !Number.isFinite(now.getTime()) ||
+      !Number.isFinite(staleAfterDays) || !Number.isFinite(maxPairs) ||
+      !Number.isSafeInteger(maxPairs)) return empty;
+  const bounded = snapshotInsightRecords(records);
+  if (!bounded) return empty;
+  const pairLimit = Math.min(Math.max(maxPairs, 0), 30);
+  if (pairLimit === 0) {
+    return { ...empty, analyzed_records: bounded.length };
+  }
+  const conflicts: MemoryInsightPair[] = [];
+  const related: MemoryInsightPair[] = [];
+  const staleMs = Math.max(1, staleAfterDays) * 86400000;
+  const outdated = bounded.flatMap((record) => {
+    const updated = Date.parse(record.updated_at);
+    if (!Number.isFinite(updated)) return [];
+    const age = Math.max(0, Math.floor((now.getTime() - updated) / 86400000));
+    const expired = !!record.expires_at && Date.parse(record.expires_at) <= now.getTime();
+    if (!expired && now.getTime() - updated < staleMs) return [];
+    return [{ ...record, reason: expired ? "expired" as const : "not_reviewed_recently" as const, age_days: age }];
+  });
+  const seen = new Set<string>();
+  for (let i = 0; i < bounded.length; i += 1) {
+    for (let j = i + 1; j < bounded.length; j += 1) {
+      const first = bounded[i], second = bounded[j];
+      const pairId = [first.memory_id, second.memory_id].sort().join(":");
+      if (seen.has(pairId)) continue;
+      const sameKey = normalize(first.memory_key) === normalize(second.memory_key);
+      const firstValue = normalize(first.value), secondValue = normalize(second.value);
+      if (sameKey && firstValue !== secondValue) {
+        conflicts.push({ first, second, shared_terms: [], similarity: 1, reason: "same_key_different_value" });
+        seen.add(pairId);
+        continue;
+      }
+      const a = tokens(first.memory_key + " " + first.value);
+      const b = tokens(second.memory_key + " " + second.value);
+      const shared = [...a].filter((word) => b.has(word)).sort();
+      const union = new Set([...a, ...b]).size;
+      const similarity = union ? shared.length / union : 0;
+      if (shared.length >= 2 && similarity >= 0.3) {
+        related.push({ first, second, shared_terms: shared.slice(0, 8), similarity, reason: "related_content" });
+        seen.add(pairId);
+      }
+    }
+  }
+  const sortPairs = (a: MemoryInsightPair, b: MemoryInsightPair) => b.similarity - a.similarity;
+  return {
+    possible_conflicts: conflicts.sort(sortPairs).slice(0, pairLimit),
+    related: related.sort(sortPairs).slice(0, pairLimit),
+    outdated: outdated.sort((a, b) => b.age_days - a.age_days).slice(0, 50),
+    analyzed_records: bounded.length,
+    inference_calls: 0,
+  };
 } {
   const bounded = records.slice(0, 200);
   const conflicts: MemoryInsightPair[] = [];
