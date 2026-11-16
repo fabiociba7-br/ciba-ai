@@ -762,13 +762,51 @@ describe("Ciba AI curated private memory", () => {
       .toEqual({ memory_enabled: false, app_messaging_enabled: false });
     const blockedMemory = await ownerRequest("/v1/owner/memory?scope=app");
     expect(blockedMemory.status).toBe(403);
+    const blockedCandidate = await ownerRequest("/v1/owner/memory/candidates", "POST", {
+      source_role: "user", source_text: "Prefiro respostas diretas.", key: "response_style", value: "Prefiro respostas diretas",
+    });
+    expect(blockedCandidate.status).toBe(403);
+    expect(await blockedCandidate.json()).toEqual({ error: "memory_disabled" });
     const enabled = await ownerRequest("/v1/owner/settings", "POST", {
       settings: { memory_enabled: true },
     });
     expect(enabled.status).toBe(200);
 
+    const candidateResponse = await ownerRequest("/v1/owner/memory/candidates", "POST", {
+      source_role: "user",
+      source_text: "Prefiro respostas diretas e sem rodeios.",
+      key: "response_style",
+      value: "Prefiro respostas diretas",
+      scope: "app",
+    });
+    expect(candidateResponse.status).toBe(200);
+    const candidateBody = await candidateResponse.json() as {
+      candidate: { key: string; value: string; requires_confirmation: boolean; persisted: boolean };
+      stored: boolean; inference_calls: number;
+    };
+    expect(candidateBody.candidate).toMatchObject({
+      key: "response_style", value: "Prefiro respostas diretas",
+      requires_confirmation: true, persisted: false,
+    });
+    expect(candidateBody.stored).toBe(false);
+    expect(candidateBody.inference_calls).toBe(0);
+    const beforeConfirmation = await ownerRequest("/v1/owner/memory?scope=app");
+    expect((await beforeConfirmation.json() as { memories: unknown[] }).memories).toHaveLength(0);
+
+    const unsupportedCandidate = await ownerRequest("/v1/owner/memory/candidates", "POST", {
+      source_role: "user", source_text: "Gosto de rock.", key: "music", value: "Prefiro jazz.",
+    });
+    expect(unsupportedCandidate.status).toBe(400);
+    expect(await unsupportedCandidate.json()).toEqual({ error: "memory_candidate_not_supported_by_user_quote" });
+
+    const assistantCandidate = await ownerRequest("/v1/owner/memory/candidates", "POST", {
+      source_role: "assistant", source_text: "Prefiro respostas diretas.", key: "response_style", value: "Prefiro respostas diretas",
+    });
+    expect(assistantCandidate.status).toBe(400);
+    expect(await assistantCandidate.json()).toEqual({ error: "memory_candidate_user_source_required" });
+
     const saved = await ownerRequest("/v1/owner/memory?scope=app", "POST", {
-      key: "response_style", value: "Prefere respostas diretas.", consent: "curated",
+      key: candidateBody.candidate.key, value: candidateBody.candidate.value, consent: "curated",
     });
     expect(saved.status).toBe(201);
     const savedBody = await saved.json() as { memory_id: string };
