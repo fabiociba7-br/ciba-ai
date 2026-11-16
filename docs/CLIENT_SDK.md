@@ -140,3 +140,12 @@ Quando `memory_enabled` estiver ligado para um proprietário ativo e pareado, `c
 - `deleteMemory(memoryId, scope, sourceAppId?)` realiza exclusão lógica. O registro deixa de ser retornado e de participar da recuperação.
 
 A memória central e a memória de outro app continuam exigindo concessão ativa apropriada. A API autentica o proprietário pelo dispositivo pareado, não por um owner ID enviado pelo cliente.
+
+
+## Revisão de aprendizado da memória
+
+- `proposeMemoryReview({ sourceText, key, value, scope?, validHours? })` cria uma proposta pendente baseada em evidência literal; não grava memória.
+- `listMemoryReviews(scope?)` lista propostas aguardando decisão do proprietário.
+- `decideMemoryReview(proposalId, "approve" | "reject", scope?)` aplica a decisão explícita. A aprovação pode criar um registro ou atualizar um valor em conflito; rejeitar não altera a memória.
+
+A classificação `new`, `unchanged` ou `possible_conflict` é determinística e não substitui a avaliação humana. A API não verifica por conta própria se o texto atribuído ao usuário foi realmente escrito por ele.
