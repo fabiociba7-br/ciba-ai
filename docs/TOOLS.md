@@ -257,3 +257,12 @@ Both tools are explicitly allowlisted, marked `risk: "read"`, and require no dur
 These tools return catalog metadata only. They do not install or download models, invoke native adapters, change capability status, or imply that a planned capability is available. Unknown IDs return `{ found: false }`. Invalid inputs are rejected before the authorization callback.
 
 This factory is an opt-in application primitive. It is not connected to the public Worker, chat runtime, or production tool catalog by this change. A caller must deliberately construct the registry and supply it to a trusted orchestration runtime. No deployment or migration is performed.
+
+
+## Guarded read-only execution in the orchestrator
+
+The optional `toolRuntime.executeReadOnlyProposals` flag is a trusted application setting, not a model-controlled field. When explicitly set to `true`, the orchestrator may execute a validated proposal only if the registered tool is marked `risk: "read"` and `requiresApproval: false`. The registry's trusted authorization callback still runs before the handler.
+
+When the flag is absent or false, proposals remain previews. Write and external tools are never auto-executed by this option: they remain on the durable approval path and require an explicit owner decision followed by one-time approval consumption. Invalid flag values reject the runtime before model inference.
+
+Execution output is returned separately as `toolExecution`; failures return a generic `toolExecutionError` without exposing internal exception details. This is still an opt-in orchestration primitive and does not enable any tools in the public Worker. The application must decide whether a given read tool's output is safe to disclose to the current authenticated user.

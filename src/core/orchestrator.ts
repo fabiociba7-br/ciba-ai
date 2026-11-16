@@ -35,6 +35,7 @@ type OrchestratorInput = {
   registry: ExecutableCibaToolRegistry;
   context: CibaToolInvocationContext;
   durableApproval?: { flow: DurableCibaToolApprovalFlow; identity: DurableToolApprovalIdentity };
+  executeReadOnlyProposals?: boolean;
 };
 };
 
@@ -134,14 +135,20 @@ function snapshotToolRuntime(value: unknown): {
   registry: ExecutableCibaToolRegistry;
   context: CibaToolInvocationContext;
   durableApproval?: { flow: DurableCibaToolApprovalFlow; identity: DurableToolApprovalIdentity };
+  executeReadOnlyProposals?: boolean;
 } {
-  const fields = readPlainRecord(value, ["registry", "context", "durableApproval"], ["registry", "context"]);
+  const fields = readPlainRecord(value, ["registry", "context", "durableApproval", "executeReadOnlyProposals"], ["registry", "context"]);
   const registryFields = readPlainRecord(fields.registry, ["get", "list", "describe", "prepare", "execute"]);
   if (Object.values(registryFields).some((method) => typeof method !== "function")) throw new Error("invalid_tool_runtime");
   const registry = fields.registry as ExecutableCibaToolRegistry;
   const contextFields = readPlainRecord(fields.context, ["conversationId", "invocationId"]);
   if (typeof contextFields.conversationId !== "string" || !contextFields.conversationId.trim() || contextFields.conversationId.length > 128 ||
       typeof contextFields.invocationId !== "string" || !contextFields.invocationId.trim() || contextFields.invocationId.length > 128) throw new Error("invalid_tool_runtime");
+
+  if (fields.executeReadOnlyProposals !== undefined && typeof fields.executeReadOnlyProposals !== "boolean") {
+    throw new Error("invalid_tool_runtime");
+  }
+  const executeReadOnlyProposals = fields.executeReadOnlyProposals === true;
 
   let durableApproval: { flow: DurableCibaToolApprovalFlow; identity: DurableToolApprovalIdentity } | undefined;
   if (fields.durableApproval !== undefined) {
@@ -172,7 +179,8 @@ function snapshotToolRuntime(value: unknown): {
       conversationId: contextFields.conversationId,
       invocationId: contextFields.invocationId
     }),
-    ...(durableApproval ? { durableApproval } : {})
+    ...(durableApproval ? { durableApproval } : {}),
+    ...(executeReadOnlyProposals ? { executeReadOnlyProposals: true } : {})
   });
 }
 
@@ -186,6 +194,7 @@ function snapshotInput(value: unknown): {
   registry: ExecutableCibaToolRegistry;
   context: CibaToolInvocationContext;
   durableApproval?: { flow: DurableCibaToolApprovalFlow; identity: DurableToolApprovalIdentity };
+  executeReadOnlyProposals?: boolean;
 };
 } {
   const fields = readPlainRecord(
@@ -313,22 +322,85 @@ export async function runCibaOrchestrator(input: OrchestratorInput): Promise<Orc
             proposed.input,
             safeInput.toolRuntime.context
           );
+          const approvalMetadata = {
+            status: durable.approval,
+            ...(durable.approvalId ? { approvalId: durable.approvalId } : {})
+          } as const;
+          if (safeInput.toolRuntime.executeReadOnlyProposals &&
+              durable.approval === "not_required" &&
+              durable.plan.risk === "read" &&
+              !durable.plan.requiresApproval) {
+            try {
+              const output = await safeInput.toolRuntime.durableApproval.flow.execute({
+                identity: safeInput.toolRuntime.durableApproval.identity,
+                plan: durable.plan,
+                context: safeInput.toolRuntime.context
+              });
+              return {
+                ...result,
+                text: "Consulta de leitura executada com autorização do aplicativo.",
+                toolProposal: durable.plan,
+                toolApproval: approvalMetadata,
+                toolExecution: { toolId: durable.plan.toolId, output },
+                selectedAgent,
+                strategy: "single-pass",
+                usedInferenceCalls: 1
+              };
+            } catch {
+              return {
+                ...result,
+                text: "A consulta de leitura não pôde ser executada pela política do aplicativo.",
+                toolProposal: durable.plan,
+                toolApproval: approvalMetadata,
+                toolExecutionError: "tool_execution_failed",
+                selectedAgent,
+                strategy: "single-pass",
+                usedInferenceCalls: 1
+              };
+            }
+          }
           return {
             ...result,
             text: durable.approval === "approval_required"
               ? "Proposta validada e solicitação de aprovação registrada. Nenhuma ação foi executada."
               : "Proposta validada. Nenhuma ação foi executada; a etapa de execução permanece separada.",
             toolProposal: durable.plan,
-            toolApproval: {
-              status: durable.approval,
-              ...(durable.approvalId ? { approvalId: durable.approvalId } : {})
-            },
+            toolApproval: approvalMetadata,
             selectedAgent,
             strategy: "single-pass",
             usedInferenceCalls: 1
           };
         }
         const toolProposal = safeInput.toolRuntime.registry.prepare(proposed.toolId, proposed.input, safeInput.toolRuntime.context);
+        if (safeInput.toolRuntime.executeReadOnlyProposals &&
+            toolProposal.risk === "read" && !toolProposal.requiresApproval) {
+          try {
+            const output = await safeInput.toolRuntime.registry.execute(
+              toolProposal.toolId,
+              toolProposal.input,
+              safeInput.toolRuntime.context
+            );
+            return {
+              ...result,
+              text: "Consulta de leitura executada com autorização do aplicativo.",
+              toolProposal,
+              toolExecution: { toolId: toolProposal.toolId, output },
+              selectedAgent,
+              strategy: "single-pass",
+              usedInferenceCalls: 1
+            };
+          } catch {
+            return {
+              ...result,
+              text: "A consulta de leitura não pôde ser executada pela política do aplicativo.",
+              toolProposal,
+              toolExecutionError: "tool_execution_failed",
+              selectedAgent,
+              strategy: "single-pass",
+              usedInferenceCalls: 1
+            };
+          }
+        }
         return { ...result, text: "Proposta de ferramenta validada. Nenhuma ação foi executada; é necessária a etapa de autorização e execução do aplicativo.", toolProposal, selectedAgent, strategy: "single-pass", usedInferenceCalls: 1 };
       }
     } catch {

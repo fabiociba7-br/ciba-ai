@@ -33,6 +33,11 @@ export interface OrchestrationResult extends InferenceResult {
     status: "not_required" | "approval_required" | "approved";
     approvalId?: string;
   };
+  toolExecution?: {
+    toolId: string;
+    output: unknown;
+  };
+  toolExecutionError?: "tool_execution_failed";
   toolProposalError?: "tool_proposal_rejected";
   selectedAgent: CibaRole;
   strategy: "single-pass";
