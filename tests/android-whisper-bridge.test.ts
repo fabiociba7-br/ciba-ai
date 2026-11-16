@@ -250,6 +250,47 @@ describe("Android Whisper.cpp bridge contract", () => {
     }
   });
 
+  it("isolates and clears the native audio buffer after success", async () => {
+    let nativeBuffer: Uint8Array | undefined;
+    const originalAudio = request.audio.slice();
+    const adapter = createAndroidWhisperCppAdapter(bridge({
+      transcribe: async (nativeRequest) => {
+        nativeBuffer = nativeRequest.audio;
+        expect(nativeRequest.audio).not.toBe(request.audio);
+        expect([...nativeRequest.audio]).toEqual([...originalAudio]);
+        return result;
+      },
+    }), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+
+    await expect(adapter.transcribe(request)).resolves.toEqual(result);
+    expect([...request.audio]).toEqual([...originalAudio]);
+    expect(nativeBuffer && [...nativeBuffer]).toEqual([0, 0, 0]);
+  });
+
+  it("clears the native audio buffer when the bridge rejects", async () => {
+    let nativeBuffer: Uint8Array | undefined;
+    const adapter = createAndroidWhisperCppAdapter(bridge({
+      transcribe: async (nativeRequest) => {
+        nativeBuffer = nativeRequest.audio;
+        throw new Error("native_transcription_failed");
+      },
+    }), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+
+    await expect(adapter.transcribe(request)).rejects.toThrow("native_transcription_failed");
+    expect(nativeBuffer && [...nativeBuffer]).toEqual([0, 0, 0]);
+    expect([...request.audio]).toEqual([1, 2, 3]);
+  });
+
   it("returns a detached immutable snapshot of the native transcription", async () => {
     const nativeResult: SpeechToTextResult = {
       ...result,
