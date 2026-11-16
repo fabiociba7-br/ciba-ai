@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCibaToolRegistry } from "../src/core/tools/registry";
 import { createDurableCibaToolApprovalFlow } from "../src/core/tools/durable-approval-flow";
-import type { DurableToolApprovalRequest, DurableToolApprovalStore } from "../src/core/tools/durable-consent";
+import type { DurableToolApprovalIdentity, DurableToolApprovalRequest, DurableToolApprovalStore } from "../src/core/tools/durable-consent";
 
 const context = { conversationId: "conversation-1", invocationId: "invocation-1" };
-const identity = { ownerId: "owner-1", appId: "com.ciba.test", deviceId: "device-1" };
+const identity: DurableToolApprovalIdentity = { ownerId: "owner-1", appId: "com.ciba.test", deviceId: "device-1" };
 const approverDeviceId = "device-approver";
 const schema = {
   type: "object",
