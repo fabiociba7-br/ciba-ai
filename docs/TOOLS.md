@@ -175,12 +175,17 @@ For `write` and `external` tools, `propose` only creates a validated preview and
 This helper is an application integration primitive, not a UI component. It is not wired into `runCibaOrchestrator`, provider tool-calling, or any app screen. No tool can be invoked merely because a model proposed it.
 
 
-## Durable approval storage foundation (migration 0016)
+## Durable approval storage (isolated D1 adapter)
 
-Migration `0016_durable_tool_approvals.sql` adds a D1 table for future persistent approvals. The migration also adds a composite device identity key and composite foreign keys, so SQLite enforces that both the originating device and the approving device belong to the same recorded owner and app. Each record is scoped to an owner, app, originating device, conversation, invocation, tool, risk class, and exact serialized input (with a SHA-256 digest). The schema includes explicit lifecycle states, expiry, the device that recorded the decision, and indexes for owner/status and expiry lookups.
+Migration `0016_durable_tool_approvals.sql` provides the D1 table and composite device identity constraints. The new `createD1ToolApprovalStore(db)` adapter implements an asynchronous storage boundary with conditional state transitions:
 
-This migration is storage-only. The current `CibaToolConsentStore` and `CibaToolApprovalFlow` remain synchronous and in-memory; they do not read or write this table. The public Worker does not expose approval or tool-execution routes, and no migration is applied to the remote D1 database by this change.
+- `request` persists a pending approval bound to owner, app, originating device, conversation, invocation, tool, risk, canonical input JSON and SHA-256 digest. Repeated identical requests are idempotent; rebinding an invocation to different content is rejected.
+- `answer` accepts an explicit allow/deny decision only while pending and unexpired, and records an active approving device belonging to the same active owner and app.
+- `consume` performs a single conditional `approved → consumed` update matching every immutable binding and expiry. Concurrent/replayed consumption can succeed only once.
+- `cancel` closes an active pending or approved request. Expired pending/approved records are closed as `expired`.
 
-Before runtime integration, implement an asynchronous D1-backed store with compare-and-swap updates for every state transition. In particular, approval must be accepted only for the authenticated active owner and a device paired to that owner; consumption must be a single conditional UPDATE from `approved` to `consumed` with `expires_at > now`, matching all immutable binding fields and requiring exactly one changed row. Expired records must be closed without allowing replay. Validate that the supplied app ID matches the authenticated device record; never trust owner, app, or device identifiers supplied by the request body.
+The adapter receives identity as a separate trusted argument. Callers must derive owner, app, and device identifiers from authenticated server-side device context, never from a request body. The database enforces the owner/app relationship for both devices. The adapter is exported from the core package for controlled application integration.
 
-The next integration must also address the current approval helper's synchronous contract before introducing D1 I/O. Do not connect this table to the Worker, enable tool definitions, or run remote migrations until the async approval path, authenticated owner/device context, trusted confirmation UI, concurrency tests, and migration review are complete.
+**Integration remains intentionally disabled.** The adapter is not connected to `CibaToolApprovalFlow`, the public Worker, model orchestration, or any tool handler. The existing consent and approval-flow interfaces remain synchronous and in-memory. No approval endpoints, confirmation UI, tool definitions, remote D1 migration, or deployment were added. Tests exercise D1 persistence, immutable input binding, same-owner approver validation, expiry, cancellation, and concurrent one-use consumption.
+
+Before enabling runtime execution, a separate integration stage must adapt the approval flow to async storage, derive authenticated owner/device context from the existing Worker authentication path, provide a trusted confirmation screen, and add end-to-end authorization tests. Do not treat this storage adapter by itself as user consent or permission to execute a tool.
