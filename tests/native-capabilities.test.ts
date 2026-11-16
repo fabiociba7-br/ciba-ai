@@ -50,14 +50,19 @@ describe("Garcia native AI capability foundation", () => {
   });
 
   it("only registers adapters for declared capabilities and supported runtimes", () => {
+    const available = {
+      ...GARCIA_NATIVE_CAPABILITIES[0]!,
+      status: "available" as const,
+      licenseStatus: "approved" as const,
+    };
     const adapter: NativeCapabilityAdapter = {
-      capabilityId: "image_generation",
+      capabilityId: available.id,
       runtime: "desktop_local",
       execute: async () => ({ accepted: true }),
     };
-    const registry = createNativeCapabilityRegistry(GARCIA_NATIVE_CAPABILITIES, [adapter]);
-    expect(registry.getAdapter("image_generation")).toBe(adapter);
-    expect(() => createNativeCapabilityRegistry(GARCIA_NATIVE_CAPABILITIES, [{
+    const registry = createNativeCapabilityRegistry([available], [adapter]);
+    expect(registry.getAdapter(available.id)).toBe(adapter);
+    expect(() => createNativeCapabilityRegistry([available], [{
       ...adapter,
       runtime: "android_embedded",
     }])).toThrow("invalid_native_capability_adapter");
