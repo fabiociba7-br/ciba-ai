@@ -45,13 +45,13 @@ function snapshotMemoryRecord(value: unknown): MemorySearchRecord | null {
       if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
       copy[key] = descriptor.value;
     }
-    if (typeof copy.memory_id !== "string" || !copy.memory_id ||
+    if (typeof copy.memory_id !== "string" || !copy.memory_id || copy.memory_id.length > 200 ||
         (copy.scope !== "app" && copy.scope !== "owner") ||
-        !(copy.source_app_id === null || (typeof copy.source_app_id === "string" && copy.source_app_id.length <= 128)) ||
-        typeof copy.memory_key !== "string" || copy.memory_key.length > 200 ||
+        !(copy.source_app_id === null || (typeof copy.source_app_id === "string" && copy.source_app_id.length > 0 && copy.source_app_id.length <= 128)) ||
+        typeof copy.memory_key !== "string" || !copy.memory_key || copy.memory_key.length > 200 ||
         typeof copy.value !== "string" || copy.value.length > 8_000 ||
-        typeof copy.created_by_app_id !== "string" || copy.created_by_app_id.length > 128 ||
-        typeof copy.updated_at !== "string" || copy.updated_at.length > 64 ||
+        typeof copy.created_by_app_id !== "string" || !copy.created_by_app_id || copy.created_by_app_id.length > 128 ||
+        typeof copy.updated_at !== "string" || !copy.updated_at || copy.updated_at.length > 64 ||
         !(copy.expires_at === null || (typeof copy.expires_at === "string" && copy.expires_at.length <= 64)) ||
         (copy.duplicate_count !== undefined &&
           (!Number.isSafeInteger(copy.duplicate_count) || (copy.duplicate_count as number) < 1))) {
