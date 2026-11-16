@@ -107,6 +107,34 @@ export function canAccessMemory(
 }
 
 /**
+ * Validates a persisted memory record before storage or retrieval. This is a
+ * structural check; callers must still enforce canAccessMemory on every read
+ * and write and bind the owner identity to the authenticated session.
+ */
+export function validateMemoryRecord(record: MemoryRecord): MemoryRecord {
+  if (!record || typeof record !== "object" ||
+      !isNonEmptyString(record.id) || record.id.length > 200 ||
+      !isNonEmptyString(record.ownerId) ||
+      !isNonEmptyString(record.createdByAppId) ||
+      !isValidScope(record.scope) || record.scope.ownerId !== record.ownerId ||
+      !Number.isSafeInteger(record.createdAt) || record.createdAt <= 0 ||
+      (record.expiresAt !== undefined &&
+        (!Number.isSafeInteger(record.expiresAt) || record.expiresAt <= record.createdAt))) {
+    throw new Error("invalid_memory_record");
+  }
+  const value = validateCuratedMemory({ consent: "curated", value: record.value });
+  return Object.freeze({
+    id: record.id,
+    ownerId: record.ownerId,
+    scope: Object.freeze({ ...record.scope }),
+    value,
+    createdAt: record.createdAt,
+    ...(record.expiresAt !== undefined ? { expiresAt: record.expiresAt } : {}),
+    createdByAppId: record.createdByAppId
+  });
+}
+
+/**
  * Memory entries must be explicitly curated by the owner or an authorized app.
  * This rejects common credential formats but is not a sensitive-data classifier.
  */
