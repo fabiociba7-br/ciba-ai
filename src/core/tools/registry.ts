@@ -53,15 +53,34 @@ function cloneJson(value: unknown, depth = 0): unknown {
   }
   if (Array.isArray(value)) {
     if (Object.getPrototypeOf(value) !== Array.prototype) throw new Error("invalid_tool_value");
-    return value.map((item) => cloneJson(item, depth + 1));
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const length = descriptors.length?.value;
+    if (!Number.isInteger(length) || length < 0 || length > MAX_INPUT_BYTES) {
+      throw new Error("invalid_tool_value");
+    }
+    if (Reflect.ownKeys(descriptors).length !== length + 1) throw new Error("invalid_tool_value");
+    const result: unknown[] = new Array(length);
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+        throw new Error("invalid_tool_value");
+      }
+      result[index] = cloneJson(descriptor.value, depth + 1);
+    }
+    return result;
   }
   if (typeof value !== "object") throw new Error("invalid_tool_value");
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) throw new Error("invalid_tool_value");
+  const descriptors = Object.getOwnPropertyDescriptors(value);
   const result: Record<string, unknown> = Object.create(null);
-  for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
-    if (key === "__proto__" || key === "constructor" || key === "prototype" ||
-        !("value" in descriptor) || !descriptor.enumerable) {
+  for (const key of Reflect.ownKeys(descriptors)) {
+    if (typeof key !== "string" || key === "__proto__" ||
+        key === "constructor" || key === "prototype") {
+      throw new Error("invalid_tool_value");
+    }
+    const descriptor = descriptors[key];
+    if (!("value" in descriptor) || !descriptor.enumerable) {
       throw new Error("invalid_tool_value");
     }
     result[key] = cloneJson(descriptor.value, depth + 1);
