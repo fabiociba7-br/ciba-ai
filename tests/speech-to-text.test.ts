@@ -45,6 +45,20 @@ describe("Garcia Whisper.cpp integration contract", () => {
       .toThrow("speech_to_text_license_not_approved");
   });
 
+  it("freezes the public registry surface and preserves its validated audio limit", () => {
+    const registry = createWhisperCppRegistry({
+      ...policy,
+      licenseStatus: "approved",
+    }, [adapter]);
+
+    expect(Object.isFrozen(registry)).toBe(true);
+    expect(Reflect.set(registry, "maxAudioBytes", 1)).toBe(false);
+    expect(Reflect.set(registry, "getAdapter", () => undefined)).toBe(false);
+    expect(Reflect.set(registry, "tryAcquireExecution", () => undefined)).toBe(false);
+    expect(registry.maxAudioBytes).toBe(1024);
+    expect(registry.getAdapter("android_embedded")?.modelId).toBe("ggml-tiny");
+  });
+
   it("registers only explicitly approved adapters on supported runtimes", () => {
     const registry = createWhisperCppRegistry({
       ...policy,
