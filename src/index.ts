@@ -631,6 +631,10 @@ const handleOwnerToolApprovals = async (request: Request, env: Env) => {
     WHERE a.owner_id = ? AND a.app_id = ?
       AND a.status IN ('pending', 'approved') AND a.expires_at > ?
       AND d.owner_id = a.owner_id AND d.app_id = a.app_id AND d.revoked_at IS NULL
+      AND EXISTS (
+        SELECT 1 FROM owners o
+        WHERE o.owner_id = a.owner_id AND o.status = 'active' AND o.revoked_at IS NULL
+      )
     ORDER BY a.created_at DESC LIMIT 20
   `).bind(owner.owner_id, device.app_id, timestamp).all<{
     approval_id: string; device_id: string; conversation_id: string; invocation_id: string;
