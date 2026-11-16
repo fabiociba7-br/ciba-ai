@@ -50,8 +50,10 @@ function snapshotInsightRecords(value: unknown): MemoryInsightRecord[] | null {
           typeof fields.memory_key !== "string" || !fields.memory_key.trim() || fields.memory_key.length > 80 ||
           typeof fields.value !== "string" || !fields.value.trim() || fields.value.length > 500 ||
           typeof fields.updated_at !== "string" || !fields.updated_at || fields.updated_at.length > 64 ||
+          !Number.isFinite(Date.parse(fields.updated_at)) ||
           !(fields.expires_at === null || (typeof fields.expires_at === "string" &&
-            fields.expires_at.length > 0 && fields.expires_at.length <= 64))) return null;
+            fields.expires_at.length > 0 && fields.expires_at.length <= 64 &&
+            Number.isFinite(Date.parse(fields.expires_at))))) return null;
       if (seenIds.has(fields.memory_id)) return null;
       seenIds.add(fields.memory_id);
       result.push(Object.freeze({
