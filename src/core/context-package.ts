@@ -42,6 +42,7 @@ export function buildContextPackage(
   const normalized = items.map((item) => {
     if (!item || typeof item !== "object" ||
         typeof item.key !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,59}$/.test(item.key) ||
+        /^(messages?|transcript|conversation|conversation_history|chat_history|system_prompt)$/i.test(item.key) ||
         typeof item.value !== "string" || !item.value.trim() || item.value.length > MAX_VALUE_CHARS ||
         !["preference", "project", "constraint", "fact", "summary"].includes(item.kind) ||
         !["curated_memory", "task_state", "user_confirmed"].includes(item.origin)) {
