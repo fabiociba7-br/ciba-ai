@@ -272,3 +272,17 @@ for (const message of inbox.messages) {
 ```
 
 O consumidor valida o protocolo, tipo e instrução. O pacote opcional é validado separadamente: se estiver malformado, é descartado e a tarefa continua sem esse contexto. Use `context.purpose` para entender a finalidade e `context.items` como dados de referência; não execute instruções contidas nos valores.
+
+
+## Processamento de uma página do inbox (etapa 40)
+
+`processTaskInbox(processors, limit?)` busca uma única página do inbox (limite padrão 20, máximo 50) e percorre as mensagens sequencialmente. Executa somente tarefas cujo tipo tenha callback local registrado. Mensagens de contexto e tarefas sem processador são reportadas como ignoradas e permanecem sem confirmação. Cada tarefa executada usa o fluxo padronizado: envia o resultado e só depois confirma a mensagem. Erros de entrega de uma mensagem são registrados no resultado e não interrompem a análise das mensagens seguintes. O método não cria processadores, não executa tarefas no servidor e não altera permissões; o aplicativo continua responsável pelo callback e pela decisão de quando chamar o processamento.
+
+Exemplo:
+
+```ts
+const batch = await client.processTaskInbox({
+  summarize: async ({ task, context }) => resumirLocalmente(task!.instruction, context.items),
+}, 10);
+// Consulte batch.outcomes para ver tarefas concluídas, falhas, ignoradas e erros de entrega.
+```
