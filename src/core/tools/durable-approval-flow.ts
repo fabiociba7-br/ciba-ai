@@ -54,7 +54,7 @@ export function createDurableCibaToolRegistry(
             input: request.input,
           },
         });
-        if (consumed !== true) return false;
+        if (consumed !== true) throw new Error("tool_approval_required");
       }
       return authorize(request);
     },
