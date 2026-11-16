@@ -20,6 +20,14 @@ const result: SpeechToTextResult = {
   modelId: "ggml-tiny",
 };
 
+const deviceRequirements = {
+  runtime: "android_embedded" as const,
+  minimumRamMb: 1024,
+  minimumAvailableRamMb: 512,
+  minimumCpuCores: 2,
+  minimumAndroidApiLevel: 26,
+};
+
 function bridge(overrides: Partial<AndroidWhisperCppBridge> = {}): AndroidWhisperCppBridge {
   return {
     getStatus: async () => ({
@@ -38,6 +46,7 @@ describe("Android Whisper.cpp bridge contract", () => {
     const adapter = createAndroidWhisperCppAdapter(bridge(), {
       modelId: "ggml-tiny",
       maxAudioBytes: 1024,
+      deviceRequirements,
     });
     expect(adapter.runtime).toBe("android_embedded");
     expect(adapter.engine).toBe("whisper.cpp");
@@ -46,7 +55,7 @@ describe("Android Whisper.cpp bridge contract", () => {
   it("fails closed when the native library is unavailable", async () => {
     const adapter = createAndroidWhisperCppAdapter(bridge({
       getStatus: async () => ({ nativeLibraryReady: false, modelLoaded: false }),
-    }), { modelId: "ggml-tiny", maxAudioBytes: 1024 });
+    }), { modelId: "ggml-tiny", maxAudioBytes: 1024, deviceRequirements });
     await expect(adapter.transcribe(request))
       .rejects.toThrow("android_whisper_native_library_unavailable");
   });
@@ -56,7 +65,7 @@ describe("Android Whisper.cpp bridge contract", () => {
       getStatus: async () => ({
         nativeLibraryReady: true, modelLoaded: false, modelId: "ggml-tiny",
       }),
-    }), { modelId: "ggml-tiny", maxAudioBytes: 1024 });
+    }), { modelId: "ggml-tiny", maxAudioBytes: 1024, deviceRequirements });
     await expect(adapter.transcribe(request))
       .rejects.toThrow("android_whisper_model_unavailable");
   });
@@ -68,7 +77,7 @@ describe("Android Whisper.cpp bridge contract", () => {
         called = true;
         return { nativeLibraryReady: true, modelLoaded: true, modelId: "ggml-tiny" };
       },
-    }), { modelId: "ggml-tiny", maxAudioBytes: 2 });
+    }), { modelId: "ggml-tiny", maxAudioBytes: 2, deviceRequirements });
     await expect(adapter.transcribe(request))
       .rejects.toThrow("invalid_speech_to_text_request");
     expect(called).toBe(false);
@@ -77,7 +86,7 @@ describe("Android Whisper.cpp bridge contract", () => {
   it("rejects results for a different model or malformed segments", async () => {
     const wrongModel = createAndroidWhisperCppAdapter(bridge({
       transcribe: async () => ({ ...result, modelId: "another-model" }),
-    }), { modelId: "ggml-tiny", maxAudioBytes: 1024 });
+    }), { modelId: "ggml-tiny", maxAudioBytes: 1024, deviceRequirements });
     await expect(wrongModel.transcribe(request))
       .rejects.toThrow("invalid_android_whisper_result");
 
@@ -85,7 +94,7 @@ describe("Android Whisper.cpp bridge contract", () => {
       transcribe: async () => ({
         ...result, segments: [{ startMs: 500, endMs: 100, text: "bad" }],
       }),
-    }), { modelId: "ggml-tiny", maxAudioBytes: 1024 });
+    }), { modelId: "ggml-tiny", maxAudioBytes: 1024, deviceRequirements });
     await expect(invalidSegment.transcribe(request))
       .rejects.toThrow("invalid_android_whisper_result");
   });
@@ -94,6 +103,7 @@ describe("Android Whisper.cpp bridge contract", () => {
     const adapter = createAndroidWhisperCppAdapter(bridge(), {
       modelId: "ggml-tiny",
       maxAudioBytes: 1024,
+      deviceRequirements,
     });
     await expect(adapter.transcribe(request)).resolves.toEqual(result);
   });
@@ -101,6 +111,7 @@ describe("Android Whisper.cpp bridge contract", () => {
   it("rejects invalid adapter configuration", () => {
     expect(() => createAndroidWhisperCppAdapter(bridge(), {
       modelId: " ", maxAudioBytes: 1024,
+      deviceRequirements,
     })).toThrow("invalid_android_whisper_options");
   });
 });
