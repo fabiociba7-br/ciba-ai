@@ -30,6 +30,7 @@ import { buildContextPackage, MAX_CONTEXT_PACKAGE_CHARS, type ContextPackageItem
 import { buildTaskContextPackage } from "./core/task-context";
 import { deriveTaskLifecycle } from "./core/task-lifecycle";
 import { CIBAGENIO_RESOURCES, parseCibaGenioCommand } from "./core/cibagenio";
+import { createNativeCapabilityRegistry } from "./core/native-capabilities";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -2775,6 +2776,28 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
       persistent_memory_api_available: true,
       external_tools_enabled: false,
       tool_contracts_available: true,
+      native_capability_catalog: createNativeCapabilityRegistry().list().map((capability) => ({
+        id: capability.id,
+        name: capability.name,
+        category: capability.category,
+        description: capability.description,
+        source_repositories: capability.sourceRepositories,
+        license_status: capability.licenseStatus,
+        status: capability.status,
+        supported_runtimes: capability.supportedRuntimes,
+        preferred_runtime: capability.preferredRuntime,
+        install_policy: capability.installPolicy,
+        zero_cost_only: capability.zeroCostOnly,
+        requires_gpu: capability.requiresGpu,
+        minimum_ram_mb: capability.minimumRamMb,
+        model_weights_bundled: capability.modelWeightsBundled,
+      })),
+      native_capability_catalog_semantics: {
+        metadata_only: true,
+        models_installed: false,
+        adapters_executable: false,
+        license_review_required_before_incorporation: true,
+      },
     });
   }
   if (url.pathname === "/v1/auth/register" && request.method === "POST") {
