@@ -1,6 +1,6 @@
 import { createCibaToolRegistry } from "./registry";
+import type { CibaToolDefinition } from "./contracts";
 import type {
-  CibaToolDefinition,
   CibaToolInvocationContext,
   CibaToolInvocationPlan,
   CibaToolRegistryOptions,
