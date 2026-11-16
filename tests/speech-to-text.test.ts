@@ -105,6 +105,27 @@ describe("Garcia Whisper.cpp integration contract", () => {
       .toMatchObject({ available: true, reasons: [], adapter });
   });
 
+  it("enforces the selected model hardware floor in addition to runtime requirements", () => {
+    const profile = {
+      platform: "android" as const, architecture: "arm64" as const,
+      totalRamMb: 4096, availableRamMb: 256, logicalCpuCores: 8,
+      gpuAvailable: false, androidApiLevel: 35, collectedAt: 1794800000000,
+      source: "client_report" as const,
+    };
+    const readyRegistry = createWhisperCppRegistry({ ...policy, licenseStatus: "approved" }, [adapter]);
+    expect(resolveWhisperCppRuntime(readyRegistry, profile, {
+      runtime: "android_embedded", minimumRamMb: 1024,
+    })).toEqual({ available: false, reasons: ["insufficient_available_ram"] });
+  });
+
+  it("rejects model requirements declared for a different runtime", () => {
+    const approved = { ...policy, licenseStatus: "approved" as const };
+    expect(() => createWhisperCppRegistry(approved, [{
+      ...adapter,
+      deviceRequirements: { ...adapter.deviceRequirements, runtime: "desktop_local" },
+    }])).toThrow("invalid_whisper_cpp_adapter");
+  });
+
   it("does not offer transcription on an incompatible device even if an adapter exists", () => {
     const profile = {
       platform: "android" as const, architecture: "arm64" as const,
