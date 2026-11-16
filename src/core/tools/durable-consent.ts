@@ -83,7 +83,9 @@ function snapshotJson(value: unknown, depth = 0, budget = { nodes: 0, chars: 0 }
       return snapshotJson(descriptor.value, depth + 1, budget);
     }));
   }
-  if (typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) {
+  if (typeof value !== "object") throw new Error("invalid_tool_approval_input");
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
     throw new Error("invalid_tool_approval_input");
   }
   const descriptors = Object.getOwnPropertyDescriptors(value);
