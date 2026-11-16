@@ -429,7 +429,10 @@ describe("CibaClient", () => {
       payload: { protocol: "garcia.task.request", task_id: "task-registered", task_type: "summarize", instruction: "Resumir" },
     };
     const processors: import("../src/client").CibaTaskProcessorRegistry = {
-      summarize: ({ task }) => ({ summary: task.instruction }),
+      summarize: ({ task }) => {
+        if (!task) throw new Error("task_request_not_accepted");
+        return { summary: task.instruction };
+      },
     };
     const result = await client.executeRegisteredTaskMessage(message, processors);
     expect(result.status).toBe("completed");
