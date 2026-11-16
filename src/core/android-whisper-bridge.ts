@@ -40,11 +40,18 @@ export function createAndroidWhisperCppAdapter(
   bridge: AndroidWhisperCppBridge,
   options: AndroidWhisperCppAdapterOptions,
 ): SpeechToTextAdapter {
-  if (!options.modelId.trim() ||
+  if (options === null || typeof options !== "object" ||
+      typeof options.modelId !== "string" || !options.modelId.trim() ||
+      typeof options.modelSha256 !== "string" ||
       !/^[a-f0-9]{64}$/.test(options.modelSha256) ||
       !Number.isInteger(options.maxAudioBytes) ||
       options.maxAudioBytes < 1 ||
-      options.deviceRequirements.runtime !== "android_embedded") {
+      options.deviceRequirements === null ||
+      typeof options.deviceRequirements !== "object" ||
+      options.deviceRequirements.runtime !== "android_embedded" ||
+      bridge === null || typeof bridge !== "object" ||
+      typeof bridge.getStatus !== "function" ||
+      typeof bridge.transcribe !== "function") {
     throw new Error("invalid_android_whisper_options");
   }
   validateDeviceCapabilityRequirements(options.deviceRequirements);
@@ -75,7 +82,8 @@ export function createAndroidWhisperCppAdapter(
     modelId,
     deviceRequirements,
     async transcribe(request) {
-      if (!(request.audio instanceof Uint8Array) ||
+      if (request === null || typeof request !== "object" ||
+          !(request.audio instanceof Uint8Array) ||
           request.audio.byteLength === 0 ||
           request.audio.byteLength > maxAudioBytes) {
         throw new Error("invalid_speech_to_text_request");
