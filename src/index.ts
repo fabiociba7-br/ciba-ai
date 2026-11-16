@@ -27,6 +27,7 @@ import { isAppTaskType, selectTaskRoute } from "./core/task-coordinator";
 import { consolidateTaskResults, type TaskResultRecord } from "./core/task-results";
 import { buildTaskSynthesisRequest, MAX_TASK_SYNTHESIS_OUTPUT_TOKENS } from "./core/task-synthesis";
 import { buildContextPackage, MAX_CONTEXT_PACKAGE_CHARS, type ContextPackageItem } from "./core/context-package";
+import { buildTaskContextPackage } from "./core/task-context";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -1729,6 +1730,8 @@ const handleTaskDispatch = async (request: Request, env: Env) => {
     ? undefined
     : typeof body.preferred_app_id === "string" ? body.preferred_app_id.trim() : "";
   const clientMessageId = typeof body.client_message_id === "string" ? body.client_message_id.trim() : "";
+  const includeContext = body.include_context === undefined ? false : body.include_context;
+  if (typeof includeContext !== "boolean") return json({ error: "invalid_include_context" }, 400);
   if (!isAppTaskType(taskType) || !instruction || instruction.length > 6_000 ||
       !clientMessageId || clientMessageId.length > 100 ||
       (preferredAppId !== undefined && (!preferredAppId || !isValidAppId(preferredAppId)))) {
@@ -1802,6 +1805,60 @@ const handleTaskDispatch = async (request: Request, env: Env) => {
 
   const destinationAppId = decision.candidate.appId;
   const taskId = crypto.randomUUID();
+  let contextPackage = null;
+  let contextSharing: { requested: boolean; included: boolean; items_count: number; reason: string } = {
+    requested: includeContext, included: false, items_count: 0,
+    reason: includeContext ? "no_relevant_authorized_memory" : "not_requested",
+  };
+
+  if (includeContext) {
+    const memoryEnabled = (await readOwnerFeatureSettings(env, owner.owner_id)).memory_enabled;
+    if (!memoryEnabled) return json({ error: "memory_disabled_for_context_sharing" }, 403);
+    const [contextSend, contextReceive] = await Promise.all([
+      hasMessageGrant(env, owner.owner_id, device.app_id, device.app_id, destinationAppId, "send", "context", timestamp),
+      hasMessageGrant(env, owner.owner_id, destinationAppId, device.app_id, destinationAppId, "receive", "context", timestamp),
+    ]);
+    if (!contextSend || !contextReceive) return json({
+      error: "context_access_not_granted",
+      missing_permissions: [...(!contextSend ? ["send"] : []), ...(!contextReceive ? ["receive"] : [])],
+    }, 403);
+
+    const visibleMemories = await env.DB.prepare(`
+      SELECT m.memory_id, m.scope, m.source_app_id, m.memory_key, m.value,
+        m.created_by_app_id, m.updated_at, m.expires_at
+      FROM memory_records m
+      WHERE m.owner_id = ? AND m.deleted_at IS NULL
+        AND (m.expires_at IS NULL OR m.expires_at > ?)
+        AND (
+          (m.scope = 'app' AND m.source_app_id = ?)
+          OR (m.scope = 'app' AND EXISTS (
+            SELECT 1 FROM app_access_grants g
+            WHERE g.owner_id = m.owner_id AND g.grantee_app_id = ?
+              AND g.permission = 'memory_read' AND g.scope = 'app_memory'
+              AND g.source_app_id = m.source_app_id AND g.destination_app_id IS NULL
+              AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)
+          ))
+          OR (m.scope = 'owner' AND EXISTS (
+            SELECT 1 FROM app_access_grants g
+            WHERE g.owner_id = m.owner_id AND g.grantee_app_id = ?
+              AND g.permission = 'memory_read' AND g.scope = 'owner_memory'
+              AND g.source_app_id IS NULL AND g.destination_app_id IS NULL
+              AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)
+          ))
+        )
+      ORDER BY m.updated_at DESC LIMIT 200
+    `).bind(
+      owner.owner_id, timestamp, device.app_id, device.app_id, timestamp,
+      device.app_id, timestamp
+    ).all<MemorySearchRecord>();
+    contextPackage = buildTaskContextPackage(taskId, taskType, instruction, visibleMemories.results || []);
+    if (contextPackage) {
+      contextSharing = {
+        requested: true, included: true, items_count: contextPackage.items.length, reason: "authorized_relevant_memories",
+      };
+    }
+  }
+
   const payload = {
     protocol: "garcia.task.request",
     contract: "garcia-app",
@@ -1810,6 +1867,7 @@ const handleTaskDispatch = async (request: Request, env: Env) => {
     task_type: taskType,
     instruction,
     ...(body.context === undefined ? {} : { context: body.context }),
+    ...(contextPackage ? { context_package: contextPackage } : {}),
   };
   const payloadJson = JSON.stringify(payload);
   if (payloadJson.length > MESSAGE_MAX_PAYLOAD_CHARS) {
@@ -1859,6 +1917,7 @@ const handleTaskDispatch = async (request: Request, env: Env) => {
       created_at: timestamp,
       expires_at: expiresAt,
       result_delivery: "destination_app_must_reply_with_same_task_id",
+      context_sharing: contextSharing,
     },
   }, 201);
 };
@@ -2381,9 +2440,21 @@ const handleAppMessageInbox = async (request: Request, env: Env) => {
       created_at: string; expires_at: string;
     }>();
 
-  const messages = (rows.results || []).map((row) => {
-    let payload: unknown = null;
-    try { payload = JSON.parse(row.payload_json); } catch { payload = null; }
+  const messages = (await Promise.all((rows.results || []).map(async (row) => {
+    let payload: Record<string, unknown> | null = null;
+    try {
+      const parsed = JSON.parse(row.payload_json);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) payload = parsed;
+    } catch { payload = null; }
+
+    // Revalidate context permissions at delivery, in addition to task grants.
+    if (payload && payload.context_package !== undefined) {
+      const [contextSend, contextReceive] = await Promise.all([
+        hasMessageGrant(env, owner.owner_id, row.source_app_id, row.source_app_id, row.destination_app_id, "send", "context", timestamp),
+        hasMessageGrant(env, owner.owner_id, row.destination_app_id, row.source_app_id, row.destination_app_id, "receive", "context", timestamp),
+      ]);
+      if (!contextSend || !contextReceive) return null;
+    }
     return {
       message_id: row.message_id,
       source_app_id: row.source_app_id,
@@ -2394,7 +2465,7 @@ const handleAppMessageInbox = async (request: Request, env: Env) => {
       created_at: row.created_at,
       expires_at: row.expires_at
     };
-  });
+  }))).filter((message): message is NonNullable<typeof message> => message !== null);
   return json({ messages, count: messages.length, maximum: limit });
 };
 
