@@ -18,7 +18,7 @@ button,input,select{font:inherit;border-radius:10px;border:1px solid var(--line)
 input,select{width:100%}label{display:block;color:var(--muted);font-size:12px;margin:10px 0 5px}.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .switchrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid var(--line)}.switchrow input{width:20px;height:20px;accent-color:#75a8ff}
 #login{max-width:460px;margin:70px auto}.notice{padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#17263a;color:var(--muted);margin:12px 0}#message{min-height:24px;color:var(--warn);margin-top:8px}
-table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px 8px;border-top:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600}.tablewrap{overflow:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px 8px;border-top:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:600}.tablewrap{overflow:auto}pre.approval-input{white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0a1422;font-size:12px;color:#d9e7fa}
 #app{display:none}.footer{color:var(--muted);text-align:center;font-size:12px;padding:24px}
 @media(max-width:850px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.columns{grid-template-columns:1fr}}
 @media(max-width:520px){header{padding:16px 18px}.top{align-items:start;flex-direction:column}.grid{gap:9px}.panel{padding:14px}.formgrid{grid-template-columns:1fr}.metric{font-size:20px}main{padding-left:14px;padding-right:14px}}
@@ -57,6 +57,12 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 </section>
 </div>
 <section class="panel" style="margin-bottom:16px">
+<section class="panel" style="margin-bottom:16px">
+<h3>Aprovações de ferramentas</h3>
+<p class="small muted">Pedidos de ações que exigem autorização. Confira o nome da ferramenta, o risco e todos os parâmetros antes de aprovar. Aprovar não executa a ação; apenas registra sua autorização de uso único.</p>
+<div class="actions"><button id="tool-approvals-refresh" class="secondary">Atualizar solicitações</button></div>
+<div id="tool-approvals" class="muted small">Carregando solicitações de aprovação...</div>
+</section>
 <h3>Gerenciar memórias</h3>
 <p class="small muted">Pesquise, revise, corrija ou exclua memórias curadas. A memória central exige permissão específica para este dispositivo/app.</p>
 <div class="formgrid">
@@ -234,13 +240,47 @@ if(!events.length){host.appendChild(el("p","Nenhuma alteração registrada neste
 events.forEach(function(item){var line=el("div","");line.className="rowline";var label={created:"Memória criada",updated:"Memória atualizada",deleted:"Memória excluída",review_approved:"Proposta aprovada",review_rejected:"Proposta rejeitada"}[item.action]||item.action;line.appendChild(el("strong",label+" · "+item.memory_key));line.appendChild(el("small",dateText(item.occurred_at)+" · App responsável: "+item.actor_app_id));host.appendChild(line)});
 }catch(error){host.appendChild(el("p","Não foi possível carregar o histórico: "+error.message))}
 };
-var refresh=async function(){var data=await api("/v1/owner/dashboard");render(data);await loadAvailableApps();await loadMemories();await loadMemoryReviews();await loadMemoryInsights();await loadOwnerProfile();await loadMemoryHistory()};
+var loadToolApprovals=async function(){
+var host=byId("tool-approvals");host.replaceChildren();
+try{
+var data=await api("/v1/owner/tool-approvals");
+var approvals=data.approvals||[];
+if(!approvals.length){host.appendChild(el("p","Nenhuma solicitação aguardando decisão."));return}
+approvals.forEach(function(item){
+var card=el("div","");card.className="rowline";card.style.display="block";
+var heading=el("div","");heading.style.display="flex";heading.style.justifyContent="space-between";heading.style.gap="12px";heading.style.flexWrap="wrap";
+heading.appendChild(el("strong",item.tool_id));
+var risk=el("span",item.risk==="external"?"Ação externa":"Alteração de dados");risk.className="pill warn";heading.appendChild(risk);card.appendChild(heading);
+card.appendChild(el("small","Estado: "+item.status+" · Dispositivo de origem: "+item.source_device_id));
+card.appendChild(el("small","Solicitado: "+dateText(item.created_at)+" · Expira: "+dateText(item.expires_at)));
+card.appendChild(el("small","Conversa: "+item.conversation_id+" · Invocação: "+item.invocation_id));
+card.appendChild(el("strong","Parâmetros exatos"));
+var input=el("pre",JSON.stringify(item.input,null,2));input.className="approval-input";card.appendChild(input);
+var actions=el("div","");actions.className="actions";
+var approve=el("button","Aprovar");approve.addEventListener("click",async function(){
+if(!confirm("Autorizar uma única execução de "+item.tool_id+"? Confira os parâmetros exibidos no cartão. Nenhuma ação será executada por esta confirmação."))return;
+approve.disabled=true;reject.disabled=true;
+try{await api("/v1/owner/tool-approvals/"+encodeURIComponent(item.approval_id)+"/decision","POST",{allow:true});say("Autorização registrada. A ferramenta ainda não foi executada.");await loadToolApprovals()}
+catch(error){say(error.message);approve.disabled=false;reject.disabled=false}
+});
+var reject=el("button","Rejeitar");reject.className="danger";reject.addEventListener("click",async function(){
+if(!confirm("Rejeitar a solicitação de "+item.tool_id+"?"))return;
+approve.disabled=true;reject.disabled=true;
+try{await api("/v1/owner/tool-approvals/"+encodeURIComponent(item.approval_id)+"/decision","POST",{allow:false});say("Solicitação rejeitada.");await loadToolApprovals()}
+catch(error){say(error.message);approve.disabled=false;reject.disabled=false}
+});
+actions.appendChild(approve);actions.appendChild(reject);card.appendChild(actions);host.appendChild(card);
+});
+}catch(error){host.appendChild(el("p","Não foi possível carregar as aprovações: "+error.message))}
+};
+var refresh=async function(){var data=await api("/v1/owner/dashboard");render(data);await loadAvailableApps();await loadMemories();await loadMemoryReviews();await loadMemoryInsights();await loadOwnerProfile();await loadMemoryHistory();await loadToolApprovals()};
 byId("connect").addEventListener("click",async function(){var value=byId("token").value.trim();if(value.length<32){loginSay("Informe um token válido.");return}token=value;byId("connect").disabled=true;loginSay("Verificando acesso...");try{await refresh();byId("login").style.display="none";byId("app").style.display="block";byId("logout").style.display="inline-block";byId("token").value="";loginSay("")}catch(e){token=null;loginSay(e.message)}finally{byId("connect").disabled=false}});
 byId("refresh").addEventListener("click",async function(){try{await refresh();say("Dados atualizados.")}catch(e){say(e.message)}});
 byId("memory-search-button").addEventListener("click",function(){loadMemories();loadMemoryReviews()});
 byId("memory-insights-refresh").addEventListener("click",function(){loadMemoryInsights()});
 byId("owner-profile-refresh").addEventListener("click",function(){loadOwnerProfile()});
 byId("memory-history-refresh").addEventListener("click",function(){loadMemoryHistory()});
+byId("tool-approvals-refresh").addEventListener("click",function(){loadToolApprovals()});
 byId("memory-scope").addEventListener("change",function(){loadMemories();loadMemoryReviews();loadMemoryHistory()});
 byId("memory-expired").addEventListener("change",function(){loadMemories()});
 byId("memory").addEventListener("change",function(){loadMemories();loadMemoryReviews();loadMemoryInsights();loadOwnerProfile();loadMemoryHistory()});
