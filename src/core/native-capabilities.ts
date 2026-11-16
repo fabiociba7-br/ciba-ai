@@ -282,18 +282,46 @@ export function createNativeCapabilityRegistry(
   definitions: NativeCapabilityDefinition[] = GARCIA_NATIVE_CAPABILITIES,
   adapters: NativeCapabilityAdapter[] = [],
 ): NativeCapabilityRegistry {
+  if (!Array.isArray(definitions) || definitions.length > 64 ||
+      !Array.isArray(adapters) || adapters.length > 64) {
+    throw new Error("invalid_native_capability_registry");
+  }
+  const categories: NativeCapabilityCategory[] = [
+    "image_generation", "video_generation", "speech_to_text", "text_to_speech",
+    "voice_conversion", "vision", "document_understanding", "coding",
+    "audio_generation", "agent_orchestration"
+  ];
+  const runtimes: NativeCapabilityRuntime[] = [
+    "android_embedded", "desktop_local", "local_service", "remote_service", "cloudflare_worker"
+  ];
+  const statuses: NativeCapabilityStatus[] = ["planned", "adapter_ready", "available", "disabled"];
+  const licenses: NativeCapabilityLicenseStatus[] = [
+    "review_required", "approved", "restricted", "rejected"
+  ];
   const definitionMap = new Map<string, NativeCapabilityDefinition>();
   for (const definition of definitions) {
-    if (
+    if (!definition || typeof definition !== "object" ||
       !validId.test(definition.id) ||
       definitionMap.has(definition.id) ||
-      !definition.name.trim() ||
-      !definition.description.trim() ||
+      typeof definition.name !== "string" || !definition.name.trim() || definition.name.length > 120 ||
+      typeof definition.description !== "string" || !definition.description.trim() ||
+      definition.description.length > 1_000 ||
+      !categories.includes(definition.category) ||
+      !licenses.includes(definition.licenseStatus) ||
+      !statuses.includes(definition.status) ||
+      !runtimes.includes(definition.preferredRuntime) ||
+      (definition.installPolicy !== "on_demand" &&
+        definition.installPolicy !== "optional" && definition.installPolicy !== "bundled") ||
+      typeof definition.requiresGpu !== "boolean" ||
       !Array.isArray(definition.sourceRepositories) ||
-      definition.sourceRepositories.length === 0 ||
-      definition.sourceRepositories.some((repository) => !validRepository.test(repository)) ||
+      definition.sourceRepositories.length === 0 || definition.sourceRepositories.length > 16 ||
+      definition.sourceRepositories.some((repository) =>
+        typeof repository !== "string" || !validRepository.test(repository)) ||
+      new Set(definition.sourceRepositories).size !== definition.sourceRepositories.length ||
       !Array.isArray(definition.supportedRuntimes) ||
-      definition.supportedRuntimes.length === 0 ||
+      definition.supportedRuntimes.length === 0 || definition.supportedRuntimes.length > runtimes.length ||
+      !definition.supportedRuntimes.every((runtime) => runtimes.includes(runtime)) ||
+      new Set(definition.supportedRuntimes).size !== definition.supportedRuntimes.length ||
       !definition.supportedRuntimes.includes(definition.preferredRuntime) ||
       !Number.isInteger(definition.minimumRamMb) ||
       definition.minimumRamMb < 256 ||
@@ -302,17 +330,21 @@ export function createNativeCapabilityRegistry(
     ) {
       throw new Error("invalid_native_capability_definition");
     }
-    definitionMap.set(definition.id, {
+    definitionMap.set(definition.id, Object.freeze({
       ...definition,
-      sourceRepositories: [...definition.sourceRepositories],
-      supportedRuntimes: [...definition.supportedRuntimes],
-    });
+      sourceRepositories: Object.freeze([...definition.sourceRepositories]) as unknown as string[],
+      supportedRuntimes: Object.freeze([...definition.supportedRuntimes]) as unknown as NativeCapabilityRuntime[],
+    }));
   }
 
   const adapterMap = new Map<string, NativeCapabilityAdapter>();
   for (const adapter of adapters) {
     const definition = definitionMap.get(adapter.capabilityId);
-    if (!definition || adapterMap.has(adapter.capabilityId) ||
+    if (!adapter || typeof adapter !== "object" ||
+        typeof adapter.capabilityId !== "string" ||
+        typeof adapter.execute !== "function" ||
+        !runtimes.includes(adapter.runtime) ||
+        !definition || adapterMap.has(adapter.capabilityId) ||
         !definition.supportedRuntimes.includes(adapter.runtime)) {
       throw new Error("invalid_native_capability_adapter");
     }
