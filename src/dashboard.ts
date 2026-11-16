@@ -69,6 +69,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <h3 style="margin-top:22px">Aprendizado aguardando revisão</h3><p class="small muted">Novas informações e possíveis conflitos só entram na memória após sua aprovação.</p><div id="memory-reviews" class="muted small">Nenhuma proposta carregada.</div>
 </section>
 <section class="panel" style="margin-bottom:16px"><h3>Relações entre memórias</h3><p class="small muted">Identifica possíveis conflitos, assuntos relacionados e registros antigos ou expirados. São alertas determinísticos: nada é corrigido ou excluído automaticamente.</p><div class="actions"><button id="memory-insights-refresh" class="secondary">Analisar memórias autorizadas</button></div><div id="memory-insights" class="muted small">Ative a memória privada para analisar registros.</div></section>
+<section class="panel" style="margin-bottom:16px"><h3>Histórico de alterações da memória</h3><p class="small muted">Registro de auditoria com metadados. O histórico não guarda o conteúdo das memórias nem conversas e é mantido por até 180 dias.</p><div class="actions"><button id="memory-history-refresh" class="secondary">Atualizar histórico</button></div><div id="memory-history" class="muted small">Ative a memória para consultar o histórico.</div></section>
 <section class="panel" style="margin-bottom:16px"><h3>Aplicativos conectados</h3><div id="apps-list" class="muted small">Nenhum dado carregado.</div></section>
 <section class="panel" style="margin-bottom:16px"><h3>Conectar novo aplicativo</h3>
 <p class="small muted">Escolha um aplicativo já cadastrado e habilitado pelo administrador. Garcia criará dois convites de uso único, válidos por 24 horas.</p>
@@ -201,14 +202,26 @@ var outdated=data.outdated||[];host.appendChild(el("strong","Registros para revi
 outdated.forEach(function(item){var line=el("div","");line.className="rowline";line.appendChild(el("span",item.memory_key+" · "+(item.reason==="expired"?"Expirada":"Sem revisão há "+item.age_days+" dias")+" · "+(item.source_app_id||"memória central")));host.appendChild(line)});
 }catch(error){host.appendChild(el("p","Não foi possível analisar memórias: "+error.message))}
 };
-var refresh=async function(){var data=await api("/v1/owner/dashboard");render(data);await loadAvailableApps();await loadMemories();await loadMemoryReviews();await loadMemoryInsights()};
+var loadMemoryHistory=async function(){
+var host=byId("memory-history");host.replaceChildren();
+if(!byId("memory").checked){host.appendChild(el("p","Ative a memória privada para consultar o histórico."));return}
+var scope=byId("memory-scope").value;
+try{
+var data=await api("/v1/owner/memory/history?scope="+encodeURIComponent(scope)+"&limit=50");
+var events=data.events||[];
+if(!events.length){host.appendChild(el("p","Nenhuma alteração registrada neste escopo."));return}
+events.forEach(function(item){var line=el("div","");line.className="rowline";var label={created:"Memória criada",updated:"Memória atualizada",deleted:"Memória excluída",review_approved:"Proposta aprovada",review_rejected:"Proposta rejeitada"}[item.action]||item.action;line.appendChild(el("strong",label+" · "+item.memory_key));line.appendChild(el("small",dateText(item.occurred_at)+" · App responsável: "+item.actor_app_id));host.appendChild(line)});
+}catch(error){host.appendChild(el("p","Não foi possível carregar o histórico: "+error.message))}
+};
+var refresh=async function(){var data=await api("/v1/owner/dashboard");render(data);await loadAvailableApps();await loadMemories();await loadMemoryReviews();await loadMemoryInsights();await loadMemoryHistory()};
 byId("connect").addEventListener("click",async function(){var value=byId("token").value.trim();if(value.length<32){loginSay("Informe um token válido.");return}token=value;byId("connect").disabled=true;loginSay("Verificando acesso...");try{await refresh();byId("login").style.display="none";byId("app").style.display="block";byId("logout").style.display="inline-block";byId("token").value="";loginSay("")}catch(e){token=null;loginSay(e.message)}finally{byId("connect").disabled=false}});
 byId("refresh").addEventListener("click",async function(){try{await refresh();say("Dados atualizados.")}catch(e){say(e.message)}});
 byId("memory-search-button").addEventListener("click",function(){loadMemories();loadMemoryReviews()});
 byId("memory-insights-refresh").addEventListener("click",function(){loadMemoryInsights()});
-byId("memory-scope").addEventListener("change",function(){loadMemories();loadMemoryReviews()});
+byId("memory-history-refresh").addEventListener("click",function(){loadMemoryHistory()});
+byId("memory-scope").addEventListener("change",function(){loadMemories();loadMemoryReviews();loadMemoryHistory()});
 byId("memory-expired").addEventListener("change",function(){loadMemories()});
-byId("memory").addEventListener("change",function(){loadMemories();loadMemoryReviews();loadMemoryInsights()});
+byId("memory").addEventListener("change",function(){loadMemories();loadMemoryReviews();loadMemoryInsights();loadMemoryHistory()});
 
 byId("logout").addEventListener("click",function(){token=null;dashboard=null;byId("app").style.display="none";byId("login").style.display="block";byId("logout").style.display="none";byId("token").value="";say("");loginSay("Sessão encerrada.")});
 byId("connect-app").addEventListener("click",async function(){var appId=byId("available-apps").value;if(!appId){say("Selecione um aplicativo habilitado.");return}var button=byId("connect-app");button.disabled=true;try{var result=await api("/v1/owner/apps/connect","POST",{app_id:appId});byId("registration-code").value=result.registration_invitation_code;byId("pairing-code").value=result.pairing_invitation_code;byId("connection-expiry").textContent="Validade dos dois códigos: até "+dateText(result.expires_at)+". Cada código só pode ser usado uma vez.";byId("connection-result").style.display="block";say("Convites gerados. Copie e encaminhe os códigos com segurança.")}catch(e){say(e.message)}finally{button.disabled=false}});
