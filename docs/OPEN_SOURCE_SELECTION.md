@@ -120,3 +120,5 @@ O adapter Android também é congelado após a criação: seus metadados, requis
 
 
 Android Whisper native result snapshots capture the segment count once and read entries by bounded numeric index. They do not invoke a caller-provided array iterator, and read the proxied collection length and each indexed entry only once; malformed collections fail closed.
+
+A requisição recebida pela ponte Android também é tratada como entrada não confiável: os campos de áudio, consentimento, MIME, idioma, timestamps e sinal de cancelamento são capturados uma única vez antes da validação. O consentimento é copiado para um objeto canônico, o buffer de áudio é isolado e valores malformados ou getters que lançam exceção são rejeitados antes da consulta ao status nativo. A cópia isolada é zerada quando a chamada nativa termina.
