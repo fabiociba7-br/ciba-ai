@@ -76,3 +76,10 @@ O perfil é um relato do cliente, não uma atestação de hardware confiável. A
 O módulo TypeScript agora define a interface que uma implementação Android/JNI deverá cumprir em `src/core/android-whisper-bridge.ts`. Antes de encaminhar áudio, a ponte precisa informar que a biblioteca nativa está pronta e que o modelo solicitado está carregado. A resposta é validada quanto ao motor, identificador do modelo e segmentos/timestamps.
 
 A ponte não carrega bibliotecas, não instala APKs, não baixa pesos e não escolhe arquivos no dispositivo. O app Android ainda precisa implementar o lado JNI/NDK e fornecer um modelo compatível. Sem biblioteca e modelo prontos, a chamada falha de forma explícita; não há fallback remoto automático.
+
+
+### Fluxo único e protegido de transcrição
+
+A função `runWhisperCppTranscription` centraliza a validação do áudio, a avaliação do perfil do dispositivo, a resolução de um adapter já registrado e a validação do resultado. Se o hardware não for compatível ou não houver adapter, retorna motivos explícitos sem executar transcrição. Erros do adapter não provocam fallback remoto. O limite de bytes é aplicado antes da chamada ao motor.
+
+Esse fluxo é uma integração de núcleo, não uma prova de execução nativa: continua dependendo de um adapter Android real, biblioteca JNI/NDK e modelo instalado e carregado.
