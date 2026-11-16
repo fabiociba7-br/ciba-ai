@@ -2163,7 +2163,7 @@ const handleShareContextPackage = async (request: Request, env: Env) => {
   try {
     contextPackage = buildContextPackage(
       contextId,
-      body.purpose,
+      typeof body.purpose === "string" ? body.purpose : "",
       body.items as ContextPackageItem[],
     );
   } catch (error) {
