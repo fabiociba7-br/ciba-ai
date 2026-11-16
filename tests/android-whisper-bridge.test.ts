@@ -79,6 +79,13 @@ describe("Android Whisper.cpp bridge contract", () => {
   it("rejects malformed native bridge status before transcribing", async () => {
     const malformedStatuses = [
       null,
+      undefined,
+      "ready",
+      42,
+      [],
+      Object.defineProperty({}, "nativeLibraryReady", {
+        get() { throw new Error("status_getter_failed"); },
+      }),
       { nativeLibraryReady: "yes", modelLoaded: true, modelId: "ggml-tiny", modelSha256: MODEL_SHA256 },
       { nativeLibraryReady: true, modelLoaded: "yes", modelId: "ggml-tiny", modelSha256: MODEL_SHA256 },
       { nativeLibraryReady: true, modelLoaded: true, modelId: "", modelSha256: MODEL_SHA256 },
