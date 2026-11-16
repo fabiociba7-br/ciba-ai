@@ -32,7 +32,7 @@ export { createWhisperCppRegistry, validateSpeechToTextRequest, resolveWhisperCp
 export type { SpeechToTextRuntimeResolution, SpeechToTextExecution } from "./speech-to-text";
 export type { SpeechToTextAdapter, SpeechToTextConsent, SpeechToTextEnginePolicy, SpeechToTextRegistry, SpeechToTextRequest, SpeechToTextResult, SpeechSegment, SpeechToTextRuntime } from "./speech-to-text";
 
-export { assessDeviceCompatibility, validateDeviceCapabilityProfile } from "./device-capabilities";
+export { assessDeviceCompatibility, validateDeviceCapabilityProfile, validateDeviceCapabilityRequirements } from "./device-capabilities";
 export type { DeviceArchitecture, DeviceCapabilityDecision, DeviceCapabilityProfile, DeviceCapabilityRequirements, DevicePlatform, DeviceRuntime } from "./device-capabilities";
 
 export { createAndroidWhisperCppAdapter } from "./android-whisper-bridge";
