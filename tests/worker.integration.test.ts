@@ -76,6 +76,7 @@ describe("Ciba AI Worker integration", () => {
     expect(html).toContain("Histórico de alterações da memória");
     expect(html).toContain("/v1/owner/memory/history");
     expect(html).toContain("Aprovações de ferramentas");
+    expect(html).toContain("Aguardando execução; esta tela não executa ferramentas.");
     expect(html).toContain("/v1/owner/tool-approvals");
     const dashboardScript = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
     expect(dashboardScript).toBeTruthy();
@@ -1321,6 +1322,25 @@ describe("Ciba AI authenticated durable tool approvals", () => {
       decided: true, approval_id: saved.approvalId, decision: "approved",
       approved_by_device_id: second.device_id,
     });
+
+    const approvedInbox = await request("/v1/owner/tool-approvals", {
+      headers: { authorization: `Bearer ${second.access_token}` },
+    });
+    const approvedItems = await approvedInbox.json() as { approvals: Array<{ approval_id: string; status: string }> };
+    expect(approvedItems.approvals).toContainEqual(expect.objectContaining({
+      approval_id: saved.approvalId, status: "approved",
+    }));
+
+    expect(await store.consume({
+      approvalId: saved.approvalId,
+      identity: { ownerId: owner.owner_id, appId, deviceId: source.device_id },
+      request: approvalRequest,
+    })).toBe(true);
+    expect(await store.consume({
+      approvalId: saved.approvalId,
+      identity: { ownerId: owner.owner_id, appId, deviceId: source.device_id },
+      request: approvalRequest,
+    })).toBe(false);
 
     const replay = await request(`/v1/owner/tool-approvals/${saved.approvalId}/decision`, {
       method: "POST",
