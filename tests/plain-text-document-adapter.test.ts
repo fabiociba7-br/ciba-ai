@@ -6,19 +6,17 @@ describe("local plain-text document adapter", () => {
   const adapter = createPlainTextDocumentAdapter();
 
   it("extracts deterministic text structure without external dependencies", async () => {
-    await expect(adapter.execute({
+    const text = "# Overview\nFirst paragraph with café.\n\n## Details\nSecond paragraph.";
+    await expect(adapter.execute({ fileName: "notes.md", text })).resolves.toEqual({
       fileName: "notes.md",
-      text: "# Overview\\nFirst paragraph with café.\\n\\n## Details\\nSecond paragraph.",
-    })).resolves.toEqual({
-      fileName: "notes.md",
-      characterCount: 70,
-      byteCount: 71,
+      characterCount: 67,
+      byteCount: 68,
       lineCount: 5,
       nonEmptyLineCount: 4,
-      wordCount: 10,
+      wordCount: 8,
       paragraphCount: 2,
       headings: ["Overview", "Details"],
-      preview: "# Overview\\nFirst paragraph with café.\\n\\n## Details\\nSecond paragraph.",
+      preview: text,
     });
   });
 
