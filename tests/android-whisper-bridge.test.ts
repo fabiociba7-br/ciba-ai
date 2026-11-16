@@ -71,7 +71,7 @@ describe("Android Whisper.cpp bridge contract", () => {
         nativeLibraryReady: true, modelLoaded: false, modelId: "ggml-tiny",
         modelSha256: MODEL_SHA256,
       }),
-    }), { modelId: "ggml-tiny", maxAudioBytes: 1024, deviceRequirements });
+    }), { modelId: "ggml-tiny", modelSha256: MODEL_SHA256, maxAudioBytes: 1024, deviceRequirements });
     await expect(adapter.transcribe(request))
       .rejects.toThrow("android_whisper_model_unavailable");
   });
@@ -160,6 +160,7 @@ describe("Android Whisper.cpp bridge contract", () => {
     });
     const adapter = createAndroidWhisperCppAdapter(sourceBridge, {
       modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
       maxAudioBytes: 1024,
       deviceRequirements,
     });
