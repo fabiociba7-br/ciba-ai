@@ -36,11 +36,11 @@ function snapshotProfileRecords(value: unknown): MemoryInsightRecord[] | null {
       }
       if (typeof fields.memory_id !== "string" || fields.memory_id.length < 1 || fields.memory_id.length > 200 ||
           (fields.scope !== "app" && fields.scope !== "owner") ||
-          !(fields.source_app_id === null || (typeof fields.source_app_id === "string" && fields.source_app_id.length <= 200)) ||
-          typeof fields.memory_key !== "string" || fields.memory_key.length > 200 ||
+          !(fields.source_app_id === null || (typeof fields.source_app_id === "string" && fields.source_app_id.length > 0 && fields.source_app_id.length <= 200)) ||
+          typeof fields.memory_key !== "string" || !fields.memory_key || fields.memory_key.length > 200 ||
           typeof fields.value !== "string" || fields.value.length > 8_000 ||
-          typeof fields.updated_at !== "string" || fields.updated_at.length > 100 ||
-          !(fields.expires_at === null || (typeof fields.expires_at === "string" && fields.expires_at.length <= 100))) {
+          typeof fields.updated_at !== "string" || !fields.updated_at || fields.updated_at.length > 100 ||
+          !(fields.expires_at === null || (typeof fields.expires_at === "string" && fields.expires_at.length > 0 && fields.expires_at.length <= 100))) {
         return null;
       }
       result.push(Object.freeze({
