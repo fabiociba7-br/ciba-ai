@@ -134,7 +134,7 @@ describe("Android Whisper.cpp bridge contract", () => {
       transcribe: async () => ({
         ...result, segments: [{ startMs: 500, endMs: 100, text: "bad" }],
       }),
-    }), { modelId: "ggml-tiny", maxAudioBytes: 1024, deviceRequirements });
+    }), { modelId: "ggml-tiny", modelSha256: MODEL_SHA256, maxAudioBytes: 1024, deviceRequirements });
     await expect(invalidSegment.transcribe(request))
       .rejects.toThrow("invalid_android_whisper_result");
   });
