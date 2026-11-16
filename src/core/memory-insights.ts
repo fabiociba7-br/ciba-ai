@@ -44,10 +44,11 @@ function snapshotInsightRecords(value: unknown): MemoryInsightRecord[] | null {
       }
       if (typeof fields.memory_id !== "string" || !fields.memory_id.trim() || fields.memory_id.length > 200 ||
           (fields.scope !== "app" && fields.scope !== "owner") ||
-          !(fields.source_app_id === null || (typeof fields.source_app_id === "string" &&
-            fields.source_app_id.length > 0 && fields.source_app_id.length <= 128)) ||
-          typeof fields.memory_key !== "string" || !fields.memory_key || fields.memory_key.length > 200 ||
-          typeof fields.value !== "string" || fields.value.length > 8_000 ||
+          (fields.scope === "app"
+            ? typeof fields.source_app_id !== "string" || !fields.source_app_id.trim() || fields.source_app_id.length > 128
+            : fields.source_app_id !== null) ||
+          typeof fields.memory_key !== "string" || !fields.memory_key.trim() || fields.memory_key.length > 80 ||
+          typeof fields.value !== "string" || !fields.value.trim() || fields.value.length > 500 ||
           typeof fields.updated_at !== "string" || !fields.updated_at || fields.updated_at.length > 64 ||
           !(fields.expires_at === null || (typeof fields.expires_at === "string" &&
             fields.expires_at.length > 0 && fields.expires_at.length <= 64))) return null;
