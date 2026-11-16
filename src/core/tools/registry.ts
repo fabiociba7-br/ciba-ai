@@ -330,15 +330,16 @@ export function createCibaToolRegistry(
       }
       activeExecutions += 1;
       const execution = Promise.resolve().then(async () => {
+        const authorizationInput = deepFreeze(cloneJson(safeInput));
         const authorized = await authorize({
           toolId,
           risk: item.definition.risk,
           requiresApproval: item.definition.requiresApproval,
-          input: safeInput
+          input: authorizationInput
         });
         if (authorized !== true) throw new Error("tool_authorization_denied");
 
-        const output = await item.definition.execute(safeInput);
+        const output = await item.definition.execute(cloneJson(safeInput));
         let safeOutput: unknown;
         try {
           safeOutput = cloneJson(output);
