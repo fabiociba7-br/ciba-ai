@@ -49,16 +49,39 @@ export function validateDeviceCapabilityProfile(profile: DeviceCapabilityProfile
   }
 }
 
+/** Validates model/runtime resource requirements before they can influence selection. */
+export function validateDeviceCapabilityRequirements(
+  requirements: DeviceCapabilityRequirements,
+): void {
+  const validPlatforms: DevicePlatform[] = ["android", "windows", "macos", "linux", "unknown"];
+  const validArchitectures: DeviceArchitecture[] = ["arm64", "arm32", "x64", "x86", "unknown"];
+  const valid = ["android_embedded", "desktop_local", "local_service"].includes(requirements.runtime) &&
+    Number.isInteger(requirements.minimumRamMb) && requirements.minimumRamMb >= 256 &&
+    (requirements.minimumAvailableRamMb === undefined ||
+      (Number.isInteger(requirements.minimumAvailableRamMb) && requirements.minimumAvailableRamMb >= 0)) &&
+    (requirements.minimumCpuCores === undefined ||
+      (Number.isInteger(requirements.minimumCpuCores) && requirements.minimumCpuCores >= 1 && requirements.minimumCpuCores <= 1024)) &&
+    (requirements.requiresGpu === undefined || typeof requirements.requiresGpu === "boolean") &&
+    (requirements.architectures === undefined ||
+      (Array.isArray(requirements.architectures) && requirements.architectures.length > 0 &&
+        requirements.architectures.every((value) => validArchitectures.includes(value)))) &&
+    (requirements.platforms === undefined ||
+      (Array.isArray(requirements.platforms) && requirements.platforms.length > 0 &&
+        requirements.platforms.every((value) => validPlatforms.includes(value)))) &&
+    (requirements.minimumAndroidApiLevel === undefined ||
+      (Number.isInteger(requirements.minimumAndroidApiLevel) &&
+        requirements.minimumAndroidApiLevel >= 21 && requirements.minimumAndroidApiLevel <= 100));
+  if (!valid) throw new Error("invalid_device_capability_requirements");
+}
+
 /** Conservative compatibility check. It never installs or starts a runtime. */
 export function assessDeviceCompatibility(
   profile: DeviceCapabilityProfile,
   requirements: DeviceCapabilityRequirements,
 ): DeviceCapabilityDecision {
   validateDeviceCapabilityProfile(profile);
+  validateDeviceCapabilityRequirements(requirements);
   const reasons: string[] = [];
-  if (!Number.isInteger(requirements.minimumRamMb) || requirements.minimumRamMb < 256) {
-    throw new Error("invalid_device_capability_requirements");
-  }
   if (profile.totalRamMb < requirements.minimumRamMb) reasons.push("insufficient_total_ram");
   if (requirements.minimumAvailableRamMb !== undefined &&
       profile.availableRamMb < requirements.minimumAvailableRamMb) reasons.push("insufficient_available_ram");
