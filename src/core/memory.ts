@@ -51,13 +51,6 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function isValidScope(scope: unknown): scope is MemoryScope {
-  const candidate = snapshotMemoryRecord(scope, ["type", "ownerId", "appId"]);
-  if (!candidate || !isNonEmptyString(candidate.ownerId)) return false;
-  if (candidate.type === "owner") return candidate.appId === undefined;
-  return candidate.type === "app" && isNonEmptyString(candidate.appId);
-}
-
 export function canAccessMemory(
   request: MemoryAccessRequest,
   grants: MemoryGrant[],
