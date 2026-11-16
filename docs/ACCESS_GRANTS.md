@@ -74,3 +74,9 @@ O sistema não grava conversas, prompts ou respostas automaticamente. O consenti
 - Excluir: `DELETE /v1/owner/memory?scope=app` ou `?scope=owner`, com corpo `{"memory_id":"..."}`.
 
 Para memória de outro app, incluir `source_app_id` na query string em todas as operações. O servidor não aceita `owner_id` do cliente. O escopo é determinado pela query string e a origem do registro nunca é escolhida por um campo no corpo.
+
+## Validação defensiva no núcleo
+
+A política pura `canUseAppAccessGrant` cria snapshots dos dados antes de comparar permissões. A solicitação precisa ser um objeto simples com campos de dados próprios; getters, propriedades extras, protótipos personalizados e coleções de concessões esparsas ou adulteradas não autorizam acesso. Cada concessão persistida é normalizada antes da comparação. Registros inválidos são ignorados, e a política retorna negação em caso de falha inesperada.
+
+Essa validação não substitui autenticação: o chamador continua responsável por derivar `ownerId` e `requesterAppId` da identidade do dispositivo autenticado. Nunca use identificadores fornecidos pelo cliente como prova de identidade.
