@@ -164,3 +164,8 @@ A classificação `new`, `unchanged` ou `possible_conflict` é determinística e
 ## Perfil contextual do proprietário
 
 `getOwnerProfile()` consulta `GET /v1/owner/profile` e retorna memórias autorizadas agrupadas por assunto, termos recorrentes entre registros distintos e sugestões de revisão. A análise é determinística, limitada a 200 memórias e não chama IA nem altera dados. Memórias de outros aplicativos e a memória central exigem concessões ativas de leitura. Sugestões não são aplicadas automaticamente; o proprietário decide se deve revisar ou atualizar qualquer registro.
+
+
+## Perfil contextual aplicado ao chat
+
+O chat normal usa o perfil de comunicação presente nas memórias curadas autorizadas para orientar o estilo da resposta, mesmo quando a pergunta atual é sobre outro assunto. As demais memórias continuam sujeitas à recuperação lexical por relevância. A seleção é limitada a cinco registros e 1.800 caracteres; nenhuma chamada de inferência adicional é feita. O campo `intelligence.memory_context.profile_signals_used` informa se padrões recorrentes de comunicação foram incluídos.
