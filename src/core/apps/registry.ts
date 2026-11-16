@@ -32,15 +32,37 @@ export interface AppProfileInput {
   contract_version?: unknown;
 }
 
+function snapshotAppProfileInput(input: unknown): Record<string, unknown> | null {
+  try {
+    if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+    const prototype = Object.getPrototypeOf(input);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(input);
+    const result: Record<string, unknown> = Object.create(null);
+    for (const key of Reflect.ownKeys(descriptors)) {
+      if (typeof key !== "string" || key === "__proto__" ||
+          key === "constructor" || key === "prototype") return null;
+      const descriptor = descriptors[key];
+      if (!("value" in descriptor) || !descriptor.enumerable) return null;
+      result[key] = descriptor.value;
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 export function validateAppProfile(input: AppProfileInput): {
   valid: true;
   profile: Pick<AppIdentityProfile, "description" | "app_type" | "capabilities" | "task_types" | "contract_version">;
 } | { valid: false; error: string } {
-  const description = input.description === undefined ? "" : input.description;
-  const appType = input.app_type === undefined ? "other" : input.app_type;
-  const capabilities = input.capabilities === undefined ? [] : input.capabilities;
-  const taskTypes = input.task_types === undefined ? [] : input.task_types;
-  const contractVersion = input.contract_version === undefined ? "1.0.0" : input.contract_version;
+  const snapshot = snapshotAppProfileInput(input);
+  if (!snapshot) return { valid: false, error: "invalid_app_profile" };
+  const description = snapshot.description === undefined ? "" : snapshot.description;
+  const appType = snapshot.app_type === undefined ? "other" : snapshot.app_type;
+  const capabilities = snapshot.capabilities === undefined ? [] : snapshot.capabilities;
+  const taskTypes = snapshot.task_types === undefined ? [] : snapshot.task_types;
+  const contractVersion = snapshot.contract_version === undefined ? "1.0.0" : snapshot.contract_version;
 
   if (typeof description !== "string" || description.trim().length > 280) {
     return { valid: false, error: "invalid_app_description" };
@@ -67,13 +89,13 @@ export function validateAppProfile(input: AppProfileInput): {
 
   return {
     valid: true,
-    profile: {
+    profile: Object.freeze({
       description: description.trim(),
       app_type: appType as AppType,
-      capabilities: [...capabilities] as AppCapability[],
-      task_types: [...taskTypes] as AppTaskType[],
+      capabilities: Object.freeze([...capabilities]) as unknown as AppCapability[],
+      task_types: Object.freeze([...taskTypes]) as unknown as AppTaskType[],
       contract_version: contractVersion,
-    },
+    }),
   };
 }
 
