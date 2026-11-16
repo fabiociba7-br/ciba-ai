@@ -32,3 +32,6 @@ export type {
   DurableToolApprovalStatus,
   DurableToolApprovalStore
 } from "./durable-consent";
+
+export { createGarciaCapabilityTools } from "./garcia-capability-tools";
+export type { GarciaCapabilityToolAuthorizer, GarciaCapabilityToolOptions } from "./garcia-capability-tools";
