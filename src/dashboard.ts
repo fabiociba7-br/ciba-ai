@@ -186,7 +186,7 @@ details.appendChild(el("strong",p.memory_key+" · "+(p.classification==="new"?"N
 details.appendChild(el("div","Proposta: "+p.proposed_value));
 if(p.existing_value_snapshot)details.appendChild(el("small","Memória atual: "+p.existing_value_snapshot));
 details.appendChild(el("small","Evidência apresentada: "+p.evidence_excerpt+" · App: "+p.proposed_by_app_id));
-if(item.status==="pending"){var actions=el("div","");actions.className="actions";
+if(item.status==="pending"){if(item.status==="pending"){var actions=el("div","");actions.className="actions";
 var approve=el("button","Aprovar");approve.addEventListener("click",async function(){if(!confirm("Aprovar esta informação e "+(p.classification==="possible_conflict"?"atualizar a memória existente?":"salvá-la na memória")+"?"))return;try{await api("/v1/owner/memory/reviews?scope="+encodeURIComponent(scope),"PATCH",{proposal_id:p.proposal_id,decision:"approve"});say("Proposta aprovada.");await loadMemories();await loadMemoryReviews()}catch(e){say(e.message)}});
 var reject=el("button","Rejeitar");reject.className="danger";reject.addEventListener("click",async function(){if(!confirm("Rejeitar esta proposta? A memória não será alterada."))return;try{await api("/v1/owner/memory/reviews?scope="+encodeURIComponent(scope),"PATCH",{proposal_id:p.proposal_id,decision:"reject"});say("Proposta rejeitada.");await loadMemoryReviews()}catch(e){say(e.message)}});
 actions.appendChild(approve);actions.appendChild(reject);card.appendChild(details);card.appendChild(actions);host.appendChild(card);
