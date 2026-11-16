@@ -205,6 +205,13 @@ describe("Ciba AI Worker integration", () => {
       "UPDATE cibagenio_controls SET enabled = 1 WHERE resource_id = 'chat' AND scope = 'global' AND scope_id = ''"
     ).run();
 
+    // The earlier app-level unlock reaches quota reservation before the
+    // deliberately invalid model is rejected. Allow that request plus this
+    // assertion, then verify the next request is over quota.
+    await testDb.prepare(
+      "UPDATE runtime_settings SET setting_value = '2', updated_at = ? WHERE setting_key = 'daily_device_limit'"
+    ).bind(new Date().toISOString()).run();
+
     const firstChat = await chat();
     expect(firstChat.status).toBe(503);
     expect(await firstChat.json()).toEqual({ error: "ai_model_not_available" });
