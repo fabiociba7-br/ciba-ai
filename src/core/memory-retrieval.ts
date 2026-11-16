@@ -54,8 +54,10 @@ function snapshotMemoryRecord(value: unknown): MemorySearchRecord | null {
         typeof copy.value !== "string" || !copy.value.trim() || copy.value.length > 500 ||
         typeof copy.created_by_app_id !== "string" || !copy.created_by_app_id || copy.created_by_app_id.length > 128 ||
         typeof copy.updated_at !== "string" || !copy.updated_at || copy.updated_at.length > 64 ||
+        !Number.isFinite(Date.parse(copy.updated_at)) ||
         !(copy.expires_at === null || (typeof copy.expires_at === "string" &&
-          copy.expires_at.length > 0 && copy.expires_at.length <= 64)) ||
+          copy.expires_at.length > 0 && copy.expires_at.length <= 64 &&
+          Number.isFinite(Date.parse(copy.expires_at)))) ||
         (copy.duplicate_count !== undefined &&
           (!Number.isSafeInteger(copy.duplicate_count) || (copy.duplicate_count as number) < 1 ||
             (copy.duplicate_count as number) > MAX_MEMORY_RECORDS))) {
