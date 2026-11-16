@@ -141,6 +141,21 @@ export interface CibaMemoryCandidateInput {
   scope?: CibaMemoryScope;
 }
 
+export interface CibaMemoryReviewInput {
+  sourceText: string;
+  key: string;
+  value: string;
+  scope?: CibaMemoryScope;
+  validHours?: number;
+}
+export interface CibaMemoryReviewProposal {
+  proposal_id: string;
+  classification: "new" | "unchanged" | "possible_conflict";
+  requires_owner_decision: true;
+  stored_as_memory: false;
+  inference_calls: 0;
+  existing_memory_id: string | null;
+}
 export interface CibaMemoryInput {
   scope: CibaMemoryScope;
   key: string;
@@ -477,6 +492,33 @@ export class CibaClient {
         value: input.value,
         scope: input.scope || "app",
       }),
+    });
+  }
+
+
+  async proposeMemoryReview(input: CibaMemoryReviewInput): Promise<CibaMemoryReviewProposal> {
+    if (input.sourceText.trim().length < 2 || input.sourceText.length > 2_000) throw new Error("invalid_memory_candidate_source");
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(input.key.trim())) throw new Error("invalid_memory_key");
+    if (!input.value.trim() || input.value.length > 500) throw new Error("invalid_memory_value");
+    if (input.validHours !== undefined && (!Number.isInteger(input.validHours) || input.validHours < 1 || input.validHours > 8760)) throw new Error("invalid_memory_valid_hours");
+    return this.request("/v1/owner/memory/reviews?scope=" + (input.scope || "app"), {
+      method: "POST",
+      body: JSON.stringify({
+        source_role: "user", source_text: input.sourceText, key: input.key, value: input.value,
+        ...(input.validHours === undefined ? {} : { valid_hours: input.validHours }),
+      }),
+    });
+  }
+
+  listMemoryReviews<T = CibaMemoryReviewProposal>(scope: CibaMemoryScope = "app"): Promise<{ proposals: T[]; count: number; maximum: number; scope: CibaMemoryScope }> {
+    return this.request("/v1/owner/memory/reviews?scope=" + scope);
+  }
+
+  decideMemoryReview(proposalId: string, decision: "approve" | "reject", scope: CibaMemoryScope = "app"): Promise<Record<string, unknown>> {
+    if (!proposalId.trim() || proposalId.length > 100) throw new Error("invalid_memory_proposal_id");
+    return this.request("/v1/owner/memory/reviews?scope=" + scope, {
+      method: "PATCH",
+      body: JSON.stringify({ proposal_id: proposalId, decision }),
     });
   }
 
