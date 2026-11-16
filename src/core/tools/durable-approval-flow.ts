@@ -129,7 +129,7 @@ export function createDurableCibaToolApprovalFlow(
     throw new Error("invalid_durable_tool_approval_dependencies");
   }
 
-  return Object.freeze({
+  const flow: DurableCibaToolApprovalFlow = {
     async propose(identity, toolId, input, rawContext) {
       const context = snapshotContext(rawContext);
       const plan = registry.prepare(toolId, input, context);
@@ -182,5 +182,6 @@ export function createDurableCibaToolApprovalFlow(
     cancel(approvalId, identity) {
       return approvals.cancel(approvalId, identity);
     },
-  });
+  };
+  return Object.freeze(flow);
 }
