@@ -91,3 +91,5 @@ Esse fluxo é uma integração de núcleo, não uma prova de execução nativa: 
 
 
 O registry limita a concorrência de transcrições a uma execução por padrão, configurável entre 1 e 8. Cada execução reserva uma vaga antes de copiar o áudio e libera essa vaga em `finally`, inclusive quando o adapter falha ou retorna dados inválidos. Quando a capacidade está ocupada, a nova solicitação recebe `transcription_capacity_reached` sem chamar o motor.
+
+O limite de bytes definido em `SpeechToTextEnginePolicy.maxAudioBytes` é exposto pelo registry e aplicado automaticamente por `runWhisperCppTranscription` antes de reservar capacidade ou chamar o adapter. Uma chamada pode fornecer um limite ainda menor, mas não precisa repetir a configuração do registry.
