@@ -47,11 +47,12 @@ function snapshotMemoryRecord(value: unknown): MemorySearchRecord | null {
     }
     if (typeof copy.memory_id !== "string" || !copy.memory_id ||
         (copy.scope !== "app" && copy.scope !== "owner") ||
-        !(copy.source_app_id === null || typeof copy.source_app_id === "string") ||
-        typeof copy.memory_key !== "string" || typeof copy.value !== "string" ||
-        typeof copy.created_by_app_id !== "string" ||
-        typeof copy.updated_at !== "string" ||
-        !(copy.expires_at === null || typeof copy.expires_at === "string") ||
+        !(copy.source_app_id === null || (typeof copy.source_app_id === "string" && copy.source_app_id.length <= 128)) ||
+        typeof copy.memory_key !== "string" || copy.memory_key.length > 200 ||
+        typeof copy.value !== "string" || copy.value.length > 8_000 ||
+        typeof copy.created_by_app_id !== "string" || copy.created_by_app_id.length > 128 ||
+        typeof copy.updated_at !== "string" || copy.updated_at.length > 64 ||
+        !(copy.expires_at === null || (typeof copy.expires_at === "string" && copy.expires_at.length <= 64)) ||
         (copy.duplicate_count !== undefined &&
           (!Number.isSafeInteger(copy.duplicate_count) || (copy.duplicate_count as number) < 1))) {
       return null;
@@ -194,7 +195,6 @@ export const MAX_CHAT_MEMORY_CHARS = 1_800;
 
 export interface ChatMemoryContext { text: string; entriesUsed: number; characters: number; profileSignalsUsed: boolean; duplicatesCollapsed: number; }
 
-/** Formats authorized curated records as bounded, explicitly untrusted context. */
 function snapshotRankedMemories(value: unknown): RankedMemory[] | null {
   try {
     if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
