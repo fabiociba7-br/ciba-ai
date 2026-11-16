@@ -24,3 +24,6 @@ export type { AppAccessGrant, AppAccessPermission, AppAccessRequest, AppAccessSc
 
 export { APP_TYPES, APP_CAPABILITIES, APP_TASK_TYPES, validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./apps/registry";
 export type { AppType, AppCapability, AppTaskType, AppIdentityProfile, AppProfileInput } from "./apps/registry";
+
+export { GARCIA_NATIVE_CAPABILITIES, createNativeCapabilityRegistry } from "./native-capabilities";
+export type { NativeCapabilityAdapter, NativeCapabilityCategory, NativeCapabilityDefinition, NativeCapabilityLicenseStatus, NativeCapabilityRegistry, NativeCapabilityRuntime, NativeCapabilityStatus } from "./native-capabilities";
