@@ -7,6 +7,7 @@ import type { SpeechToTextRequest, SpeechToTextResult } from "../src/core/speech
 
 const request: SpeechToTextRequest = {
   audio: new Uint8Array([1, 2, 3]),
+  consent: { granted: true, purpose: "transcription", source: "explicit_user_action" },
   mimeType: "audio/wav",
   language: "pt-BR",
 };
