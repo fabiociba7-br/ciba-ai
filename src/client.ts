@@ -156,6 +156,17 @@ export interface CibaMemoryReviewProposal {
   inference_calls: 0;
   existing_memory_id: string | null;
 }
+export interface CibaMemoryHistoryEvent {
+  event_id: string;
+  memory_id: string | null;
+  proposal_id: string | null;
+  scope: CibaMemoryScope;
+  source_app_id: string | null;
+  memory_key: string;
+  action: "created" | "updated" | "deleted" | "review_approved" | "review_rejected";
+  actor_app_id: string;
+  occurred_at: string;
+}
 export interface CibaMemoryInsights<T = Record<string, unknown>> {
   possible_conflicts: Array<{ first: T; second: T; reason: "same_key_different_value"; similarity: number }>;
   related: Array<{ first: T; second: T; shared_terms: string[]; similarity: number; reason: "related_content" }>;
@@ -439,6 +450,13 @@ export class CibaClient {
         ...(input.validHours === undefined ? {} : { valid_hours: input.validHours }),
       }),
     });
+  }
+
+  getMemoryHistory(options: { scope?: CibaMemoryScope; sourceAppId?: string; memoryId?: string; limit?: number } = {}): Promise<{ events: CibaMemoryHistoryEvent[]; count: number; limit: number; scope: CibaMemoryScope; source_app_id: string | null; values_stored: false }> {
+    const params = new URLSearchParams({ scope: options.scope || "app", limit: String(options.limit ?? 50) });
+    if (options.sourceAppId) params.set("source_app_id", options.sourceAppId);
+    if (options.memoryId) params.set("memory_id", options.memoryId);
+    return this.request("/v1/owner/memory/history?" + params.toString());
   }
 
   getMemoryInsights<T = Record<string, unknown>>(): Promise<CibaMemoryInsights<T>> {
