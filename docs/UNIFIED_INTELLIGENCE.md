@@ -164,3 +164,15 @@ As propostas ficam em uma fila privada e limitada a 100 itens pendentes por prop
 A fila guarda somente a informação proposta e o trecho de evidência correspondente (máximo de 500 caracteres), não a conversa completa nem o texto de origem integral. O app informa `source_role: user`; o servidor não consegue autenticar independentemente esse papel, portanto a interface do aplicativo precisa garantir que a evidência seja realmente uma fala do usuário. A aprovação deve ser uma ação explícita do proprietário.
 
 O fluxo não treina nem ajusta pesos do modelo, não cria histórico de chat e não chama IA: comparação e classificação são determinísticas (`inference_calls: 0`). A migration `0013_memory_review_proposals.sql` precisa ser aplicada e o Worker publicado antes de o recurso ficar disponível em produção.
+
+
+## Análise de relações entre memórias (etapa 29)
+
+O endpoint autenticado `GET /v1/owner/memory/insights` analisa até 200 registros não excluídos que o aplicativo atual pode ler: memória do próprio app e registros de outros apps ou da memória central somente quando existe uma concessão ativa de `memory_read` no escopo correspondente. Registros expirados também podem aparecer no grupo de revisão para que o proprietário decida o que fazer.
+
+A análise é determinística e não chama IA. Ela apresenta:
+- **Possíveis conflitos:** mesma chave normalizada com valores diferentes. Isso é um alerta, não uma conclusão sobre qual valor é correto.
+- **Assuntos relacionados:** pares com sobreposição lexical suficiente de termos.
+- **Registros para revisão:** itens expirados ou sem atualização há pelo menos 180 dias.
+
+O painel privado mostra os alertas e suas origens. Nada é unido, alterado, renovado ou excluído automaticamente. O endpoint retorna `inference_calls: 0` e `automatic_changes: false`. A análise é limitada a 200 registros, no máximo 30 pares por categoria e 50 itens antigos/expirados. A detecção é lexical: não compreende contradições semânticas complexas, ironia ou contexto temporal; o proprietário deve confirmar qualquer interpretação.
