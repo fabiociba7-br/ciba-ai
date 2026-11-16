@@ -113,7 +113,13 @@ export async function runCibaOrchestrator(input: {
   memoryContext?: string;
 }): Promise<OrchestrationResult> {
   const safeMessages = snapshotChatMessages(input.messages);
-  const safeInput = { ...input, messages: safeMessages };
+  const safeInput = {
+    messages: safeMessages,
+    model: input.model,
+    maxOutputTokens: input.maxOutputTokens,
+    provider: input.provider,
+    memoryContext: input.memoryContext
+  };
   validateInput(safeInput);
 
   const selectedAgent = routeTask(safeMessages);
@@ -147,6 +153,20 @@ export async function runCibaOrchestrator(input: {
     maxOutputTokens: safeInput.maxOutputTokens,
     messages
   });
+  if (!result || typeof result !== "object" ||
+      typeof result.text !== "string" || result.text.length > 1_000_000 ||
+      typeof result.provider !== "string" || result.provider.length > 128 ||
+      typeof result.model !== "string" || result.model.length > MAX_MODEL_ID_CHARS) {
+    throw new Error("invalid_provider_result");
+  }
 
-  return { ...result, selectedAgent, strategy: "single-pass", usedInferenceCalls: 1 };
+  return {
+    text: result.text,
+    raw: result.raw,
+    provider: result.provider,
+    model: result.model,
+    selectedAgent,
+    strategy: "single-pass",
+    usedInferenceCalls: 1
+  };
 }
