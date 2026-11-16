@@ -39,3 +39,6 @@ export type { DeviceArchitecture, DeviceCapabilityDecision, DeviceCapabilityProf
 
 export { createAndroidWhisperCppAdapter } from "./android-whisper-bridge";
 export type { AndroidWhisperCppAdapterOptions, AndroidWhisperCppBridge, AndroidWhisperCppBridgeStatus } from "./android-whisper-bridge";
+
+export { createChatterboxRegistry, validateTextToSpeechRequest, runChatterboxSynthesis } from "./text-to-speech";
+export type { TextToSpeechRuntime, TextToSpeechConsent, TextToSpeechRequest, TextToSpeechResult, TextToSpeechAdapter, TextToSpeechEnginePolicy, TextToSpeechRegistry } from "./text-to-speech";
