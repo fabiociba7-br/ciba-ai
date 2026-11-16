@@ -293,8 +293,9 @@ function snapshotAndroidTranscriptionRequest(
     const timestamps = source.timestamps;
     const signal = source.signal;
 
-    if (!(audio instanceof Uint8Array) || audio.byteLength === 0 ||
-        audio.byteLength > maxAudioBytes ||
+    if (!(audio instanceof Uint8Array) ||
+        Object.getPrototypeOf(audio) !== Uint8Array.prototype ||
+        audio.byteLength === 0 || audio.byteLength > maxAudioBytes ||
         typeof mimeType !== "string" || !ANDROID_AUDIO_MIME_TYPES.has(mimeType) ||
         (language !== undefined &&
           (typeof language !== "string" || !/^[a-z]{2,3}(-[A-Z]{2})?$/.test(language))) ||
@@ -316,7 +317,7 @@ function snapshotAndroidTranscriptionRequest(
     }
 
     return {
-      audio: audio.slice(),
+      audio: Uint8Array.prototype.slice.call(audio) as Uint8Array,
       consent: { granted: true, purpose: "transcription", source: "explicit_user_action" },
       mimeType: mimeType as SpeechToTextRequest["mimeType"],
       ...(language !== undefined ? { language: language as string } : {}),
