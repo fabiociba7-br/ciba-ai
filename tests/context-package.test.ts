@@ -37,7 +37,7 @@ describe("Garcia structured context packages", () => {
   });
 
   it("caps individual values and rejects invalid purpose", () => {
-    expect(() => buildContextPackage("ctx", "x", [
+    expect(() => buildContextPackage("ctx", "Valid purpose", [
       { key: "k", value: "x".repeat(501), kind: "fact", origin: "task_state" },
     ])).toThrow("invalid_context_item");
     expect(() => buildContextPackage("ctx", "x", [
