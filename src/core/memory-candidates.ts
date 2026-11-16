@@ -55,8 +55,8 @@ export function prepareMemoryCandidate(input: MemoryCandidateInput): PreparedMem
     value: typeof safeInput.value === "string" ? safeInput.value : "",
     maxCharacters: 500,
   });
-  const normalize = (text: string) => text.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
-    .toLocaleLowerCase("pt-BR").replace(/\\s+/g, " ").trim();
+  const normalize = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim();
   if (!normalize(safeInput.sourceText).includes(normalize(value))) {
     throw new Error("memory_candidate_not_supported_by_user_quote");
   }
