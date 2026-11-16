@@ -107,6 +107,8 @@ A configuração do adapter exige um SHA-256 em hexadecimal minúsculo, com exat
 Essa comparação não calcula o hash do arquivo no TypeScript e não prova, por si só, que a implementação nativa informou a verdade. O futuro módulo JNI/NDK deverá calcular SHA-256 sobre os bytes do arquivo de modelo efetivamente carregado, antes de disponibilizá-lo ao motor, e retornar esse valor no status. Até existir essa implementação e testes Android reais, o pin é apenas uma verificação contratual entre o núcleo e a ponte, não uma atestação criptográfica do modelo em execução.
 
 
+A criação do adaptador valida também os objetos de configuração e a presença dos dois métodos da ponte nativa. Cada chamada de transcrição rejeita requests nulos ou sem buffer de áudio válido com erro controlado, antes de consultar a ponte.
+
 O status da ponte é lido uma única vez para um snapshot isolado e congelado. Valores nulos, primitivos, arrays, propriedades com tipos inválidos ou getters que lançam exceção são rejeitados antes da transcrição. Isso evita leituras inconsistentes de objetos mutáveis ou malformados.
 
 Antes de enviar áudio, o adapter também valida o status retornado pela ponte: flags booleanas, identificador e digest do modelo, versão do motor e consistência entre biblioteca pronta e modelo carregado. Status malformado é rejeitado e a transcrição não é chamada. Isso valida a estrutura do relato, não atesta a veracidade do estado interno do processo nativo.
