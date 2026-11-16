@@ -113,6 +113,28 @@ describe("guarded Whisper.cpp transcription execution", () => {
     expect(adapterAudio && [...adapterAudio]).toEqual([0, 0, 0]);
   });
 
+  it("clears the temporary audio copy when the adapter returns an invalid result", async () => {
+    let adapterAudio: Uint8Array | undefined;
+    const invalidResultAdapter: SpeechToTextAdapter = {
+      ...adapter,
+      transcribe: async (input) => {
+        adapterAudio = input.audio;
+        return {
+          text: "invalid",
+          language: "pt",
+          segments: [{ startMs: 100, endMs: 50, text: "invalid" }],
+          engine: "whisper.cpp",
+          modelId: "ggml-tiny",
+        };
+      },
+    };
+    const registry = createWhisperCppRegistry(policy, [invalidResultAdapter]);
+    await expect(runWhisperCppTranscription(
+      registry, profile, requirements, request,
+    )).rejects.toThrow("invalid_whisper_cpp_result");
+    expect(adapterAudio && [...adapterAudio]).toEqual([0, 0, 0]);
+  });
+
   it("rejects invalid audio before invoking the adapter", async () => {
     let called = false;
     const countingAdapter: SpeechToTextAdapter = {
