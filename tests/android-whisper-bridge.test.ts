@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   createAndroidWhisperCppAdapter,
   type AndroidWhisperCppBridge,
@@ -504,17 +504,15 @@ describe("Android Whisper.cpp bridge contract", () => {
   });
 
   it("clears the isolated audio copy when native status validation fails", async () => {
-    let isolatedAudio: Uint8Array<ArrayBuffer> | undefined;
-    class TrackedAudio extends Uint8Array {
-      override slice(start?: number, end?: number): Uint8Array<ArrayBuffer> {
-        isolatedAudio = new Uint8Array(super.slice(start, end));
-        return isolatedAudio;
+    let isolatedAudio: Uint8Array | undefined;
+    const trackedRequest = { ...request, audio: new Uint8Array([1, 2, 3]) };
+    const originalFill = Uint8Array.prototype.fill;
+    const fillSpy = vi.spyOn(Uint8Array.prototype, "fill").mockImplementation(
+      function (this: Uint8Array, value: number, start?: number, end?: number) {
+        isolatedAudio = this;
+        return originalFill.call(this, value, start, end);
       }
-    }
-    const trackedRequest = {
-      ...request,
-      audio: new TrackedAudio([1, 2, 3]),
-    };
+    );
     const adapter = createAndroidWhisperCppAdapter(bridge({
       getStatus: async () => {
         throw new Error("native_status_unavailable");
@@ -526,24 +524,25 @@ describe("Android Whisper.cpp bridge contract", () => {
       deviceRequirements,
     });
 
-    await expect(adapter.transcribe(trackedRequest))
-      .rejects.toThrow("native_status_unavailable");
+    try {
+      await expect(adapter.transcribe(trackedRequest)).rejects.toThrow("native_status_unavailable");
+    } finally {
+      fillSpy.mockRestore();
+    }
     expect(isolatedAudio && [...isolatedAudio]).toEqual([0, 0, 0]);
     expect([...trackedRequest.audio]).toEqual([1, 2, 3]);
   });
 
   it("clears the isolated audio copy when the native model is unavailable", async () => {
-    let isolatedAudio: Uint8Array<ArrayBuffer> | undefined;
-    class TrackedAudio extends Uint8Array {
-      override slice(start?: number, end?: number): Uint8Array<ArrayBuffer> {
-        isolatedAudio = new Uint8Array(super.slice(start, end));
-        return isolatedAudio;
+    let isolatedAudio: Uint8Array | undefined;
+    const trackedRequest = { ...request, audio: new Uint8Array([1, 2, 3]) };
+    const originalFill = Uint8Array.prototype.fill;
+    const fillSpy = vi.spyOn(Uint8Array.prototype, "fill").mockImplementation(
+      function (this: Uint8Array, value: number, start?: number, end?: number) {
+        isolatedAudio = this;
+        return originalFill.call(this, value, start, end);
       }
-    }
-    const trackedRequest = {
-      ...request,
-      audio: new TrackedAudio([1, 2, 3]),
-    };
+    );
     const adapter = createAndroidWhisperCppAdapter(bridge({
       getStatus: async () => ({
         nativeLibraryReady: true,
@@ -558,8 +557,11 @@ describe("Android Whisper.cpp bridge contract", () => {
       deviceRequirements,
     });
 
-    await expect(adapter.transcribe(trackedRequest))
-      .rejects.toThrow("android_whisper_model_unavailable");
+    try {
+      await expect(adapter.transcribe(trackedRequest)).rejects.toThrow("android_whisper_model_unavailable");
+    } finally {
+      fillSpy.mockRestore();
+    }
     expect(isolatedAudio && [...isolatedAudio]).toEqual([0, 0, 0]);
     expect([...trackedRequest.audio]).toEqual([1, 2, 3]);
   });
