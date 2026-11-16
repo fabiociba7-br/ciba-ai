@@ -125,6 +125,28 @@ for (const message of inbox.messages) {
 
 O SDK fornece o ciclo de integração, não um executor universal: cada aplicativo conectado precisa implementar `meuProcessadorLocal` e decidir como tratar cada tipo de tarefa.
 
+### Registro local de processadores (etapa 39)
+
+Para impedir que um aplicativo aceite uma tarefa só porque ela aparece no cadastro central, o SDK também oferece `CibaTaskProcessorRegistry`, `getRegisteredTaskTypes(registry)` e `executeRegisteredTaskMessage(message, registry)`. O registro local contém somente callbacks realmente implementados pelo app. O método recusa tipos sem callback antes de executar, enviar resultado ou confirmar a mensagem; portanto, a tarefa permanece disponível para tratamento explícito ou nova tentativa.
+
+```ts
+const processors = {
+  summarize: async ({ task, context }) => {
+    // Implementação real e específica deste app.
+    return resumirDocumentoLocal(task.instruction, context.items);
+  },
+};
+
+const supported = getRegisteredTaskTypes(processors); // ["summarize"]
+for (const message of inbox.messages) {
+  if (message.scope === "task") {
+    await client.executeRegisteredTaskMessage(message, processors);
+  }
+}
+```
+
+A lista local é a fonte do que o código desta versão consegue executar. O cadastro administrativo `task_types` deve ser mantido alinhado manualmente com essa lista; a declaração central, sozinha, não prova que exista um processador. Esta etapa não integra nem altera repositórios de outros aplicativos e não habilita execução automática no servidor.
+
 ## Acompanhamento do ciclo de vida das tarefas (etapa 37)
 
 `getTaskStatus(taskId)` consulta `GET /v1/apps/tasks/status?task_id=...`. O endpoint só retorna tarefas originadas pelo aplicativo autenticado e exige proprietário pareado, mensagens habilitadas e concessões direcionais de tarefa ainda válidas.
