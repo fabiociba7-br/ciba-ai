@@ -21,6 +21,10 @@ describe("Garcia read-only capability catalog tools", () => {
         id: "coding_agent",
         status: "planned",
         modelWeightsBundled: false,
+        readiness: {
+          executable: false,
+          blockers: ["not_available", "license_review_required", "adapter_missing"],
+        },
       }),
     ]));
 
@@ -40,11 +44,24 @@ describe("Garcia read-only capability catalog tools", () => {
     const registry = createGarciaCapabilityTools({ authorize: async () => true });
     const result = await registry.execute("garcia.capabilities.get", {
       capabilityId: "image_generation",
-    }) as { found: boolean; capability: { status: string; modelWeightsBundled: boolean } };
+    }) as {
+      found: boolean;
+      capability: { status: string; modelWeightsBundled: boolean };
+      readiness: { executable: boolean; blockers: string[] };
+    };
 
     expect(result.found).toBe(true);
     expect(result.capability.status).toBe("planned");
     expect(result.capability.modelWeightsBundled).toBe(false);
+    expect(result.readiness).toEqual({
+      capabilityId: "image_generation",
+      status: "planned",
+      licenseStatus: "review_required",
+      adapterRegistered: false,
+      adapterRuntime: null,
+      executable: false,
+      blockers: ["not_available", "license_review_required", "adapter_missing"],
+    });
   });
 
   it("returns a safe not-found result for unknown capabilities", async () => {
