@@ -81,7 +81,7 @@ function snapshotMemoryRecord(value: unknown): MemorySearchRecord | null {
     return {
       memory_id: copy.memory_id,
       scope: copy.scope,
-      source_app_id: copy.source_app_id,
+      source_app_id: copy.source_app_id as string | null,
       memory_key: copy.memory_key,
       value: copy.value,
       created_by_app_id: copy.created_by_app_id,

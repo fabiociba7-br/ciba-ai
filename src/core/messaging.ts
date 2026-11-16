@@ -102,8 +102,8 @@ export function validateAppMessageGrant(grant: AppMessageGrant): AppMessageGrant
     granteeAppId: source.granteeAppId as string,
     sourceAppId: source.sourceAppId as string,
     destinationAppId: source.destinationAppId as string,
-    permissions: Object.freeze(permissions as AppMessagePermission[]),
-    scopes: Object.freeze(scopes as AppMessageScope[]),
+    permissions: [...permissions] as AppMessagePermission[],
+    scopes: [...scopes] as AppMessageScope[],
     ...(source.expiresAt !== undefined ? { expiresAt: source.expiresAt as number } : {})
   });
 }
@@ -155,8 +155,8 @@ function cloneMessageJson(value: unknown, depth = 0): unknown {
   if (Array.isArray(value)) {
     if (Object.getPrototypeOf(value) !== Array.prototype) throw new Error("invalid_app_message_payload");
     const descriptors = Object.getOwnPropertyDescriptors(value);
-    const length = descriptors.length?.value;
-    if (!Number.isSafeInteger(length) || length < 0 || length > MAX_PAYLOAD_BYTES ||
+    const length = Object.getOwnPropertyDescriptor(value, "length")?.value;
+    if (typeof length !== "number" || !Number.isSafeInteger(length) || length < 0 || length > MAX_PAYLOAD_BYTES ||
         Reflect.ownKeys(descriptors).length !== length + 1) {
       throw new Error("invalid_app_message_payload");
     }
