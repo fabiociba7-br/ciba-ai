@@ -50,6 +50,12 @@ The callback is part of the trusted application boundary. Do not implement it as
 
 Registry lookup (`get` and `list`) returns metadata only; executable handlers and schemas remain private. The only public execution path is `registry.execute`, which validates the input and calls the trusted authorization callback before invoking a handler.
 
+## Invocation preview (no execution)
+
+The executable registry also exposes `prepare(toolId, input)`. It checks that the tool is registered and allowlisted, clones the proposed JSON input, enforces size and schema limits, and returns an immutable preview containing the tool ID, risk, approval requirement, and validated input.
+
+Preparing a preview does **not** call the authorization callback, invoke the handler, reserve an approval, or create an approval token. A preview is not evidence of user consent and must never be treated as authorization. After the application obtains explicit approval through its own trusted UI/session policy, it must call `execute(toolId, input)`; execution independently validates the input and invokes the registry's trusted authorization callback immediately before the handler. Never execute solely because a model proposed a call or because a preview exists.
+
 ## Supported schema subset
 
 - Objects with explicit properties, required keys, and `additionalProperties: false`
