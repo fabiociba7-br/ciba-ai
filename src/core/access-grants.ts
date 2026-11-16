@@ -99,66 +99,108 @@ export function validateAppAccessGrant(grant: AppAccessGrant): AppAccessGrant {
   }
 }
 
+function snapshotAccessRequest(value: unknown): AppAccessRequest | null {
+  try {
+    if (value === null || typeof value !== "object" || Array.isArray(value) ||
+        Object.getPrototypeOf(value) !== Object.prototype) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    const allowed = ["ownerId", "requesterAppId", "sourceAppId", "destinationAppId", "permission", "scope"];
+    if (keys.some((key) => typeof key !== "string" || !allowed.includes(key))) return null;
+    for (const key of ["ownerId", "requesterAppId", "permission", "scope"]) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
+    }
+    for (const key of ["sourceAppId", "destinationAppId"]) {
+      const descriptor = descriptors[key];
+      if (descriptor && (!("value" in descriptor) || !descriptor.enumerable)) return null;
+    }
+    const read = (key: string): unknown => descriptors[key]?.value;
+    const sourceAppId = read("sourceAppId") ?? null;
+    const destinationAppId = read("destinationAppId") ?? null;
+    const request: AppAccessRequest = {
+      ownerId: read("ownerId") as string,
+      requesterAppId: read("requesterAppId") as string,
+      sourceAppId: sourceAppId as string | null,
+      destinationAppId: destinationAppId as string | null,
+      permission: read("permission") as AppAccessPermission,
+      scope: read("scope") as AppAccessScope
+    };
+    if (!validId(request.ownerId) || !validId(request.requesterAppId) ||
+        !VALID_PERMISSIONS.includes(request.permission) ||
+        !VALID_SCOPES.includes(request.scope) ||
+        (request.sourceAppId !== null && !validId(request.sourceAppId)) ||
+        (request.destinationAppId !== null && !validId(request.destinationAppId))) return null;
+    return Object.freeze(request);
+  } catch {
+    return null;
+  }
+}
+
+function snapshotGrantList(value: unknown): AppAccessGrant[] | null {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+        value.length > 10_000) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Reflect.ownKeys(descriptors).length !== value.length + 1) return null;
+    const result: AppAccessGrant[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
+      try {
+        result.push(validateAppAccessGrant(descriptor.value as AppAccessGrant));
+      } catch {
+        // A malformed persisted grant is ignored; it can never authorize access.
+      }
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Fail-closed policy for one explicit grant. The caller must derive ownerId
  * and requesterAppId from the authenticated device, not from request JSON.
+ * Accessor-backed requests and malformed grant collections never authorize.
  */
 export function canUseAppAccessGrant(
   request: AppAccessRequest,
   grants: AppAccessGrant[],
   now = Date.now()
 ): boolean {
-  if (!request || !validId(request.ownerId) || !validId(request.requesterAppId) ||
-      !VALID_PERMISSIONS.includes(request.permission) ||
-      !VALID_SCOPES.includes(request.scope) ||
-      !Array.isArray(grants) || !Number.isSafeInteger(now)) {
-    return false;
-  }
+  try {
+    if (!Number.isSafeInteger(now)) return false;
+    const safeRequest = snapshotAccessRequest(request);
+    const safeGrants = snapshotGrantList(grants);
+    if (!safeRequest || !safeGrants) return false;
 
-  const sourceAppId = request.sourceAppId ?? null;
-  const destinationAppId = request.destinationAppId ?? null;
+    const sourceAppId = safeRequest.sourceAppId ?? null;
+    const destinationAppId = safeRequest.destinationAppId ?? null;
 
-  if ((sourceAppId !== null && !validId(sourceAppId)) ||
-      (destinationAppId !== null && !validId(destinationAppId))) {
-    return false;
-  }
-
-  if (request.permission === "send" || request.permission === "receive") {
-    if (!sourceAppId || !destinationAppId ||
-        sourceAppId === destinationAppId ||
-        (request.scope !== "task" && request.scope !== "context")) return false;
-  } else if (request.scope === "app_memory") {
-    if (!sourceAppId || destinationAppId !== null) return false;
-  } else if (request.scope === "owner_memory") {
-    if (sourceAppId !== null || destinationAppId !== null) return false;
-  } else {
-    return false;
-  }
-
-  return grants.some((grant) => {
-    if (!grant || typeof grant !== "object" ||
-        !validId(grant.ownerId) || !validId(grant.granteeAppId) ||
-        !VALID_PERMISSIONS.includes(grant.permission) ||
-        !VALID_SCOPES.includes(grant.scope) ||
-        (grant.sourceAppId !== null && !validId(grant.sourceAppId)) ||
-        (grant.destinationAppId !== null && !validId(grant.destinationAppId)) ||
-        (grant.expiresAt !== undefined && grant.expiresAt !== null &&
-          !Number.isSafeInteger(grant.expiresAt)) ||
-        (grant.revokedAt !== undefined && grant.revokedAt !== null &&
-          !Number.isSafeInteger(grant.revokedAt))) {
+    if (safeRequest.permission === "send" || safeRequest.permission === "receive") {
+      if (!sourceAppId || !destinationAppId ||
+          sourceAppId === destinationAppId ||
+          (safeRequest.scope !== "task" && safeRequest.scope !== "context")) return false;
+    } else if (safeRequest.scope === "app_memory") {
+      if (!sourceAppId || destinationAppId !== null) return false;
+    } else if (safeRequest.scope === "owner_memory") {
+      if (sourceAppId !== null || destinationAppId !== null) return false;
+    } else {
       return false;
     }
 
-    if (grant.ownerId !== request.ownerId ||
-        grant.granteeAppId !== request.requesterAppId ||
-        grant.permission !== request.permission ||
-        grant.scope !== request.scope ||
-        (grant.expiresAt !== undefined && grant.expiresAt !== null && grant.expiresAt <= now) ||
-        (grant.revokedAt !== undefined && grant.revokedAt !== null)) {
-      return false;
-    }
-
-    return grant.sourceAppId === sourceAppId &&
-      grant.destinationAppId === destinationAppId;
-  });
+    return safeGrants.some((grant) =>
+      grant.ownerId === safeRequest.ownerId &&
+      grant.granteeAppId === safeRequest.requesterAppId &&
+      grant.permission === safeRequest.permission &&
+      grant.scope === safeRequest.scope &&
+      (grant.expiresAt === undefined || grant.expiresAt === null || grant.expiresAt > now) &&
+      (grant.revokedAt === undefined || grant.revokedAt === null) &&
+      grant.sourceAppId === sourceAppId &&
+      grant.destinationAppId === destinationAppId
+    );
+  } catch {
+    return false;
+  }
 }
