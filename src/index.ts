@@ -1438,7 +1438,7 @@ const handleChat = async (request: Request, env: Env) => {
   const provider = registeredModel ? registry.get(registeredModel.providerId) : undefined;
   if (!registeredModel || !provider) return json({ error: "ai_provider_not_available" }, 503);
 
-  let memoryContext = { text: "", entriesUsed: 0, characters: 0 };
+  let memoryContext = { text: "", entriesUsed: 0, characters: 0, profileSignalsUsed: false };
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (owner) {
     const featureSettings = await readOwnerFeatureSettings(env, owner.owner_id);
