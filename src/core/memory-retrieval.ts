@@ -25,6 +25,89 @@ const STOP_WORDS = new Set([
   "que", "se", "um", "uma", "uns", "umas", "the", "and", "of", "to",
 ]);
 
+const MAX_MEMORY_RECORDS = 500;
+
+function snapshotMemoryRecord(value: unknown): MemorySearchRecord | null {
+  try {
+    if (value === null || typeof value !== "object" || Array.isArray(value) ||
+        Object.getPrototypeOf(value) !== Object.prototype) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const allowed = new Set([
+      "memory_id", "scope", "source_app_id", "memory_key", "value",
+      "created_by_app_id", "updated_at", "expires_at",
+      "duplicate_count", "duplicate_sources",
+    ]);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.some((key) => typeof key !== "string" || !allowed.has(key))) return null;
+    const copy: Record<string, unknown> = Object.create(null);
+    for (const key of keys as string[]) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
+      copy[key] = descriptor.value;
+    }
+    if (typeof copy.memory_id !== "string" || !copy.memory_id ||
+        (copy.scope !== "app" && copy.scope !== "owner") ||
+        !(copy.source_app_id === null || typeof copy.source_app_id === "string") ||
+        typeof copy.memory_key !== "string" || typeof copy.value !== "string" ||
+        typeof copy.created_by_app_id !== "string" ||
+        typeof copy.updated_at !== "string" ||
+        !(copy.expires_at === null || typeof copy.expires_at === "string") ||
+        (copy.duplicate_count !== undefined &&
+          (!Number.isSafeInteger(copy.duplicate_count) || (copy.duplicate_count as number) < 1))) {
+      return null;
+    }
+    let duplicateSources: string[] | undefined;
+    if (copy.duplicate_sources !== undefined) {
+      const sourceValue = copy.duplicate_sources;
+      if (!Array.isArray(sourceValue) || Object.getPrototypeOf(sourceValue) !== Array.prototype ||
+          sourceValue.length > 256) return null;
+      const sourceDescriptors = Object.getOwnPropertyDescriptors(sourceValue);
+      if (Reflect.ownKeys(sourceDescriptors).length !== sourceValue.length + 1) return null;
+      duplicateSources = [];
+      for (let index = 0; index < sourceValue.length; index += 1) {
+        const descriptor = sourceDescriptors[String(index)];
+        if (!descriptor || !("value" in descriptor) || !descriptor.enumerable ||
+            typeof descriptor.value !== "string") return null;
+        duplicateSources.push(descriptor.value);
+      }
+    }
+    return {
+      memory_id: copy.memory_id,
+      scope: copy.scope,
+      source_app_id: copy.source_app_id,
+      memory_key: copy.memory_key,
+      value: copy.value,
+      created_by_app_id: copy.created_by_app_id,
+      updated_at: copy.updated_at,
+      expires_at: copy.expires_at,
+      ...(copy.duplicate_count !== undefined ? { duplicate_count: copy.duplicate_count as number } : {}),
+      ...(duplicateSources !== undefined ? { duplicate_sources: Object.freeze(duplicateSources) as unknown as string[] } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function snapshotMemoryRecords(value: unknown): MemorySearchRecord[] | null {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+        value.length > MAX_MEMORY_RECORDS) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Reflect.ownKeys(descriptors).length !== value.length + 1) return null;
+    const result: MemorySearchRecord[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
+      const record = snapshotMemoryRecord(descriptor.value);
+      if (!record) return null;
+      result.push(record);
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 function terms(value: string): string[] {
   return [...new Set(
     value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -44,14 +127,14 @@ export function rankRelevantMemories(
 ): RankedMemory[] {
   if (typeof query !== "string" || query.length > 8_000 ||
       !Number.isFinite(limit) || !Number.isSafeInteger(limit)) return [];
-  if (!Array.isArray(records) || records.length > 500 ||
-      Object.getPrototypeOf(records) !== Array.prototype) return [];
+  const safeRecords = snapshotMemoryRecords(records);
+  if (!safeRecords) return [];
   const queryTerms = terms(query);
   if (queryTerms.length === 0) return [];
   const safeLimit = Math.min(Math.max(limit, 0), 20);
   if (safeLimit === 0) return [];
 
-  return records.map((record) => {
+  return safeRecords.map((record) => {
     const keyTerms = new Set(terms(record.memory_key.replace(/[._-]/g, " ")));
     const valueTerms = new Set(terms(record.value));
     let score = 0;
@@ -80,8 +163,10 @@ function normalizeDuplicatePart(value: string): string {
  * The newest record is representative; all authorized origins remain visible.
  */
 export function deduplicateAuthorizedMemories(records: MemorySearchRecord[]): MemorySearchRecord[] {
+  const safeRecords = snapshotMemoryRecords(records);
+  if (!safeRecords) return [];
   const groups = new Map<string, MemorySearchRecord[]>();
-  for (const record of records) {
+  for (const record of safeRecords) {
     const key = normalizeDuplicatePart(record.memory_key);
     const value = normalizeDuplicatePart(record.value);
     const fingerprint = JSON.stringify([key, value]);
