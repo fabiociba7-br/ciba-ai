@@ -51,6 +51,43 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function snapshotMemoryRecord(value: unknown, allowedKeys: string[]): Record<string, unknown> | null {
+  try {
+    if (value === null || typeof value !== "object" || Array.isArray(value) ||
+        Object.getPrototypeOf(value) !== Object.prototype) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.some((key) => typeof key !== "string" || !allowedKeys.includes(key))) return null;
+    const result: Record<string, unknown> = Object.create(null);
+    for (const key of keys as string[]) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
+      result[key] = descriptor.value;
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+function snapshotMemoryArray(value: unknown, maxLength = 256): unknown[] | null {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+        value.length > maxLength) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Reflect.ownKeys(descriptors).length !== value.length + 1) return null;
+    const result: unknown[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
+      result.push(descriptor.value);
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 export function canAccessMemory(
   request: MemoryAccessRequest,
   grants: MemoryGrant[],
