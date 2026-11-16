@@ -68,7 +68,7 @@ function snapshotMemoryRecord(value: unknown): MemorySearchRecord | null {
       for (let index = 0; index < sourceValue.length; index += 1) {
         const descriptor = sourceDescriptors[String(index)];
         if (!descriptor || !("value" in descriptor) || !descriptor.enumerable ||
-            typeof descriptor.value !== "string") return null;
+            typeof descriptor.value !== "string" || descriptor.value.length > 128) return null;
         duplicateSources.push(descriptor.value);
       }
     }
@@ -329,6 +329,9 @@ export function buildProfileAwareChatMemoryContext(
   records: MemorySearchRecord[],
   maxEntries = MAX_CHAT_MEMORY_ENTRIES,
 ): ChatMemoryContext {
+  if (typeof query !== "string" || query.length > 8_000 || !Number.isSafeInteger(maxEntries)) {
+    return emptyChatMemoryContext();
+  }
   const uniqueRecords = deduplicateAuthorizedMemories(records);
   const profile = buildOwnerProfile(uniqueRecords);
   const entryLimit = Math.min(Math.max(Math.floor(maxEntries), 0), MAX_CHAT_MEMORY_ENTRIES);
