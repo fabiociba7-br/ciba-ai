@@ -173,3 +173,14 @@ const result = await approvalFlow.execute(proposal.plan, context);
 For `write` and `external` tools, `propose` only creates a validated preview and a pending consent request. The application must display the exact proposal and call `answer` only from a trusted Allow/Deny interaction. `execute` refuses while approval is pending; the registry's trusted authorizer consumes the one-use consent immediately before the handler. Read-only tools still pass through the application's authorization policy. Call `cancel(context)` when the user abandons a pending approval.
 
 This helper is an application integration primitive, not a UI component. It is not wired into `runCibaOrchestrator`, provider tool-calling, or any app screen. No tool can be invoked merely because a model proposed it.
+
+
+## Durable approval storage foundation (migration 0016)
+
+Migration `0016_durable_tool_approvals.sql` adds a D1 table for future persistent approvals. The migration also adds a composite device identity key and composite foreign keys, so SQLite enforces that both the originating device and the approving device belong to the same recorded owner and app. Each record is scoped to an owner, app, originating device, conversation, invocation, tool, risk class, and exact serialized input (with a SHA-256 digest). The schema includes explicit lifecycle states, expiry, the device that recorded the decision, and indexes for owner/status and expiry lookups.
+
+This migration is storage-only. The current `CibaToolConsentStore` and `CibaToolApprovalFlow` remain synchronous and in-memory; they do not read or write this table. The public Worker does not expose approval or tool-execution routes, and no migration is applied to the remote D1 database by this change.
+
+Before runtime integration, implement an asynchronous D1-backed store with compare-and-swap updates for every state transition. In particular, approval must be accepted only for the authenticated active owner and a device paired to that owner; consumption must be a single conditional UPDATE from `approved` to `consumed` with `expires_at > now`, matching all immutable binding fields and requiring exactly one changed row. Expired records must be closed without allowing replay. Validate that the supplied app ID matches the authenticated device record; never trust owner, app, or device identifiers supplied by the request body.
+
+The next integration must also address the current approval helper's synchronous contract before introducing D1 I/O. Do not connect this table to the Worker, enable tool definitions, or run remote migrations until the async approval path, authenticated owner/device context, trusted confirmation UI, concurrency tests, and migration review are complete.
