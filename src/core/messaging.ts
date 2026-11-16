@@ -200,23 +200,27 @@ export function validateAppMessageEnvelope(
   now = Date.now(),
   maxPayloadCharacters = 8_000
 ): void {
-  if (!envelope || typeof envelope !== "object" ||
-      !validId(envelope.id) || !validId(envelope.taskId) ||
-      !validId(envelope.ownerId) || !validId(envelope.sourceAppId) ||
-      !validId(envelope.destinationAppId) ||
-      envelope.sourceAppId === envelope.destinationAppId) {
+  const snapshot = snapshotRecord(envelope, [
+    "id", "taskId", "ownerId", "sourceAppId", "destinationAppId",
+    "scope", "payload", "createdAt", "expiresAt"
+  ]);
+  if (!snapshot ||
+      !validId(snapshot.id) || !validId(snapshot.taskId) ||
+      !validId(snapshot.ownerId) || !validId(snapshot.sourceAppId) ||
+      !validId(snapshot.destinationAppId) ||
+      snapshot.sourceAppId === snapshot.destinationAppId) {
     throw new Error("invalid_app_message_identity");
   }
 
-  if (envelope.scope !== "task" && envelope.scope !== "context") {
+  if (snapshot.scope !== "task" && snapshot.scope !== "context") {
     throw new Error("invalid_app_message_scope");
   }
 
   if (!Number.isSafeInteger(now) ||
-      !Number.isSafeInteger(envelope.createdAt) ||
-      !Number.isSafeInteger(envelope.expiresAt) ||
-      envelope.expiresAt <= now ||
-      envelope.expiresAt <= envelope.createdAt) {
+      !Number.isSafeInteger(snapshot.createdAt) ||
+      !Number.isSafeInteger(snapshot.expiresAt) ||
+      (snapshot.expiresAt as number) <= now ||
+      (snapshot.expiresAt as number) <= (snapshot.createdAt as number)) {
     throw new Error("invalid_app_message_expiry");
   }
 
@@ -227,8 +231,8 @@ export function validateAppMessageEnvelope(
 
   let serialized: string;
   try {
-    const snapshot = cloneMessageJson(envelope.payload);
-    serialized = JSON.stringify(snapshot);
+    const payloadSnapshot = cloneMessageJson(snapshot.payload);
+    serialized = JSON.stringify(payloadSnapshot);
   } catch {
     throw new Error("invalid_app_message_payload");
   }
