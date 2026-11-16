@@ -176,3 +176,12 @@ A análise é determinística e não chama IA. Ela apresenta:
 - **Registros para revisão:** itens expirados ou sem atualização há pelo menos 180 dias.
 
 O painel privado mostra os alertas e suas origens. Nada é unido, alterado, renovado ou excluído automaticamente. O endpoint retorna `inference_calls: 0` e `automatic_changes: false`. A análise é limitada a 200 registros, no máximo 30 pares por categoria e 50 itens antigos/expirados. A detecção é lexical: não compreende contradições semânticas complexas, ironia ou contexto temporal; o proprietário deve confirmar qualquer interpretação.
+
+
+## Histórico de alterações da memória (etapa 30)
+
+A migration `0014_memory_audit_events.sql` cria um histórico de auditoria com metadados para criação, edição, exclusão e decisões de revisão do proprietário. O endpoint autenticado `GET /v1/owner/memory/history?scope=app|owner&limit=50` exige memória habilitada e permissão de leitura para o escopo solicitado; a consulta pode ser filtrada por `memory_id` e retorna no máximo 100 eventos.
+
+O histórico registra identificador da memória/proposta, chave, ação, aplicativo responsável e horário. **Não registra o valor da memória, evidências, prompts nem conversas.** Eventos são mantidos por até 180 dias pelo processo de limpeza programado. A interface privada mostra as ações recentes, sem permitir alterar o histórico. O SDK oferece `getMemoryHistory()`.
+
+O histórico é append-only pela API: não há endpoint para editar ou apagar eventos. A migration ainda não foi aplicada em produção e o Worker não foi publicado; o recurso só estará disponível depois de uma futura ativação autorizada.
