@@ -34,6 +34,35 @@ const MAX_INPUT_CHARS = 3_000;
 const MAX_REPORT_CHARS = 12_000;
 const MAX_TOTAL_OUTPUT_TOKENS = 2_048;
 
+function snapshotInferenceResult(value: unknown, errorCode: string): Pick<InferenceResult, "text" | "provider" | "model"> {
+  try {
+    if (value === null || typeof value !== "object" || Array.isArray(value) ||
+        Object.getPrototypeOf(value) !== Object.prototype) {
+      throw new Error(errorCode);
+    }
+    const fields = Object.getOwnPropertyDescriptors(value);
+    const textField = fields.text;
+    const providerField = fields.provider;
+    const modelField = fields.model;
+    if (!textField || !("value" in textField) || !textField.enumerable ||
+        !providerField || !("value" in providerField) || !providerField.enumerable ||
+        !modelField || !("value" in modelField) || !modelField.enumerable ||
+        typeof textField.value !== "string" || textField.value.length > MAX_REPORT_CHARS ||
+        typeof providerField.value !== "string" || providerField.value.length > 128 ||
+        typeof modelField.value !== "string" || modelField.value.length === 0 ||
+        modelField.value.length > 200) {
+      throw new Error(errorCode);
+    }
+    return Object.freeze({
+      text: textField.value,
+      provider: providerField.value,
+      model: modelField.value
+    });
+  } catch {
+    throw new Error(errorCode);
+  }
+}
+
 function snapshotMessages(value: unknown): ChatTurn[] {
   try {
     if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
@@ -151,10 +180,8 @@ export async function runMultiModelEnsemble(input: {
         ...safeMessages
       ]
     });
-    if (typeof result.text !== "string" || result.text.length > MAX_REPORT_CHARS) {
-      throw new Error("ensemble_report_too_large");
-    }
-    return { role: member.role, result };
+    const safeResult = snapshotInferenceResult(result, "invalid_ensemble_report");
+    return { role: member.role, result: safeResult };
   }));
 
   const successful = expertResults.flatMap((item) =>
@@ -184,12 +211,10 @@ export async function runMultiModelEnsemble(input: {
       }
     ]
   });
-  if (typeof synthesis.text !== "string" || synthesis.text.length > MAX_REPORT_CHARS) {
-    throw new Error("ensemble_synthesis_too_large");
-  }
+  const safeSynthesis = snapshotInferenceResult(synthesis, "invalid_ensemble_synthesis");
 
   return {
-    text: synthesis.text,
+    text: safeSynthesis.text,
     strategy: "multi-model-ensemble",
     contributors: successful.map(({ role, result }) => ({
       role,
