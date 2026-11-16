@@ -96,12 +96,15 @@ export function createWhisperCppRegistry(
         ? { platforms: Object.freeze([...adapter.deviceRequirements.platforms]) as unknown as DevicePlatform[] }
         : {}),
     });
+    // Capture the approved implementation itself, not a dynamic property
+    // lookup on the caller-owned adapter object.
+    const transcribe = adapter.transcribe.bind(adapter);
     const registeredAdapter: SpeechToTextAdapter = Object.freeze({
       engine: adapter.engine,
       runtime: adapter.runtime,
       modelId: adapter.modelId,
       deviceRequirements: requirementsSnapshot,
-      transcribe: (request: SpeechToTextRequest) => adapter.transcribe(request),
+      transcribe,
     });
     adapterMap.set(adapter.runtime, registeredAdapter);
   }
