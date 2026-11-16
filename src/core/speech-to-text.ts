@@ -211,6 +211,11 @@ export async function runWhisperCppTranscription(
       ...request,
       audio: audioBuffer,
     });
+    // An adapter may finish after cancellation if its runtime is not
+    // cancellation-aware. Never publish that late result to the caller.
+    if (request.signal?.aborted) {
+      return { success: false, reasons: ["transcription_cancelled"] };
+    }
     validateSpeechToTextResult(result, resolution.adapter.modelId);
     return { success: true, result };
   } finally {
