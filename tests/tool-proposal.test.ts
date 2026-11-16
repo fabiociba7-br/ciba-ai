@@ -15,6 +15,74 @@ describe("model tool proposal protocol", () => {
   it("does not mistake ordinary text for a proposal", () => { expect(parseCibaToolModelProposal("A resposta é 42.")).toBeNull(); });
   it("rejects malformed and extra-field envelopes", () => { expect(() => parseCibaToolModelProposal(CIBA_TOOL_PROPOSAL_PREFIX + "{")).toThrow("invalid_tool_proposal"); expect(() => parseCibaToolModelProposal(CIBA_TOOL_PROPOSAL_PREFIX + JSON.stringify({ protocol: "ciba.tool.proposal.v1", toolId: "profile.read", input: {}, execute: true }))).toThrow("invalid_tool_proposal"); });
   it("returns a schema-validated preview without executing the tool", async () => { const { registry, execute } = makeRegistry(); const { provider, generate } = makeProvider(CIBA_TOOL_PROPOSAL_PREFIX + JSON.stringify({ protocol: "ciba.tool.proposal.v1", toolId: "profile.read", input: { section: "preferences" } })); const result = await runCibaOrchestrator({ ...base, provider, toolRuntime: { registry, context } }); expect(result.toolProposal).toMatchObject({ toolId: "profile.read", risk: "read", requiresApproval: false, input: { section: "preferences" } }); expect(result.text).toContain("Nenhuma ação foi executada"); expect(execute).not.toHaveBeenCalled(); expect(generate.mock.calls[0][0].messages[0].content).toContain("profile.read"); expect(registry.describe()[0].inputSchema).toEqual(schema); });
+  it("executes a read-only proposal only when trusted runtime explicitly enables it", async () => {
+    const execute = vi.fn(async (_input: unknown) => ({ section: "preferences", value: "dark" }));
+    const registry = createCibaToolRegistry([{
+      id: "profile.read",
+      description: "Read a non-sensitive profile section",
+      risk: "read",
+      requiresApproval: false,
+      inputSchema: schema,
+      execute,
+    }], { allowlist: ["profile.read"], authorize: async () => true });
+    const proposalText = CIBA_TOOL_PROPOSAL_PREFIX + JSON.stringify({
+      protocol: "ciba.tool.proposal.v1",
+      toolId: "profile.read",
+      input: { section: "preferences" }
+    });
+    const { provider } = makeProvider(proposalText);
+    const result = await runCibaOrchestrator({
+      ...base,
+      provider,
+      toolRuntime: { registry, context, executeReadOnlyProposals: true }
+    });
+    expect(result.toolExecution).toEqual({
+      toolId: "profile.read",
+      output: { section: "preferences", value: "dark" }
+    });
+    expect(result.toolExecutionError).toBeUndefined();
+    expect(execute).toHaveBeenCalledOnce();
+  });
+  it("never auto-executes write proposals, even when read-only execution is enabled", async () => {
+    const execute = vi.fn(async (_input: unknown) => ({ changed: true }));
+    const writeSchema = { type: "object", properties: { section: { type: "string" } }, required: ["section"], additionalProperties: false };
+    const registry = createCibaToolRegistry([{
+      id: "profile.update",
+      description: "Update a profile section",
+      risk: "write",
+      requiresApproval: true,
+      inputSchema: writeSchema,
+      execute,
+    }], { allowlist: ["profile.update"], authorize: async () => true });
+    const proposalText = CIBA_TOOL_PROPOSAL_PREFIX + JSON.stringify({
+      protocol: "ciba.tool.proposal.v1",
+      toolId: "profile.update",
+      input: { section: "preferences" }
+    });
+    const { provider } = makeProvider(proposalText);
+    const result = await runCibaOrchestrator({
+      ...base,
+      provider,
+      toolRuntime: { registry, context, executeReadOnlyProposals: true }
+    });
+    expect(result.toolProposal).toMatchObject({
+      toolId: "profile.update",
+      risk: "write",
+      requiresApproval: true
+    });
+    expect(result.toolExecution).toBeUndefined();
+    expect(execute).not.toHaveBeenCalled();
+  });
+  it("rejects non-boolean read-only execution flags before model inference", async () => {
+    const { registry } = makeRegistry();
+    const { provider, generate } = makeProvider("unused");
+    await expect(runCibaOrchestrator({
+      ...base,
+      provider,
+      toolRuntime: { registry, context, executeReadOnlyProposals: "true" as never }
+    })).rejects.toThrow("invalid_tool_runtime");
+    expect(generate).not.toHaveBeenCalled();
+  });
   it("rejects unknown tools without execution", async () => { const { registry, execute } = makeRegistry(); const { provider } = makeProvider(CIBA_TOOL_PROPOSAL_PREFIX + JSON.stringify({ protocol: "ciba.tool.proposal.v1", toolId: "profile.delete", input: {} })); const result = await runCibaOrchestrator({ ...base, provider, toolRuntime: { registry, context } }); expect(result.toolProposal).toBeUndefined(); expect(result.toolProposalError).toBe("tool_proposal_rejected"); expect(execute).not.toHaveBeenCalled(); });
   it("records durable approval for a protected model proposal without executing it", async () => {
     const identity = { ownerId: "owner-1", appId: "com.ciba.test", deviceId: "device-1" };
