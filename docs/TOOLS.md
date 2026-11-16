@@ -189,3 +189,16 @@ The adapter receives identity as a separate trusted argument. Callers must deriv
 **Integration remains intentionally disabled.** The adapter is not connected to `CibaToolApprovalFlow`, the public Worker, model orchestration, or any tool handler. The existing consent and approval-flow interfaces remain synchronous and in-memory. No approval endpoints, confirmation UI, tool definitions, remote D1 migration, or deployment were added. Tests exercise D1 persistence, immutable input binding, same-owner approver validation, expiry, cancellation, and concurrent one-use consumption.
 
 Before enabling runtime execution, a separate integration stage must adapt the approval flow to async storage, derive authenticated owner/device context from the existing Worker authentication path, provide a trusted confirmation screen, and add end-to-end authorization tests. Do not treat this storage adapter by itself as user consent or permission to execute a tool.
+
+
+
+## Durable approval flow adapter (application-facing; not activated in Worker)
+
+`createDurableCibaToolApprovalFlow(registry, store)` connects validated registry previews to the asynchronous D1 approval store without adding HTTP routes or enabling production tools.
+
+- `propose(identity, toolId, input, context)` validates the tool and persists a pending approval for `write` / `external` tools. It never invokes the handler.
+- `answer(...)` records an explicit allow/deny decision. The caller must derive both the source identity and approver device ID from authenticated server-side sessions.
+- `execute(...)` revalidates the exact plan, atomically consumes the one-use approval, and only then calls the registry. A failed registry authorization still burns the approval (fail closed).
+- `cancel(...)` closes an approval through the durable store.
+
+The adapter is an application-layer primitive only. It is not wired into the Worker chat route, public HTTP endpoints, production tool definitions, or any deployed D1 binding. Keep the raw registry private to the trusted application layer; never expose its `execute` method to untrusted clients. The registry's authorization callback must independently enforce authenticated identity, owner/app scopes, device status and application policy; do not configure it to consume the same durable approval a second time, because this flow consumes that approval immediately before calling the registry. A caller must enforce CSRF/session protections before calling this adapter. No migration or deployment is performed by this change.
