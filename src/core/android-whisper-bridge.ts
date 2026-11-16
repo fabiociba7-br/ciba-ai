@@ -152,23 +152,23 @@ export function createAndroidWhisperCppAdapter(
         throw new Error("invalid_speech_to_text_request");
       }
 
-      const status = snapshotBridgeStatus(await getStatus());
-      if (!status) {
-        throw new Error("android_whisper_invalid_status");
-      }
-      if (!status.nativeLibraryReady) {
-        throw new Error("android_whisper_native_library_unavailable");
-      }
-      if (!status.modelLoaded || status.modelId !== modelId ||
-          status.modelSha256 !== modelSha256) {
-        throw new Error("android_whisper_model_unavailable");
-      }
-
-      // Give JNI its own audio buffer and clear it after the native promise
-      // settles, including rejected calls. The caller's buffer stays untouched.
+      // The isolated audio copy is cleared on every exit path, including
+      // failures while reading or validating the native bridge status.
       const nativeAudio = requestSnapshot.audio;
       let result: SpeechToTextResult;
       try {
+        const status = snapshotBridgeStatus(await getStatus());
+        if (!status) {
+          throw new Error("android_whisper_invalid_status");
+        }
+        if (!status.nativeLibraryReady) {
+          throw new Error("android_whisper_native_library_unavailable");
+        }
+        if (!status.modelLoaded || status.modelId !== modelId ||
+            status.modelSha256 !== modelSha256) {
+          throw new Error("android_whisper_model_unavailable");
+        }
+
         result = await transcribe({
           ...requestSnapshot,
           audio: nativeAudio,
