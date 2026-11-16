@@ -142,30 +142,43 @@ export function assessDeviceCompatibility(
 ): DeviceCapabilityDecision {
   validateDeviceCapabilityProfile(profile);
   validateDeviceCapabilityRequirements(requirements);
+  const profileData = readOwnDataRecord(
+    profile,
+    ["platform", "architecture", "totalRamMb", "availableRamMb", "logicalCpuCores",
+      "gpuAvailable", "androidApiLevel", "collectedAt", "source"],
+    ["platform", "architecture", "totalRamMb", "availableRamMb", "logicalCpuCores",
+      "gpuAvailable", "collectedAt", "source"]
+  )!;
+  const requirementData = readOwnDataRecord(
+    requirements,
+    ["runtime", "minimumRamMb", "minimumAvailableRamMb", "minimumCpuCores",
+      "requiresGpu", "architectures", "platforms", "minimumAndroidApiLevel"],
+    ["runtime", "minimumRamMb"]
+  )!;
   const reasons: string[] = [];
-  if (profile.totalRamMb < requirements.minimumRamMb) reasons.push("insufficient_total_ram");
-  if (requirements.minimumAvailableRamMb !== undefined &&
-      profile.availableRamMb < requirements.minimumAvailableRamMb) reasons.push("insufficient_available_ram");
-  if (requirements.minimumCpuCores !== undefined &&
-      profile.logicalCpuCores < requirements.minimumCpuCores) reasons.push("insufficient_cpu_cores");
-  if (requirements.requiresGpu && !profile.gpuAvailable) reasons.push("gpu_required");
-  if (requirements.architectures && !requirements.architectures.includes(profile.architecture)) {
+  if (profileData.totalRamMb < requirementData.minimumRamMb) reasons.push("insufficient_total_ram");
+  if (requirementData.minimumAvailableRamMb !== undefined &&
+      profileData.availableRamMb < requirementData.minimumAvailableRamMb) reasons.push("insufficient_available_ram");
+  if (requirementData.minimumCpuCores !== undefined &&
+      profileData.logicalCpuCores < requirementData.minimumCpuCores) reasons.push("insufficient_cpu_cores");
+  if (requirementData.requiresGpu && !profileData.gpuAvailable) reasons.push("gpu_required");
+  if (requirementData.architectures && !requirementData.architectures.includes(profileData.architecture)) {
     reasons.push("unsupported_architecture");
   }
-  if (requirements.platforms && !requirements.platforms.includes(profile.platform)) {
+  if (requirementData.platforms && !requirementData.platforms.includes(profileData.platform)) {
     reasons.push("unsupported_platform");
   }
-  if (requirements.runtime === "android_embedded" && profile.platform !== "android") {
+  if (requirementData.runtime === "android_embedded" && profileData.platform !== "android") {
     reasons.push("android_runtime_required");
   }
-  if (requirements.runtime === "desktop_local" && !["windows", "macos", "linux"].includes(profile.platform)) {
+  if (requirementData.runtime === "desktop_local" && !["windows", "macos", "linux"].includes(profileData.platform)) {
     reasons.push("desktop_runtime_required");
   }
-  if (requirements.runtime === "local_service" && profile.platform === "unknown") {
+  if (requirementData.runtime === "local_service" && profileData.platform === "unknown") {
     reasons.push("known_host_required");
   }
-  if (requirements.minimumAndroidApiLevel !== undefined &&
-      (profile.platform !== "android" || (profile.androidApiLevel ?? 0) < requirements.minimumAndroidApiLevel)) {
+  if (requirementData.minimumAndroidApiLevel !== undefined &&
+      (profileData.platform !== "android" || (profileData.androidApiLevel ?? 0) < requirementData.minimumAndroidApiLevel)) {
     reasons.push("android_api_too_low");
   }
   return { compatible: reasons.length === 0, reasons };
