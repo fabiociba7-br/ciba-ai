@@ -15,7 +15,9 @@ export interface CibaToolInvocationContext {
   invocationId: string;
 }
 
-export interface CibaToolAuthorizationRequest extends CibaToolInvocationContext {
+export interface CibaToolAuthorizationRequest {
+  conversationId?: string;
+  invocationId?: string;
   toolId: string;
   risk: CibaToolRisk;
   requiresApproval: boolean;
@@ -33,7 +35,9 @@ export interface CibaToolRegistryOptions {
   maxConcurrentExecutions?: number;
 }
 
-export interface CibaToolInvocationPlan extends CibaToolInvocationContext {
+export interface CibaToolInvocationPlan {
+  conversationId?: string;
+  invocationId?: string;
   toolId: string;
   risk: CibaToolRisk;
   requiresApproval: boolean;
