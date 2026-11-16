@@ -15,3 +15,12 @@ export { createCibaToolApprovalFlow } from "./approval-flow";
 export { parseCibaToolModelProposal, CIBA_TOOL_PROPOSAL_PREFIX } from "./model-proposal";
 export type { CibaToolModelProposal } from "./model-proposal";
 export type { CibaToolApprovalFlow, CibaToolApprovalState, CibaToolProposal } from "./approval-flow";
+
+export { createD1ToolApprovalStore } from "./durable-consent";
+export type {
+  DurableToolApprovalIdentity,
+  DurableToolApprovalRequest,
+  DurableToolApprovalResult,
+  DurableToolApprovalStatus,
+  DurableToolApprovalStore
+} from "./durable-consent";
