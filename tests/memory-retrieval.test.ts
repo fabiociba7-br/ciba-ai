@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rankRelevantMemories, buildChatMemoryContext, MAX_CHAT_MEMORY_ENTRIES, MAX_CHAT_MEMORY_CHARS, type MemorySearchRecord, type RankedMemory } from "../src/core/memory-retrieval";
+import { rankRelevantMemories, buildChatMemoryContext, buildProfileAwareChatMemoryContext, MAX_CHAT_MEMORY_ENTRIES, MAX_CHAT_MEMORY_CHARS, type MemorySearchRecord, type RankedMemory } from "../src/core/memory-retrieval";
 
 const records: MemorySearchRecord[] = [
   {
@@ -64,7 +64,37 @@ describe("bounded chat memory context", () => {
     expect(result.entriesUsed).toBeLessThanOrEqual(MAX_CHAT_MEMORY_ENTRIES);
     expect(result.characters).toBeLessThanOrEqual(MAX_CHAT_MEMORY_CHARS);
   });
+
+  it("carries communication profile preferences into unrelated chat questions", () => {
+    const authorized: MemorySearchRecord[] = [
+      { ...records[0], memory_key: "communication_style", value: "Prefere respostas diretas e objetivas." },
+      { ...records[1], memory_id: "m4", memory_key: "response_tone", value: "Gosta de respostas diretas e objetivas." },
+      { ...records[2], memory_id: "m5", memory_key: "music", value: "Gosta de rock clássico." },
+    ];
+    const result = buildProfileAwareChatMemoryContext("Qual a previsão do tempo?", authorized);
+    expect(result.entriesUsed).toBe(2);
+    expect(result.text).toContain("perfil=communication");
+    expect(result.text).toContain("Prefere respostas diretas e objetivas.");
+    expect(result.text).toContain("Padrões recorrentes de comunicação");
+    expect(result.text).toContain("diretas");
+    expect(result.profileSignalsUsed).toBe(true);
+    expect(result.text).not.toContain("Gosta de rock clássico.");
+  });
+
+  it("keeps query-relevant memories alongside communication profile and remains bounded", () => {
+    const authorized: MemorySearchRecord[] = [
+      { ...records[0], memory_key: "communication_style", value: "Prefere respostas concisas." },
+      records[1],
+    ];
+    const result = buildProfileAwareChatMemoryContext("viagem de carro", authorized, 2);
+    expect(result.entriesUsed).toBe(2);
+    expect(result.text).toContain("Prefere respostas concisas.");
+    expect(result.text).toContain("viajar de carro");
+    expect(result.characters).toBeLessThanOrEqual(MAX_CHAT_MEMORY_CHARS);
+    expect(result.profileSignalsUsed).toBe(false);
+  });
+
   it("returns an empty context for no relevant memories", () => {
-    expect(buildChatMemoryContext([])).toEqual({ text: "", entriesUsed: 0, characters: 0 });
+    expect(buildChatMemoryContext([])).toEqual({ text: "", entriesUsed: 0, characters: 0, profileSignalsUsed: false });
   });
 });
