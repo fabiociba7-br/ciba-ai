@@ -1,7 +1,14 @@
 export type SpeechToTextRuntime = "android_embedded" | "desktop_local" | "local_service";
 
+export interface SpeechToTextConsent {
+  granted: true;
+  purpose: "transcription";
+  source: "explicit_user_action";
+}
+
 export interface SpeechToTextRequest {
   audio: Uint8Array;
+  consent: SpeechToTextConsent;
   mimeType: "audio/wav" | "audio/mpeg" | "audio/mp4" | "audio/ogg" | "audio/webm" | "audio/flac";
   language?: string;
   timestamps?: boolean;
@@ -81,7 +88,10 @@ export function validateSpeechToTextRequest(
   request: SpeechToTextRequest,
   maxAudioBytes = 25 * 1024 * 1024,
 ): void {
-  if (!(request.audio instanceof Uint8Array) || request.audio.byteLength === 0 ||
+  if (!request.consent || request.consent.granted !== true ||
+      request.consent.purpose !== "transcription" ||
+      request.consent.source !== "explicit_user_action" ||
+      !(request.audio instanceof Uint8Array) || request.audio.byteLength === 0 ||
       request.audio.byteLength > maxAudioBytes ||
       !MIME_TYPES.has(request.mimeType) ||
       (request.language !== undefined && !/^[a-z]{2,3}(-[A-Z]{2})?$/.test(request.language))) {
