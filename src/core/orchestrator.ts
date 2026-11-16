@@ -135,6 +135,7 @@ function snapshotToolRuntime(value: unknown): {
   registry: ExecutableCibaToolRegistry;
   context: CibaToolInvocationContext;
   durableApproval?: { flow: DurableCibaToolApprovalFlow; identity: DurableToolApprovalIdentity };
+  executeReadOnlyProposals?: boolean;
 } {
   const fields = readPlainRecord(value, ["registry", "context", "durableApproval", "executeReadOnlyProposals"], ["registry", "context"]);
   const registryFields = readPlainRecord(fields.registry, ["get", "list", "describe", "prepare", "execute"]);
@@ -193,6 +194,7 @@ function snapshotInput(value: unknown): {
   registry: ExecutableCibaToolRegistry;
   context: CibaToolInvocationContext;
   durableApproval?: { flow: DurableCibaToolApprovalFlow; identity: DurableToolApprovalIdentity };
+  executeReadOnlyProposals?: boolean;
 };
 } {
   const fields = readPlainRecord(
