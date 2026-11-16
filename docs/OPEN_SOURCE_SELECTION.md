@@ -109,7 +109,7 @@ Essa comparação não calcula o hash do arquivo no TypeScript e não prova, por
 
 A criação do adaptador valida também os objetos de configuração e a presença dos dois métodos da ponte nativa. Cada chamada de transcrição rejeita requests nulos ou sem buffer de áudio válido com erro controlado, antes de consultar a ponte.
 
-O status da ponte é lido uma única vez para um snapshot isolado e congelado. Valores nulos, primitivos, arrays, propriedades com tipos inválidos ou getters que lançam exceção são rejeitados antes da transcrição. Isso evita leituras inconsistentes de objetos mutáveis ou malformados.
+O status da ponte é lido uma única vez para um snapshot isolado e congelado Cada campo, inclusive propriedades implementadas como getters, é lido exatamente uma vez antes da validação para evitar resultados inconsistentes causados por efeitos colaterais.. Valores nulos, primitivos, arrays, propriedades com tipos inválidos ou getters que lançam exceção são rejeitados antes da transcrição. Isso evita leituras inconsistentes de objetos mutáveis ou malformados.
 
 Antes de enviar áudio, o adapter também valida o status retornado pela ponte: flags booleanas, identificador e digest do modelo, versão do motor e consistência entre biblioteca pronta e modelo carregado. Status malformado é rejeitado e a transcrição não é chamada. Isso valida a estrutura do relato, não atesta a veracidade do estado interno do processo nativo.
 
