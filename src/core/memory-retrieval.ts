@@ -42,9 +42,14 @@ export function rankRelevantMemories(
   records: MemorySearchRecord[],
   limit = 10,
 ): RankedMemory[] {
+  if (typeof query !== "string" || query.length > 8_000 ||
+      !Number.isFinite(limit) || !Number.isSafeInteger(limit)) return [];
+  if (!Array.isArray(records) || records.length > 500 ||
+      Object.getPrototypeOf(records) !== Array.prototype) return [];
   const queryTerms = terms(query);
   if (queryTerms.length === 0) return [];
-  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 20);
+  const safeLimit = Math.min(Math.max(limit, 0), 20);
+  if (safeLimit === 0) return [];
 
   return records.map((record) => {
     const keyTerms = new Set(terms(record.memory_key.replace(/[._-]/g, " ")));
