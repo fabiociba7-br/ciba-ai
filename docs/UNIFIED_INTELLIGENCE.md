@@ -131,7 +131,7 @@ O endpoint autenticado `POST /v1/owner/memory/retrieve` recupera itens curados r
 
 A consulta considera a memória do próprio app e inclui memória central ou de outros apps somente quando existe concessão ativa de leitura para o dispositivo/app solicitante. O proprietário ativo, o interruptor `memory_enabled`, a expiração e a exclusão são verificados no servidor. A busca limita a leitura a 200 registros e devolve até 20 resultados. Não persiste a consulta nem altera dados.
 
-A recuperação é uma API explícita do SDK (`retrieveMemory`); nesta etapa, o chat normal não injeta memórias automaticamente. Isso evita enviar contexto privado a uma inferência sem uma integração explícita e testada em etapa posterior. Não há migration nova.
+A recuperação também é utilizada pelo chat normal de forma contextual, conforme a etapa 25. Não há migration nova nesta etapa.
 
 
 ## Injeção contextual de memória no chat (etapa 25)
@@ -139,3 +139,10 @@ A recuperação é uma API explícita do SDK (`retrieveMemory`); nesta etapa, o 
 No chat normal, a última mensagem do usuário é usada como consulta lexical (até 500 caracteres). Se o dispositivo estiver pareado a um proprietário ativo e `memory_enabled` estiver ligado, o Worker busca até 200 registros não expirados e não excluídos que o app autenticado pode ler. São elegíveis a memória do próprio app e, somente com concessão `memory_read` vigente, a memória de outros apps ou do proprietário.
 
 A classificação é determinística e não faz chamada extra de inferência. Até cinco itens relevantes são acrescentados ao contexto de sistema, com limite de 1.800 caracteres para os itens. O prompt identifica esses registros como dados não confiáveis, não como instruções, e orienta a ignorar comandos contidos neles e considerar possível desatualização. Sem proprietário ativo, com memória desligada ou sem correspondências, o chat segue sem memória adicional. Não há gravação automática, histórico persistido, migration nova ou aumento do limite de tokens de saída.
+
+
+## Aprendizado curado com confirmação explícita (etapa 26)
+
+O endpoint autenticado `POST /v1/owner/memory/candidates` prepara uma proposta de memória a partir de um trecho fornecido pelo app. O app deve indicar `source_role: "user"`; a API rejeita conteúdo atribuído ao assistente e exige que o valor proposto seja um trecho verificável do texto do usuário (comparação sem distinção de acentos/caixa e com espaços normalizados). Chaves e valores passam pelas mesmas validações da memória curada, incluindo rejeição de padrões óbvios de credenciais.
+
+A proposta é apenas uma prévia: `stored: false`, `persisted: false`, `requires_confirmation: true`. A API não grava o texto de origem, não cria memória, não chama IA e não registra histórico. O app deve mostrar a proposta ao proprietário e, somente após confirmação explícita, chamar a API existente `POST /v1/owner/memory` com `consent: "curated"`. O escopo do proprietário exige concessão ativa `memory_write`; o escopo do app é limitado ao próprio app. A preparação respeita o interruptor de memória e a identidade pareada do dispositivo.
