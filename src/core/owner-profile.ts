@@ -8,6 +8,57 @@ export interface OwnerProfileEntry extends MemoryInsightRecord {
   category: OwnerProfileCategory;
 }
 
+function snapshotProfileRecords(value: unknown): MemoryInsightRecord[] | null {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+        value.length > 200) return null;
+    const arrayDescriptors = Object.getOwnPropertyDescriptors(value);
+    if (Reflect.ownKeys(arrayDescriptors).length !== value.length + 1) return null;
+    const result: MemoryInsightRecord[] = [];
+    const allowed = new Set([
+      "memory_id", "scope", "source_app_id", "memory_key", "value", "updated_at", "expires_at",
+    ]);
+    for (let index = 0; index < value.length; index += 1) {
+      const itemDescriptor = arrayDescriptors[String(index)];
+      if (!itemDescriptor || !("value" in itemDescriptor) || !itemDescriptor.enumerable) return null;
+      const item = itemDescriptor.value;
+      if (item === null || typeof item !== "object" || Array.isArray(item) ||
+          Object.getPrototypeOf(item) !== Object.prototype) return null;
+      const descriptors = Object.getOwnPropertyDescriptors(item);
+      const keys = Reflect.ownKeys(descriptors);
+      if (keys.length !== allowed.size ||
+          keys.some((key) => typeof key !== "string" || !allowed.has(key))) return null;
+      const fields: Record<string, unknown> = Object.create(null);
+      for (const key of keys as string[]) {
+        const descriptor = descriptors[key];
+        if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
+        fields[key] = descriptor.value;
+      }
+      if (typeof fields.memory_id !== "string" || fields.memory_id.length < 1 || fields.memory_id.length > 200 ||
+          (fields.scope !== "app" && fields.scope !== "owner") ||
+          !(fields.source_app_id === null || (typeof fields.source_app_id === "string" && fields.source_app_id.length <= 200)) ||
+          typeof fields.memory_key !== "string" || fields.memory_key.length > 200 ||
+          typeof fields.value !== "string" || fields.value.length > 8_000 ||
+          typeof fields.updated_at !== "string" || fields.updated_at.length > 100 ||
+          !(fields.expires_at === null || (typeof fields.expires_at === "string" && fields.expires_at.length <= 100))) {
+        return null;
+      }
+      result.push(Object.freeze({
+        memory_id: fields.memory_id,
+        scope: fields.scope,
+        source_app_id: fields.source_app_id,
+        memory_key: fields.memory_key,
+        value: fields.value,
+        updated_at: fields.updated_at,
+        expires_at: fields.expires_at,
+      }) as MemoryInsightRecord);
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 const CATEGORY_RULES: Array<[OwnerProfileCategory, string[]]> = [
   ["communication", ["communication", "response", "style", "language", "tone", "resposta", "idioma", "tom", "comunicacao"]],
   ["interests", ["interest", "music", "sport", "hobby", "interesse", "musica", "esporte", "hobby"]],
@@ -61,9 +112,11 @@ export function buildOwnerProfile(
   inference_calls: 0;
   automatic_changes: false;
 } {
-  const active = records.slice(0, 200).filter((record) =>
-    !record.expires_at || !Number.isFinite(Date.parse(record.expires_at)) || Date.parse(record.expires_at) > now.getTime()
-  );
+  const safeRecords = snapshotProfileRecords(records);
+  const safeNow = now instanceof Date && Number.isFinite(now.getTime()) ? now : null;
+  const active = safeRecords && safeNow ? safeRecords.filter((record) =>
+    !record.expires_at || !Number.isFinite(Date.parse(record.expires_at)) || Date.parse(record.expires_at) > safeNow.getTime()
+  ) : [];
   const profile = {
     preferences: [], communication: [], work: [], interests: [],
     routines: [], personal_context: [], other: [],
@@ -115,10 +168,10 @@ export function buildOwnerProfile(
       });
     }
   }
-  for (const record of records.slice(0, 200)) {
+  for (const record of (safeRecords || [])) {
     const updated = Date.parse(record.updated_at);
-    const expired = !!record.expires_at && Date.parse(record.expires_at) <= now.getTime();
-    const stale = Number.isFinite(updated) && now.getTime() - updated >= 180 * 86400000;
+    const expired = !!record.expires_at && Date.parse(record.expires_at) <= (safeNow as Date).getTime();
+    const stale = Number.isFinite(updated) && (safeNow as Date).getTime() - updated >= 180 * 86400000;
     if (expired || stale) review_suggestions.push({
       type: "stale_memory",
       memory_ids: [record.memory_id],
@@ -131,7 +184,7 @@ export function buildOwnerProfile(
     profile,
     recurring_preferences,
     review_suggestions: review_suggestions.slice(0, 50),
-    analyzed_records: records.slice(0, 200).length,
+    analyzed_records: safeRecords?.length || 0,
     inference_calls: 0,
     automatic_changes: false,
   };
