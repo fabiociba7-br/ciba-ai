@@ -12,7 +12,7 @@ A tool is executable only when all of the following are true:
 4. The application's trusted `authorize` callback returns exactly `true`.
 5. The implementation returns a JSON-compatible value within the configured output limit.
 
-An empty or omitted allowlist registers no tools. Invalid definitions are skipped rather than activated.
+An empty or omitted allowlist registers no tools. Invalid definitions are skipped rather than activated. Definitions with `write` or `external` risk must set `requiresApproval: true`; otherwise they are rejected during registration. The authorization callback must still verify a fresh, explicit approval before execution.
 
 ## Example
 
