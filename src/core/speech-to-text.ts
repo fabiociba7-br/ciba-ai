@@ -66,22 +66,32 @@ export function createWhisperCppRegistry(
   policy: SpeechToTextEnginePolicy,
   adapters: SpeechToTextAdapter[] = [],
 ): SpeechToTextRegistry {
+  const supportedRuntimes = Array.isArray(policy.supportedRuntimes)
+    ? [...policy.supportedRuntimes]
+    : [];
+  const validRuntimes = new Set<SpeechToTextRuntime>([
+    "android_embedded", "desktop_local", "local_service",
+  ]);
   if (!Number.isInteger(policy.maxAudioBytes) || policy.maxAudioBytes < 1 ||
-      !Array.isArray(policy.supportedRuntimes) || policy.supportedRuntimes.length === 0 ||
+      supportedRuntimes.length === 0 ||
+      supportedRuntimes.some((runtime) => !validRuntimes.has(runtime)) ||
+      new Set(supportedRuntimes).size !== supportedRuntimes.length ||
       (policy.maxConcurrentTranscriptions !== undefined &&
         (!Number.isInteger(policy.maxConcurrentTranscriptions) || policy.maxConcurrentTranscriptions < 1 || policy.maxConcurrentTranscriptions > 8))) {
     throw new Error("invalid_speech_to_text_policy");
   }
-  if (policy.licenseStatus !== "approved" && adapters.length > 0) {
+  const licenseApproved = policy.licenseStatus === "approved";
+  if (!licenseApproved && adapters.length > 0) {
     throw new Error("speech_to_text_license_not_approved");
   }
 
   const adapterMap = new Map<SpeechToTextRuntime, SpeechToTextAdapter>();
+  const maxAudioBytes = policy.maxAudioBytes;
   const maxConcurrent = policy.maxConcurrentTranscriptions ?? 1;
   let activeExecutions = 0;
-  for (const adapter of adapters) {
+  for (const adapter of [...adapters]) {
     if (adapter.engine !== "whisper.cpp" ||
-        !policy.supportedRuntimes.includes(adapter.runtime) ||
+        !supportedRuntimes.includes(adapter.runtime) ||
         !adapter.modelId.trim() ||
         adapter.deviceRequirements.runtime !== adapter.runtime ||
         adapterMap.has(adapter.runtime)) {
@@ -112,7 +122,7 @@ export function createWhisperCppRegistry(
   // Freeze the public registry surface so callers cannot replace lookup,
   // capacity, or execution-reservation methods after policy validation.
   return Object.freeze({
-    maxAudioBytes: policy.maxAudioBytes,
+    maxAudioBytes,
     getAdapter: (runtime: SpeechToTextRuntime) => adapterMap.get(runtime),
     listAvailableRuntimes: () => [...adapterMap.keys()],
     tryAcquireExecution: () => {
