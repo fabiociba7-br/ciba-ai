@@ -12,6 +12,7 @@ export interface SpeechToTextRequest {
   mimeType: "audio/wav" | "audio/mpeg" | "audio/mp4" | "audio/ogg" | "audio/webm" | "audio/flac";
   language?: string;
   timestamps?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface SpeechSegment {
@@ -186,6 +187,9 @@ export async function runWhisperCppTranscription(
   maxAudioBytes?: number,
 ): Promise<SpeechToTextExecution> {
   validateSpeechToTextRequest(request, maxAudioBytes ?? registry.maxAudioBytes);
+  if (request.signal?.aborted) {
+    return { success: false, reasons: ["transcription_cancelled"] };
+  }
   const resolution = resolveWhisperCppRuntime(registry, profile, requirements);
   if (!resolution.available || !resolution.adapter) {
     return { success: false, reasons: resolution.reasons };
@@ -200,6 +204,9 @@ export async function runWhisperCppTranscription(
   // caller's audio remains untouched and the temporary buffer is not retained.
   const audioBuffer = request.audio.slice();
   try {
+    if (request.signal?.aborted) {
+      return { success: false, reasons: ["transcription_cancelled"] };
+    }
     const result = await resolution.adapter.transcribe({
       ...request,
       audio: audioBuffer,
