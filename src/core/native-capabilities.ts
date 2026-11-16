@@ -339,12 +339,14 @@ export function createNativeCapabilityRegistry(
 
   const adapterMap = new Map<string, NativeCapabilityAdapter>();
   for (const adapter of adapters) {
-    const definition = definitionMap.get(adapter.capabilityId);
     if (!adapter || typeof adapter !== "object" ||
         typeof adapter.capabilityId !== "string" ||
         typeof adapter.execute !== "function" ||
-        !runtimes.includes(adapter.runtime) ||
-        !definition || adapterMap.has(adapter.capabilityId) ||
+        !runtimes.includes(adapter.runtime)) {
+      throw new Error("invalid_native_capability_adapter");
+    }
+    const definition = definitionMap.get(adapter.capabilityId);
+    if (!definition || adapterMap.has(adapter.capabilityId) ||
         !definition.supportedRuntimes.includes(adapter.runtime)) {
       throw new Error("invalid_native_capability_adapter");
     }
