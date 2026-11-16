@@ -101,11 +101,12 @@ export function validateAppProfile(input: AppProfileInput): {
 
 export function parseStoredAppTaskTypes(value: string): AppTaskType[] {
   try {
+    if (typeof value !== "string" || value.length > 4_096) return [];
     const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is AppTaskType =>
+    if (!Array.isArray(parsed) || parsed.length > APP_TASK_TYPES.length) return [];
+    return [...new Set(parsed.filter((item): item is AppTaskType =>
       typeof item === "string" && (APP_TASK_TYPES as readonly string[]).includes(item)
-    );
+    ))];
   } catch {
     return [];
   }
@@ -113,11 +114,12 @@ export function parseStoredAppTaskTypes(value: string): AppTaskType[] {
 
 export function parseStoredAppCapabilities(value: string): AppCapability[] {
   try {
+    if (typeof value !== "string" || value.length > 4_096) return [];
     const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is AppCapability =>
+    if (!Array.isArray(parsed) || parsed.length > APP_CAPABILITIES.length) return [];
+    return [...new Set(parsed.filter((item): item is AppCapability =>
       typeof item === "string" && (APP_CAPABILITIES as readonly string[]).includes(item)
-    );
+    ))];
   } catch {
     return [];
   }
