@@ -75,6 +75,52 @@ export function canRelayAppMessage(
   });
 }
 
+function cloneMessageJson(value: unknown, depth = 0): unknown {
+  if (depth > 12) throw new Error("invalid_app_message_payload");
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("invalid_app_message_payload");
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (Object.getPrototypeOf(value) !== Array.prototype) throw new Error("invalid_app_message_payload");
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const length = descriptors.length?.value;
+    if (!Number.isSafeInteger(length) || length < 0 || length > MAX_PAYLOAD_BYTES ||
+        Reflect.ownKeys(descriptors).length !== length + 1) {
+      throw new Error("invalid_app_message_payload");
+    }
+    const result: unknown[] = new Array(length);
+    for (let index = 0; index < length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+        throw new Error("invalid_app_message_payload");
+      }
+      result[index] = cloneMessageJson(descriptor.value, depth + 1);
+    }
+    return result;
+  }
+  if (typeof value !== "object") throw new Error("invalid_app_message_payload");
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error("invalid_app_message_payload");
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const result: Record<string, unknown> = Object.create(null);
+  for (const key of Reflect.ownKeys(descriptors)) {
+    if (typeof key !== "string" || key === "__proto__" ||
+        key === "constructor" || key === "prototype") {
+      throw new Error("invalid_app_message_payload");
+    }
+    const descriptor = descriptors[key];
+    if (!("value" in descriptor) || !descriptor.enumerable) {
+      throw new Error("invalid_app_message_payload");
+    }
+    result[key] = cloneMessageJson(descriptor.value, depth + 1);
+  }
+  return result;
+}
+
 /**
  * Validates the transport envelope only. Authentication, grant lookup,
  * persistence, delivery and audit logging must be performed by the gateway.
@@ -111,7 +157,8 @@ export function validateAppMessageEnvelope(
 
   let serialized: string;
   try {
-    serialized = JSON.stringify(envelope.payload);
+    const snapshot = cloneMessageJson(envelope.payload);
+    serialized = JSON.stringify(snapshot);
   } catch {
     throw new Error("invalid_app_message_payload");
   }
