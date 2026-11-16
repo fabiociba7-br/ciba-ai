@@ -95,6 +95,19 @@ function snapshotDenseArray(value: unknown, maxLength: number): unknown[] | null
   }
 }
 
+function readAbortSignalAborted(value: unknown): boolean | null {
+  try {
+    if (typeof AbortSignal === "undefined" || value === null || typeof value !== "object" ||
+        Object.getPrototypeOf(value) !== AbortSignal.prototype) return null;
+    const getter = Object.getOwnPropertyDescriptor(AbortSignal.prototype, "aborted")?.get;
+    if (typeof getter !== "function") return null;
+    const result = getter.call(value);
+    return typeof result === "boolean" ? result : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Creates a fail-closed registry for the first planned transcription engine.
  * It does not install whisper.cpp, download model weights, or enable remote
@@ -261,9 +274,7 @@ function snapshotSpeechToTextRequest(
         (language !== undefined &&
           (typeof language !== "string" || !/^[a-z]{2,3}(-[A-Z]{2})?$/.test(language))) ||
         (timestamps !== undefined && typeof timestamps !== "boolean") ||
-        (signal !== undefined &&
-          (signal === null || typeof signal !== "object" ||
-            typeof (signal as AbortSignal).aborted !== "boolean"))) return null;
+        (signal !== undefined && readAbortSignalAborted(signal) === null)) return null;
 
     const consent = readOwnDataRecord(
       consentValue,
@@ -445,7 +456,7 @@ export async function runWhisperCppTranscription(
   const audioBuffer = safeRequest.audio;
   let releaseExecution: (() => void) | undefined;
   try {
-    if (safeRequest.signal?.aborted) {
+    if (safeRequest.signal !== undefined && readAbortSignalAborted(safeRequest.signal) !== false) {
       return { success: false, reasons: ["transcription_cancelled"] };
     }
     const resolution = resolveWhisperCppRuntime(registry, profile, requirements);
