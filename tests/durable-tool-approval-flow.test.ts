@@ -88,13 +88,16 @@ describe("durable tool approval flow", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it("rejects an altered plan before touching approval storage", async () => {
+  it("relies on the durable store to reject an altered input binding", async () => {
     const { flow, consume, execute } = setup();
     const proposal = await flow.propose(identity, "profile.update", { value: "Curitiba" }, context);
     const altered = { ...proposal.plan, input: { value: "Admin" } };
+    consume.mockResolvedValueOnce(false);
     await expect(flow.execute({ identity, approvalId: proposal.approvalId, plan: altered, context }))
-      .rejects.toThrow("tool_invocation_plan_mismatch");
-    expect(consume).not.toHaveBeenCalled();
+      .rejects.toThrow("tool_approval_required");
+    expect(consume).toHaveBeenCalledWith(expect.objectContaining({
+      request: expect.objectContaining({ input: { value: "Admin" } }),
+    }));
     expect(execute).not.toHaveBeenCalled();
   });
 });
