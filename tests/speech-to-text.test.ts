@@ -41,6 +41,41 @@ describe("Garcia Whisper.cpp integration contract", () => {
     expect(registry.getAdapter("android_embedded")).toBeUndefined();
   });
 
+  it("validates supported runtime policy values and rejects duplicates", () => {
+    expect(() => createWhisperCppRegistry({
+      ...policy,
+      supportedRuntimes: ["unknown_runtime" as never],
+    })).toThrow("invalid_speech_to_text_policy");
+    expect(() => createWhisperCppRegistry({
+      ...policy,
+      supportedRuntimes: ["android_embedded", "android_embedded"],
+    })).toThrow("invalid_speech_to_text_policy");
+  });
+
+  it("snapshots policy limits and supported runtimes at registry creation", () => {
+    const mutablePolicy: SpeechToTextEnginePolicy = {
+      ...policy,
+      licenseStatus: "approved",
+      supportedRuntimes: ["android_embedded"],
+      maxAudioBytes: 1024,
+      maxConcurrentTranscriptions: 2,
+    };
+    const registry = createWhisperCppRegistry(mutablePolicy, [adapter]);
+    mutablePolicy.supportedRuntimes.splice(0, 1, "desktop_local");
+    mutablePolicy.maxAudioBytes = 1;
+    mutablePolicy.maxConcurrentTranscriptions = 1;
+
+    expect(registry.maxAudioBytes).toBe(1024);
+    expect(registry.listAvailableRuntimes()).toEqual(["android_embedded"]);
+    const releaseOne = registry.tryAcquireExecution();
+    const releaseTwo = registry.tryAcquireExecution();
+    expect(releaseOne).toBeTypeOf("function");
+    expect(releaseTwo).toBeTypeOf("function");
+    expect(registry.tryAcquireExecution()).toBeUndefined();
+    releaseOne?.();
+    releaseTwo?.();
+  });
+
   it("blocks adapter registration until license review is approved", () => {
     expect(() => createWhisperCppRegistry(policy, [adapter]))
       .toThrow("speech_to_text_license_not_approved");
