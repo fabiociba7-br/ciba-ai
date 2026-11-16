@@ -29,9 +29,47 @@ export interface EnsembleResult {
 }
 
 const MAX_INPUT_MESSAGES = 20;
+const MAX_INPUT_MESSAGE_CHARS = 3_000;
 const MAX_INPUT_CHARS = 3_000;
 const MAX_REPORT_CHARS = 12_000;
 const MAX_TOTAL_OUTPUT_TOKENS = 2_048;
+
+function snapshotMessages(value: unknown): ChatTurn[] {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+        value.length === 0 || value.length > MAX_INPUT_MESSAGES) {
+      throw new Error("invalid_ensemble_input");
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Reflect.ownKeys(descriptors).length !== value.length + 1) {
+      throw new Error("invalid_ensemble_input");
+    }
+    const messages: ChatTurn[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+      const entry = descriptors[String(index)];
+      if (!entry || !("value" in entry) || !entry.enumerable ||
+          entry.value === null || typeof entry.value !== "object" ||
+          Array.isArray(entry.value) || Object.getPrototypeOf(entry.value) !== Object.prototype) {
+        throw new Error("invalid_ensemble_input");
+      }
+      const fields = Object.getOwnPropertyDescriptors(entry.value);
+      const role = fields.role;
+      const content = fields.content;
+      if (Reflect.ownKeys(fields).length !== 2 ||
+          !role || !("value" in role) || !role.enumerable ||
+          !content || !("value" in content) || !content.enumerable ||
+          (role.value !== "user" && role.value !== "assistant") ||
+          typeof content.value !== "string" ||
+          content.value.length > MAX_INPUT_MESSAGE_CHARS) {
+        throw new Error("invalid_ensemble_input");
+      }
+      messages.push(Object.freeze({ role: role.value, content: content.value }));
+    }
+    return messages;
+  } catch {
+    throw new Error("invalid_ensemble_input");
+  }
+}
 
 /**
  * Explicitly opt-in collaboration primitive. It is not wired into the public
@@ -56,13 +94,8 @@ export async function runMultiModelEnsemble(input: {
   if (!Number.isInteger(plan.maxOutputTokens) || plan.maxOutputTokens < 1 || plan.maxOutputTokens > 512) {
     throw new Error("invalid_ensemble_output_limit");
   }
-  if (!Array.isArray(input.messages) || input.messages.length === 0 ||
-      input.messages.length > MAX_INPUT_MESSAGES ||
-      input.messages.some((message) => !["user", "assistant"].includes(message.role) ||
-        typeof message.content !== "string")) {
-    throw new Error("invalid_ensemble_input");
-  }
-  const inputChars = input.messages.reduce((total, message) => total + message.content.length, 0);
+  const safeMessages = snapshotMessages(input?.messages);
+  const inputChars = safeMessages.reduce((total, message) => total + message.content.length, 0);
   if (inputChars > MAX_INPUT_CHARS) throw new Error("ensemble_input_too_large");
 
   if (!Array.isArray(plan.members) || plan.members.length === 0 ||
@@ -115,7 +148,7 @@ export async function runMultiModelEnsemble(input: {
           role: "system",
           content: "Você é um especialista da Ciba AI. Analise a solicitação de forma independente. Não invente fatos. Retorne conclusão, pontos de atenção e incertezas. Não execute ferramentas.\nEspecialidade: " + profile.description + ".\n" + profile.instructions
         },
-        ...input.messages
+        ...safeMessages
       ]
     });
     if (typeof result.text !== "string" || result.text.length > MAX_REPORT_CHARS) {
@@ -134,7 +167,7 @@ export async function runMultiModelEnsemble(input: {
   ).join("\n\n");
   if (evidence.length > MAX_REPORT_CHARS * 3) throw new Error("ensemble_evidence_too_large");
 
-  const originalRequest = input.messages
+  const originalRequest = safeMessages
     .map((message) => message.role.toUpperCase() + ": " + message.content)
     .join("\n");
   const synthesis = await plan.synthesisProvider.generate({
