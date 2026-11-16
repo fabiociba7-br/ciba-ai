@@ -105,6 +105,19 @@ describe("Garcia Whisper.cpp integration contract", () => {
       .toMatchObject({ available: true, reasons: [], adapter });
   });
 
+  it("snapshots and freezes adapter hardware requirements at registration", () => {
+    const mutableRequirements = { ...adapter.deviceRequirements };
+    const sourceAdapter = { ...adapter, deviceRequirements: mutableRequirements };
+    const registry = createWhisperCppRegistry({
+      ...policy, licenseStatus: "approved",
+    }, [sourceAdapter]);
+    mutableRequirements.minimumRamMb = 16384;
+    const registered = registry.getAdapter("android_embedded");
+    expect(registered?.deviceRequirements.minimumRamMb).toBe(1024);
+    expect(Object.isFrozen(registered)).toBe(true);
+    expect(Object.isFrozen(registered?.deviceRequirements)).toBe(true);
+  });
+
   it("enforces the selected model hardware floor in addition to runtime requirements", () => {
     const profile = {
       platform: "android" as const, architecture: "arm64" as const,
