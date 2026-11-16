@@ -9,12 +9,16 @@ export interface CibaToolDefinition<Input = unknown, Output = unknown> {
   execute(input: Input): Promise<Output>;
 }
 
+export type CibaToolMetadata = Pick<
+  CibaToolDefinition,
+  "id" | "description" | "risk" | "requiresApproval"
+>;
+
 /**
- * Tool definition contract. Definitions are inert until passed to the registry
- * with an explicit allowlist and a trusted application authorization callback.
- * The registry validates input/output and applies execution time limits.
+ * Public registry surface exposes metadata only. Implementations remain private
+ * to the registry and can run only through its authorized execute method.
  */
 export interface CibaToolRegistry {
-  get(toolId: string): CibaToolDefinition | undefined;
-  list(): Array<Pick<CibaToolDefinition, "id" | "description" | "risk" | "requiresApproval">>;
+  get(toolId: string): CibaToolMetadata | undefined;
+  list(): CibaToolMetadata[];
 }
