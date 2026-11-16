@@ -3,6 +3,7 @@ import {
   createAndroidWhisperCppAdapter,
   type AndroidWhisperCppBridge,
 } from "../src/core/android-whisper-bridge";
+import type { DeviceCapabilityRequirements } from "../src/core/device-capabilities";
 import type { SpeechToTextRequest, SpeechToTextResult } from "../src/core/speech-to-text";
 
 const request: SpeechToTextRequest = {
@@ -136,8 +137,8 @@ describe("Android Whisper.cpp bridge contract", () => {
   });
 
   it("snapshots model, audio limit, and hardware requirements", async () => {
-    const mutableRequirements = {
-      runtime: "android_embedded" as const,
+    const mutableRequirements: DeviceCapabilityRequirements = {
+      runtime: "android_embedded",
       minimumRamMb: 1024,
       architectures: ["arm64" as const],
       platforms: ["android" as const],
