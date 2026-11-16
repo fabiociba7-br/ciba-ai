@@ -77,7 +77,7 @@ describe("Ciba AI Worker integration", () => {
     expect(html).toContain("/v1/owner/memory/history");
     expect(html).toContain("Aprovações de ferramentas");
     expect(html).toContain("/v1/owner/tool-approvals");
-    const dashboardScript = html.match(/<script>([\\s\\S]*?)<\\/script>/)?.[1];
+    const dashboardScript = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
     expect(dashboardScript).toBeTruthy();
     expect(() => new Function(dashboardScript!)).not.toThrow();
     expect(html).toContain("Perfil contextual do proprietário");
