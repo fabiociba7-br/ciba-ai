@@ -185,3 +185,10 @@ A migration `0014_memory_audit_events.sql` cria um histórico de auditoria com m
 O histórico registra identificador da memória/proposta, chave, ação, aplicativo responsável e horário. **Não registra o valor da memória, evidências, prompts nem conversas.** Eventos são mantidos por até 180 dias pelo processo de limpeza programado. A interface privada mostra as ações recentes, sem permitir alterar o histórico. O SDK oferece `getMemoryHistory()`.
 
 O histórico é append-only pela API: não há endpoint para editar ou apagar eventos. A migration ainda não foi aplicada em produção e o Worker não foi publicado; o recurso só estará disponível depois de uma futura ativação autorizada.
+
+
+## Perfil contextual estruturado do proprietário (etapa 31)
+
+O endpoint autenticado `GET /v1/owner/profile` organiza até 200 memórias já visíveis ao aplicativo em categorias como preferências, comunicação, trabalho/projetos, interesses, rotinas e contexto pessoal. Também identifica termos que aparecem em mais de uma memória distinta e sugere revisão de possíveis conflitos ou registros antigos/expirados.
+
+A classificação e a recorrência são determinísticas e baseadas somente nos registros curados autorizados. O endpoint não infere atributos sensíveis, não consulta conversas, não chama IA e não grava ou altera memórias. Conteúdo expirado é excluído do perfil atual, mas pode aparecer como sugestão de revisão. Sugestões são alertas, não propostas persistidas nem atualizações automáticas; qualquer alteração deve passar pelo fluxo existente de revisão explícita do proprietário. Memórias de outros apps ou do escopo central só são incluídas com concessão ativa de `memory_read` correspondente.
