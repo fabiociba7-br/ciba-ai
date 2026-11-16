@@ -215,8 +215,8 @@ export function createCibaToolRegistry(
 
       let safeInput: unknown;
       try {
-        if (jsonBytes(input) > maxInputBytes) throw new Error("invalid_tool_input");
         safeInput = cloneJson(input);
+        if (jsonBytes(safeInput) > maxInputBytes) throw new Error("invalid_tool_input");
       } catch {
         throw new Error("invalid_tool_input");
       }
@@ -237,8 +237,15 @@ export function createCibaToolRegistry(
         Promise.resolve().then(() => item.definition.execute(safeInput)),
         timeoutMs
       );
-      if (jsonBytes(output) > maxOutputBytes) throw new Error("tool_output_too_large");
-      return cloneJson(output);
+      let safeOutput: unknown;
+      try {
+        safeOutput = cloneJson(output);
+        if (jsonBytes(safeOutput) > maxOutputBytes) throw new Error("tool_output_too_large");
+      } catch (error) {
+        if (error instanceof Error && error.message === "tool_output_too_large") throw error;
+        throw new Error("invalid_tool_output");
+      }
+      return safeOutput;
     }
   });
 }
