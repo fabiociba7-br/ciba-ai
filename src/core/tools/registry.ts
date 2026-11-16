@@ -273,6 +273,7 @@ export function createCibaToolRegistry(
         !VALID_RISKS.includes(definition.risk) ||
         typeof definition.requiresApproval !== "boolean" ||
         typeof definition.execute !== "function" ||
+        (definition.risk !== "read" && definition.requiresApproval !== true) ||
         registered.has(definition.id) ||
         !allowlist.has(definition.id)) continue;
 
