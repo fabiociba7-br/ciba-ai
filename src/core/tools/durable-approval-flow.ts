@@ -70,6 +70,7 @@ export interface DurableCibaToolProposal {
 }
 
 export interface DurableCibaToolApprovalFlow {
+  readonly registry: ExecutableCibaToolRegistry;
   propose(
     identity: DurableToolApprovalIdentity,
     toolId: string,
@@ -187,6 +188,7 @@ export function createDurableCibaToolApprovalFlow(
   }
 
   const flow: DurableCibaToolApprovalFlow = {
+    registry,
     async propose(identity, toolId, input, rawContext) {
       const context = snapshotContext(rawContext);
       const plan = registry.prepare(toolId, input, context);
