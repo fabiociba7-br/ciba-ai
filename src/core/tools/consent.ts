@@ -10,6 +10,10 @@ export interface CibaToolConsentRequest {
 
 export type CibaToolConsentStatus = "approval_required" | "approved";
 
+export type CibaToolConsentCheck =
+  Omit<CibaToolConsentRequest, "conversationId" | "invocationId"> &
+  Partial<Pick<CibaToolConsentRequest, "conversationId" | "invocationId">>;
+
 const MAX_INPUT_BYTES = 64_000;
 const MAX_DEPTH = 12;
 const MAX_NODES = 20_000;
@@ -149,7 +153,7 @@ function snapshotRequest(input: unknown): SafeRequest {
 export interface CibaToolConsentStore {
   request(request: CibaToolConsentRequest): CibaToolConsentStatus;
   answer(invocationId: string, conversationId: string, toolId: string, input: unknown, allow: boolean): boolean;
-  consume(request: CibaToolConsentRequest): boolean;
+  consume(request: CibaToolConsentCheck): boolean;
   cancel(invocationId: string, conversationId: string): boolean;
 }
 
@@ -224,10 +228,10 @@ export function createCibaToolConsentStore(): CibaToolConsentStore {
       return true;
     },
 
-    consume(rawRequest: CibaToolConsentRequest): boolean {
+    consume(rawRequest: CibaToolConsentCheck): boolean {
       let request: SafeRequest;
       try {
-        request = snapshotRequest(rawRequest);
+        request = snapshotRequest(rawRequest as CibaToolConsentRequest);
       } catch {
         return false;
       }
