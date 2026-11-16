@@ -428,7 +428,9 @@ describe("CibaClient", () => {
       expires_at: "2026-11-16T10:00:00.000Z",
       payload: { protocol: "garcia.task.request", task_id: "task-registered", task_type: "summarize", instruction: "Resumir" },
     };
-    const processors = { summarize: ({ task }) => ({ summary: task.instruction }) };
+    const processors: import("../src/client").CibaTaskProcessorRegistry = {
+      summarize: ({ task }) => ({ summary: task.instruction }),
+    };
     const result = await client.executeRegisteredTaskMessage(message, processors);
     expect(result.status).toBe("completed");
     expect(result.result).toEqual({ summary: "Resumir" });
