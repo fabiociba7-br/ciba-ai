@@ -188,10 +188,18 @@ function readPlainDataObject(value: unknown): Record<string, unknown> | null {
  * and write and bind the owner identity to the authenticated session.
  */
 export function validateMemoryRecord(record: MemoryRecord): MemoryRecord {
-  const source = readPlainDataObject(record);
-  if (!source) throw new Error("invalid_memory_record");
-  const scopeValue = readPlainDataObject(source.scope);
-  if (!scopeValue) throw new Error("invalid_memory_record");
+  const source = snapshotMemoryRecord(record, [
+    "id", "ownerId", "scope", "value", "createdAt", "expiresAt", "createdByAppId",
+  ]);
+  if (!source || ["id", "ownerId", "scope", "value", "createdAt", "createdByAppId"]
+      .some((key) => !Object.prototype.hasOwnProperty.call(source, key))) {
+    throw new Error("invalid_memory_record");
+  }
+  const scopeValue = snapshotMemoryRecord(source.scope, ["type", "ownerId", "appId"]);
+  if (!scopeValue || !Object.prototype.hasOwnProperty.call(scopeValue, "type") ||
+      !Object.prototype.hasOwnProperty.call(scopeValue, "ownerId")) {
+    throw new Error("invalid_memory_record");
+  }
 
   const id = source.id;
   const ownerId = source.ownerId;
