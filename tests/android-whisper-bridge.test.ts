@@ -340,6 +340,39 @@ describe("Android Whisper.cpp bridge contract", () => {
     expect(segmentReads).toEqual({ startMs: 1, endMs: 1, text: 1 });
   });
 
+  it("reads proxied native segment length and entries exactly once", async () => {
+    const reads = { length: 0, first: 0 };
+    const nativeSegments = new Proxy(
+      [{ startMs: 0, endMs: 500, text: "Olá" }],
+      {
+        get(target, property, receiver) {
+          if (property === "length") {
+            reads.length += 1;
+            return reads.length === 1 ? 1 : 0;
+          }
+          if (property === "0") {
+            reads.first += 1;
+            return reads.first === 1 ? target[0] : undefined;
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      },
+    );
+    const adapter = createAndroidWhisperCppAdapter(bridge({
+      transcribe: async () => ({ ...result, segments: nativeSegments }) as SpeechToTextResult,
+    }), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+
+    await expect(adapter.transcribe(request)).resolves.toMatchObject({
+      segments: [{ startMs: 0, endMs: 500, text: "Olá" }],
+    });
+    expect(reads).toEqual({ length: 1, first: 1 });
+  });
+
   it("does not invoke a native segments iterator", async () => {
     const nativeSegments = [{ startMs: 0, endMs: 500, text: "Olá" }];
     Object.defineProperty(nativeSegments, Symbol.iterator, {
