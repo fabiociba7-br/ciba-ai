@@ -4,6 +4,8 @@ import { routeTask } from "./router";
 import type { ChatTurn, ModelProvider, OrchestrationResult } from "./types";
 import type { CibaToolInvocationContext, ExecutableCibaToolRegistry } from "./tools/registry";
 import { parseCibaToolModelProposal, CIBA_TOOL_PROPOSAL_PREFIX } from "./tools/model-proposal";
+import type { DurableCibaToolApprovalFlow } from "./tools/durable-approval-flow";
+import type { DurableToolApprovalIdentity } from "./tools/durable-consent";
 
 const MAX_MESSAGES = 100;
 const MAX_MESSAGE_CHARS = 32_000;
@@ -29,7 +31,11 @@ type OrchestratorInput = {
   maxOutputTokens: number;
   provider: ModelProvider;
   memoryContext?: string;
-  toolRuntime?: { registry: ExecutableCibaToolRegistry; context: CibaToolInvocationContext };
+  toolRuntime?: {
+  registry: ExecutableCibaToolRegistry;
+  context: CibaToolInvocationContext;
+  durableApproval?: { flow: DurableCibaToolApprovalFlow; identity: DurableToolApprovalIdentity };
+};
 };
 
 function readPlainRecord(value: unknown, allowedKeys: string[], requiredKeys = allowedKeys): Record<string, unknown> {
@@ -124,14 +130,50 @@ function snapshotProvider(value: unknown): ModelProvider {
   }
 }
 
-function snapshotToolRuntime(value: unknown): { registry: ExecutableCibaToolRegistry; context: CibaToolInvocationContext } {
-  const fields = readPlainRecord(value, ["registry", "context"]);
+function snapshotToolRuntime(value: unknown): {
+  registry: ExecutableCibaToolRegistry;
+  context: CibaToolInvocationContext;
+  durableApproval?: { flow: DurableCibaToolApprovalFlow; identity: DurableToolApprovalIdentity };
+} {
+  const fields = readPlainRecord(value, ["registry", "context", "durableApproval"], ["registry", "context"]);
   const registryFields = readPlainRecord(fields.registry, ["get", "list", "describe", "prepare", "execute"]);
   if (Object.values(registryFields).some((method) => typeof method !== "function")) throw new Error("invalid_tool_runtime");
+  const registry = fields.registry as ExecutableCibaToolRegistry;
   const contextFields = readPlainRecord(fields.context, ["conversationId", "invocationId"]);
   if (typeof contextFields.conversationId !== "string" || !contextFields.conversationId.trim() || contextFields.conversationId.length > 128 ||
       typeof contextFields.invocationId !== "string" || !contextFields.invocationId.trim() || contextFields.invocationId.length > 128) throw new Error("invalid_tool_runtime");
-  return Object.freeze({ registry: fields.registry as ExecutableCibaToolRegistry, context: Object.freeze({ conversationId: contextFields.conversationId, invocationId: contextFields.invocationId }) });
+
+  let durableApproval: { flow: DurableCibaToolApprovalFlow; identity: DurableToolApprovalIdentity } | undefined;
+  if (fields.durableApproval !== undefined) {
+    const durableFields = readPlainRecord(fields.durableApproval, ["flow", "identity"]);
+    const flowFields = readPlainRecord(durableFields.flow, ["registry", "propose", "answer", "execute", "cancel"]);
+    if (flowFields.registry !== registry ||
+        ["propose", "answer", "execute", "cancel"].some((key) => typeof flowFields[key] !== "function")) {
+      throw new Error("invalid_tool_runtime");
+    }
+    const identity = readPlainRecord(durableFields.identity, ["ownerId", "appId", "deviceId"]);
+    if (typeof identity.ownerId !== "string" || !identity.ownerId.trim() ||
+        typeof identity.appId !== "string" || !identity.appId.trim() ||
+        typeof identity.deviceId !== "string" || !identity.deviceId.trim()) {
+      throw new Error("invalid_tool_runtime");
+    }
+    durableApproval = Object.freeze({
+      flow: durableFields.flow as DurableCibaToolApprovalFlow,
+      identity: Object.freeze({
+        ownerId: identity.ownerId,
+        appId: identity.appId,
+        deviceId: identity.deviceId
+      })
+    });
+  }
+  return Object.freeze({
+    registry,
+    context: Object.freeze({
+      conversationId: contextFields.conversationId,
+      invocationId: contextFields.invocationId
+    }),
+    ...(durableApproval ? { durableApproval } : {})
+  });
 }
 
 function snapshotInput(value: unknown): {
@@ -140,7 +182,11 @@ function snapshotInput(value: unknown): {
   maxOutputTokens: number;
   provider: ModelProvider;
   memoryContext?: string;
-  toolRuntime?: { registry: ExecutableCibaToolRegistry; context: CibaToolInvocationContext };
+  toolRuntime?: {
+  registry: ExecutableCibaToolRegistry;
+  context: CibaToolInvocationContext;
+  durableApproval?: { flow: DurableCibaToolApprovalFlow; identity: DurableToolApprovalIdentity };
+};
 } {
   const fields = readPlainRecord(
     value,
@@ -260,6 +306,28 @@ export async function runCibaOrchestrator(input: OrchestratorInput): Promise<Orc
     try {
       const proposed = parseCibaToolModelProposal(result.text);
       if (proposed) {
+        if (safeInput.toolRuntime.durableApproval) {
+          const durable = await safeInput.toolRuntime.durableApproval.flow.propose(
+            safeInput.toolRuntime.durableApproval.identity,
+            proposed.toolId,
+            proposed.input,
+            safeInput.toolRuntime.context
+          );
+          return {
+            ...result,
+            text: durable.approval === "approval_required"
+              ? "Proposta validada e solicitação de aprovação registrada. Nenhuma ação foi executada."
+              : "Proposta validada. Nenhuma ação foi executada; a etapa de execução permanece separada.",
+            toolProposal: durable.plan,
+            toolApproval: {
+              status: durable.approval,
+              ...(durable.approvalId ? { approvalId: durable.approvalId } : {})
+            },
+            selectedAgent,
+            strategy: "single-pass",
+            usedInferenceCalls: 1
+          };
+        }
         const toolProposal = safeInput.toolRuntime.registry.prepare(proposed.toolId, proposed.input, safeInput.toolRuntime.context);
         return { ...result, text: "Proposta de ferramenta validada. Nenhuma ação foi executada; é necessária a etapa de autorização e execução do aplicativo.", toolProposal, selectedAgent, strategy: "single-pass", usedInferenceCalls: 1 };
       }
