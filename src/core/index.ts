@@ -30,7 +30,7 @@ export type { NativeCapabilityAdapter, NativeCapabilityCategory, NativeCapabilit
 
 export { createWhisperCppRegistry, validateSpeechToTextRequest, resolveWhisperCppRuntime, runWhisperCppTranscription } from "./speech-to-text";
 export type { SpeechToTextRuntimeResolution, SpeechToTextExecution } from "./speech-to-text";
-export type { SpeechToTextAdapter, SpeechToTextEnginePolicy, SpeechToTextRegistry, SpeechToTextRequest, SpeechToTextResult, SpeechSegment, SpeechToTextRuntime } from "./speech-to-text";
+export type { SpeechToTextAdapter, SpeechToTextConsent, SpeechToTextEnginePolicy, SpeechToTextRegistry, SpeechToTextRequest, SpeechToTextResult, SpeechSegment, SpeechToTextRuntime } from "./speech-to-text";
 
 export { assessDeviceCompatibility, validateDeviceCapabilityProfile } from "./device-capabilities";
 export type { DeviceArchitecture, DeviceCapabilityDecision, DeviceCapabilityProfile, DeviceCapabilityRequirements, DevicePlatform, DeviceRuntime } from "./device-capabilities";
