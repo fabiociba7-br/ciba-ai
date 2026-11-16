@@ -217,6 +217,7 @@ describe("Garcia Whisper.cpp integration contract", () => {
     ] });
   });
 
+});
 
 describe("Whisper.cpp adapter result boundary", () => {
   it("captures accessor-backed output once and returns a detached immutable snapshot", () => {
