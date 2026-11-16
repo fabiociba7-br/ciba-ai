@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import workerModule, { type Env } from "../src/index";
+import { createD1ToolApprovalStore } from "../src/core/tools/durable-consent";
 import { beforeEach, describe, expect, it } from "vitest";
 
 const worker = {
@@ -1234,3 +1235,135 @@ describe("CibaGenio administrative resource controls", () => {
   });
 });
 
+
+
+describe("Ciba AI authenticated durable tool approvals", () => {
+  const approvalRequest = {
+    conversationId: "approval-conversation",
+    invocationId: "approval-invocation",
+    toolId: "profile.update",
+    risk: "write" as const,
+    input: { display_name: "Fábio" },
+  };
+
+  const createPairedOwnerDevices = async () => {
+    const source = await registerDevice(await createInvitation());
+    const ownerResponse = await adminRequest("/v1/admin/owners", "POST", { app_id: appId });
+    expect(ownerResponse.status).toBe(201);
+    const owner = await ownerResponse.json() as { owner_id: string; pairing_invitation_code: string };
+    const pair = async (device: { access_token: string }, code: string) => request("/v1/owner/pair", {
+      method: "POST",
+      headers: { authorization: `Bearer ${device.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ pairing_invitation_code: code }),
+    });
+    expect((await pair(source, owner.pairing_invitation_code)).status).toBe(200);
+
+    const second = await registerDevice(await createInvitation());
+    const invitation = await adminRequest("/v1/admin/owner-invitations", "POST", {
+      owner_id: owner.owner_id, app_id: appId,
+    });
+    expect(invitation.status).toBe(201);
+    const code = (await invitation.json() as { pairing_invitation_code: string }).pairing_invitation_code;
+    expect((await pair(second, code)).status).toBe(200);
+    return { source, second, owner };
+  };
+
+  it("lists requests only to paired owner devices and accepts a one-time decision from a paired device", async () => {
+    const { source, second, owner } = await createPairedOwnerDevices();
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const store = createD1ToolApprovalStore(db);
+    const saved = await store.request({
+      ownerId: owner.owner_id, appId, deviceId: source.device_id,
+    }, approvalRequest);
+
+    const unauthenticated = await request("/v1/owner/tool-approvals");
+    expect(unauthenticated.status).toBe(401);
+
+    const list = await request("/v1/owner/tool-approvals", {
+      headers: { authorization: `Bearer ${second.access_token}` },
+    });
+    expect(list.status).toBe(200);
+    const body = await list.json() as { approvals: Array<Record<string, unknown>>; count: number };
+    expect(body.count).toBe(1);
+    expect(body.approvals[0]).toMatchObject({
+      approval_id: saved.approvalId,
+      source_device_id: source.device_id,
+      tool_id: "profile.update",
+      risk: "write",
+      input: { display_name: "Fábio" },
+      status: "pending",
+    });
+    expect(body.approvals[0]).not.toHaveProperty("input_sha256");
+
+    const invalidDecision = await request(`/v1/owner/tool-approvals/${saved.approvalId}/decision`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${second.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ allow: true, owner_id: "attacker-controlled" }),
+    });
+    expect(invalidDecision.status).toBe(400);
+
+    const decision = await request(`/v1/owner/tool-approvals/${saved.approvalId}/decision`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${second.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ allow: true }),
+    });
+    expect(decision.status).toBe(200);
+    expect(await decision.json()).toMatchObject({
+      decided: true, approval_id: saved.approvalId, decision: "approved",
+      approved_by_device_id: second.device_id,
+    });
+
+    const replay = await request(`/v1/owner/tool-approvals/${saved.approvalId}/decision`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${second.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ allow: false }),
+    });
+    expect(replay.status).toBe(404);
+  });
+
+  it("keeps approvals isolated by owner and allows only the originating device to cancel", async () => {
+    const { source, second, owner } = await createPairedOwnerDevices();
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const store = createD1ToolApprovalStore(db);
+    const saved = await store.request({
+      ownerId: owner.owner_id, appId, deviceId: source.device_id,
+    }, { ...approvalRequest, invocationId: "approval-cancel-invocation" });
+
+    const otherOwnerDevice = await registerDevice(await createInvitation());
+    const otherOwnerResponse = await adminRequest("/v1/admin/owners", "POST", { app_id: appId });
+    const otherOwner = await otherOwnerResponse.json() as { pairing_invitation_code: string };
+    const pairedOther = await request("/v1/owner/pair", {
+      method: "POST",
+      headers: { authorization: `Bearer ${otherOwnerDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ pairing_invitation_code: otherOwner.pairing_invitation_code }),
+    });
+    expect(pairedOther.status).toBe(200);
+
+    const isolated = await request("/v1/owner/tool-approvals", {
+      headers: { authorization: `Bearer ${otherOwnerDevice.access_token}` },
+    });
+    expect((await isolated.json() as { approvals: unknown[] }).approvals).toHaveLength(0);
+
+    const wrongDeviceCancel = await request(`/v1/owner/tool-approvals/${saved.approvalId}/cancel`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${second.access_token}` },
+    });
+    expect(wrongDeviceCancel.status).toBe(404);
+
+    const cancel = await request(`/v1/owner/tool-approvals/${saved.approvalId}/cancel`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${source.access_token}` },
+    });
+    expect(cancel.status).toBe(200);
+    expect(await cancel.json()).toMatchObject({ cancelled: true, approval_id: saved.approvalId });
+  });
+
+  it("does not expose approvals to unpaired devices", async () => {
+    const device = await registerDevice(await createInvitation());
+    const response = await request("/v1/owner/tool-approvals", {
+      headers: { authorization: `Bearer ${device.access_token}` },
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "active_owner_required" });
+  });
+});
