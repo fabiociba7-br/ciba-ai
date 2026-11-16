@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { rankRelevantMemories, buildChatMemoryContext, buildProfileAwareChatMemoryContext, MAX_CHAT_MEMORY_ENTRIES, MAX_CHAT_MEMORY_CHARS, type MemorySearchRecord, type RankedMemory } from "../src/core/memory-retrieval";
+import { rankRelevantMemories, deduplicateAuthorizedMemories, buildChatMemoryContext, buildProfileAwareChatMemoryContext, MAX_CHAT_MEMORY_ENTRIES, MAX_CHAT_MEMORY_CHARS, type MemorySearchRecord, type RankedMemory } from "../src/core/memory-retrieval";
 
 const records: MemorySearchRecord[] = [
   {
@@ -94,7 +94,41 @@ describe("bounded chat memory context", () => {
     expect(result.profileSignalsUsed).toBe(false);
   });
 
+
+  it("collapses exact duplicates shared by authorized apps while preserving provenance", () => {
+    const shared: MemorySearchRecord[] = [
+      { ...records[0], memory_id: "copy-a", source_app_id: "app-a", memory_key: "communication_style", value: "Prefere respostas diretas." },
+      { ...records[0], memory_id: "copy-b", source_app_id: "app-b", memory_key: " Communication Style ", value: "PREFERE respostas diretas!" , updated_at: "2026-01-05T00:00:00.000Z" },
+      { ...records[1], memory_id: "different", memory_key: "travel_preferences", value: "Prefere viajar de carro." },
+    ];
+    const deduped = deduplicateAuthorizedMemories(shared);
+    expect(deduped).toHaveLength(2);
+    const sharedRecord = deduped.find((item) => item.duplicate_count === 2);
+    expect(sharedRecord?.memory_id).toBe("copy-b");
+    expect(sharedRecord?.duplicate_sources).toEqual(["app-a", "app-b"]);
+  });
+
+  it("does not collapse similar but non-identical memories", () => {
+    const similar: MemorySearchRecord[] = [
+      { ...records[0], memory_key: "response_style", value: "Prefere respostas diretas." },
+      { ...records[0], memory_id: "other", source_app_id: "app-b", value: "Prefere respostas detalhadas." },
+    ];
+    expect(deduplicateAuthorizedMemories(similar)).toHaveLength(2);
+  });
+
+  it("does not count duplicate cross-app copies as independent recurring profile evidence", () => {
+    const shared: MemorySearchRecord[] = [
+      { ...records[0], memory_id: "copy-a", memory_key: "communication_style", value: "Prefere respostas diretas e objetivas." },
+      { ...records[0], memory_id: "copy-b", source_app_id: "app-b", memory_key: " Communication Style ", value: "PREFERE respostas diretas e objetivas!" },
+    ];
+    const result = buildProfileAwareChatMemoryContext("Qual o tempo?", shared);
+    expect(result.entriesUsed).toBe(1);
+    expect(result.duplicatesCollapsed).toBe(1);
+    expect(result.profileSignalsUsed).toBe(false);
+    expect(result.text).toContain("fontes=app-a,app-b");
+  });
+
   it("returns an empty context for no relevant memories", () => {
-    expect(buildChatMemoryContext([])).toEqual({ text: "", entriesUsed: 0, characters: 0, profileSignalsUsed: false });
+    expect(buildChatMemoryContext([])).toEqual({ text: "", entriesUsed: 0, characters: 0, profileSignalsUsed: false, duplicatesCollapsed: 0 });
   });
 });
