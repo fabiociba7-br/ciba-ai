@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { afterEach, describe, expect, it } from "vitest";
 import { createD1ToolApprovalStore } from "../src/core/tools/durable-consent";
 
-const db = env.DB;
+const db = (env as unknown as { DB: D1Database }).DB;
 const createdOwners: string[] = [];
 
 async function deviceForOwner(ownerId: string, appId = "com.ciba.test") {
