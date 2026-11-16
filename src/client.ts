@@ -402,6 +402,9 @@ export class CibaClient {
   chat(messages: CibaChatMessage[]): Promise<{
     model: string;
     response: string;
+    tool_execution?: { toolId: string; output: unknown };
+    tool_execution_error?: "tool_execution_failed";
+    tool_approval?: { status: "not_required" | "approval_required" | "approved"; approvalId?: string };
     intelligence: {
       agent: string;
       strategy: string;

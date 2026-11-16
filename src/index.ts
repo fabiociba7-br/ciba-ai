@@ -32,6 +32,7 @@ import { deriveTaskLifecycle } from "./core/task-lifecycle";
 import { CIBAGENIO_RESOURCES, parseCibaGenioCommand } from "./core/cibagenio";
 import { createNativeCapabilityRegistry } from "./core/native-capabilities";
 import { createD1ToolApprovalStore } from "./core/tools/durable-consent";
+import { createGarciaCapabilityToolRuntime } from "./core/tools/garcia-capability-tools";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -1664,12 +1665,29 @@ const handleChat = async (request: Request, env: Env) => {
     }
   }
 
+  const toolRuntime = owner && await isAppAllowed(env, device.app_id)
+    ? createGarciaCapabilityToolRuntime({
+        context: {
+          conversationId: crypto.randomUUID(),
+          invocationId: crypto.randomUUID(),
+        },
+        executeReadOnlyProposals: true,
+        authorize: async (toolRequest) =>
+          device.owner_id === owner.owner_id &&
+          toolRequest.risk === "read" &&
+          toolRequest.requiresApproval === false &&
+          (toolRequest.toolId === "garcia.capabilities.list" ||
+            toolRequest.toolId === "garcia.capabilities.get"),
+      })
+    : undefined;
+
   const orchestration = await runCibaOrchestrator({
     messages,
     model: registeredModel.modelId,
     maxOutputTokens: Math.min(maxTokens, registeredModel.maxOutputTokens),
     provider,
     memoryContext: memoryContext.text,
+    ...(toolRuntime ? { toolRuntime } : {}),
   });
   await env.DB.prepare(
     "UPDATE devices SET last_seen_at = ? WHERE device_id = ?"
@@ -1678,6 +1696,15 @@ const handleChat = async (request: Request, env: Env) => {
   return json({
     model,
     response: orchestration.text,
+    ...(orchestration.toolExecution
+      ? { tool_execution: orchestration.toolExecution }
+      : {}),
+    ...(orchestration.toolExecutionError
+      ? { tool_execution_error: orchestration.toolExecutionError }
+      : {}),
+    ...(orchestration.toolApproval
+      ? { tool_approval: orchestration.toolApproval }
+      : {}),
     intelligence: {
       agent: orchestration.selectedAgent,
       strategy: orchestration.strategy,

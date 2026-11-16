@@ -294,3 +294,12 @@ const result = await runCibaOrchestrator({
 The factory validates and snapshots the invocation context. Read-only proposal execution remains off unless the trusted caller explicitly enables it. The model cannot set this flag: it is part of the server-side runtime object. The authorization callback is still mandatory and is evaluated before each read handler. Do not pass an identity, authorization callback, or runtime flag from untrusted request JSON.
 
 This composition is tested end to end with the real `garcia.capabilities.list` and `garcia.capabilities.get` tools. It remains opt-in and is not connected to the public Worker by default.
+
+
+## Owner-scoped read-only tools in chat
+
+The authenticated `/v1/ai/chat` route now composes the native capability catalog into the orchestrator only when the calling device belongs to an active paired owner and its app remains enabled. The runtime creates fresh server-side conversation/invocation identifiers and uses a fixed allowlist of the two catalog tools. The authorization callback checks the authenticated owner binding, `risk: "read"`, `requiresApproval: false`, and the exact tool IDs.
+
+The model receives the tool schemas and may propose a catalog lookup. The orchestrator executes it only through the registry authorization callback. The Worker returns the result in the optional `tool_execution` field; clients can render the structured metadata without treating it as model-authored prose. Execution failures are represented by a generic `tool_execution_error`.
+
+Unpaired devices do not receive the tool catalog in their model context. This chat integration does not register write/external handlers, does not enable arbitrary native adapters, and does not execute any operation that changes state or contacts an external service. The existing durable approval API remains separate and does not imply execution.
