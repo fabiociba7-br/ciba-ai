@@ -34,6 +34,7 @@ const requirements = {
 
 const request = {
   audio: new Uint8Array([1, 2, 3]),
+  consent: { granted: true, purpose: "transcription", source: "explicit_user_action" },
   mimeType: "audio/wav" as const,
   language: "pt-BR",
 };
