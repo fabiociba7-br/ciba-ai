@@ -357,11 +357,19 @@ export function buildProfileAwareChatMemoryContext(
   const profile = buildOwnerProfile(toInsightRecords(uniqueRecords));
   const entryLimit = Math.min(Math.max(Math.floor(maxEntries), 0), MAX_CHAT_MEMORY_ENTRIES);
   const communicationEntries = profile.profile.communication.slice(0, Math.min(2, entryLimit));
-  const selected: RankedMemory[] = communicationEntries.map(({ category: _category, ...entry }) => ({
-    ...entry,
-    created_by_app_id: entry.source_app_id || "owner",
-    relevance: 100,
-  }));
+  const metadataById = new Map(uniqueRecords.map((record) => [record.memory_id, record]));
+  const selected: RankedMemory[] = communicationEntries.map(({ category: _category, ...entry }) => {
+    const metadata = metadataById.get(entry.memory_id);
+    return {
+      ...entry,
+      created_by_app_id: entry.source_app_id || "owner",
+      ...(metadata?.duplicate_count !== undefined ? { duplicate_count: metadata.duplicate_count } : {}),
+      ...(metadata?.duplicate_sources
+        ? { duplicate_sources: [...metadata.duplicate_sources] }
+        : {}),
+      relevance: 100,
+    };
+  });
   const selectedIds = new Set(selected.map((entry) => entry.memory_id));
   for (const ranked of rankRelevantMemories(query, uniqueRecords, 20)) {
     if (selected.length >= Math.min(Math.max(Math.floor(maxEntries), 0), MAX_CHAT_MEMORY_ENTRIES)) break;
