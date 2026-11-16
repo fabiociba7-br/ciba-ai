@@ -26,6 +26,7 @@ import { validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes
 import { isAppTaskType, selectTaskRoute } from "./core/task-coordinator";
 import { consolidateTaskResults, type TaskResultRecord } from "./core/task-results";
 import { buildTaskSynthesisRequest, MAX_TASK_SYNTHESIS_OUTPUT_TOKENS } from "./core/task-synthesis";
+import { buildContextPackage, MAX_CONTEXT_PACKAGE_CHARS, type ContextPackageItem } from "./core/context-package";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -2137,6 +2138,104 @@ const handleTaskSynthesis = async (request: Request, env: Env) => {
   });
 };
 
+
+const handleShareContextPackage = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  if (!(await isAppAllowed(env, device.app_id))) return json({ error: "source_app_disabled" }, 403);
+  if (!(await readOwnerFeatureSettings(env, owner.owner_id)).app_messaging_enabled) {
+    return json({ error: "app_messaging_disabled" }, 403);
+  }
+
+  const body = await readJson(request, 8_000);
+  const destinationAppId = typeof body.destination_app_id === "string" ? body.destination_app_id.trim() : "";
+  const clientMessageId = typeof body.client_message_id === "string" ? body.client_message_id.trim() : "";
+  if (!isValidAppId(destinationAppId) || destinationAppId === device.app_id ||
+      !clientMessageId || clientMessageId.length > 100) {
+    return json({ error: "invalid_context_share_fields" }, 400);
+  }
+  if (!(await isAppAllowed(env, destinationAppId))) return json({ error: "destination_app_disabled" }, 403);
+
+  const contextId = crypto.randomUUID();
+  let contextPackage;
+  try {
+    contextPackage = buildContextPackage(
+      contextId,
+      body.purpose,
+      body.items as ContextPackageItem[],
+    );
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "invalid_context_package";
+    return json({ error: reason }, 400);
+  }
+  const payloadJson = JSON.stringify(contextPackage);
+  if (payloadJson.length > MAX_CONTEXT_PACKAGE_CHARS) {
+    return json({ error: "context_package_too_large", max_characters: MAX_CONTEXT_PACKAGE_CHARS }, 413);
+  }
+
+  const ttlHours = body.ttl_hours === undefined ? MESSAGE_DEFAULT_TTL_HOURS : body.ttl_hours;
+  if (typeof ttlHours !== "number" || !Number.isInteger(ttlHours) || ttlHours < 1 || ttlHours > MESSAGE_MAX_TTL_HOURS) {
+    return json({ error: "invalid_message_ttl", minimum_hours: 1, maximum_hours: MESSAGE_MAX_TTL_HOURS }, 400);
+  }
+  const timestamp = nowIso();
+  const sendAllowed = await hasMessageGrant(
+    env, owner.owner_id, device.app_id, device.app_id, destinationAppId, "send", "context", timestamp
+  );
+  const receiveAllowed = await hasMessageGrant(
+    env, owner.owner_id, destinationAppId, device.app_id, destinationAppId, "receive", "context", timestamp
+  );
+  if (!sendAllowed || !receiveAllowed) return json({ error: "context_access_not_granted" }, 403);
+
+  const messageId = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + ttlHours * 60 * 60 * 1000).toISOString();
+  const inserted = await env.DB.prepare(`
+    INSERT INTO app_messages(
+      message_id, owner_id, source_app_id, destination_app_id,
+      client_message_id, task_id, scope, payload_json, created_at, expires_at
+    )
+    SELECT ?, ?, ?, ?, ?, ?, 'context', ?, ?, ?
+    WHERE (
+      SELECT COUNT(*) FROM app_messages
+      WHERE owner_id = ? AND destination_app_id = ?
+        AND acknowledged_at IS NULL AND expires_at > ?
+    ) < ?
+    ON CONFLICT(owner_id, source_app_id, client_message_id) DO NOTHING
+  `).bind(
+    messageId, owner.owner_id, device.app_id, destinationAppId,
+    clientMessageId, contextId, payloadJson, timestamp, expiresAt,
+    owner.owner_id, destinationAppId, timestamp, MESSAGE_MAX_PENDING_PER_DESTINATION
+  ).run();
+
+  if (inserted.meta.changes !== 1) {
+    const existing = await env.DB.prepare(`
+      SELECT message_id, task_id, scope, created_at, expires_at
+      FROM app_messages
+      WHERE owner_id = ? AND source_app_id = ? AND client_message_id = ?
+    `).bind(owner.owner_id, device.app_id, clientMessageId)
+      .first<{ message_id: string; task_id: string; scope: string; created_at: string; expires_at: string }>();
+    if (existing) return json({ shared: true, duplicate: true, message: existing }, 200);
+    return json({ error: "destination_queue_full", maximum_pending: MESSAGE_MAX_PENDING_PER_DESTINATION }, 429);
+  }
+
+  return json({
+    shared: true,
+    duplicate: false,
+    message: {
+      message_id: messageId,
+      context_id: contextId,
+      source_app_id: device.app_id,
+      destination_app_id: destinationAppId,
+      scope: "context",
+      item_count: contextPackage.items.length,
+      conversation_history_included: false,
+      created_at: timestamp,
+      expires_at: expiresAt,
+    },
+  }, 201);
+};
+
 const handleSendAppMessage = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
@@ -2464,6 +2563,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/apps/tasks/synthesize" && request.method === "POST") {
     return handleTaskSynthesis(request, env);
+  }
+  if (url.pathname === "/v1/apps/context/share" && request.method === "POST") {
+    return handleShareContextPackage(request, env);
   }
   if (url.pathname === "/v1/apps/messages" && request.method === "POST") {
     return handleSendAppMessage(request, env);
