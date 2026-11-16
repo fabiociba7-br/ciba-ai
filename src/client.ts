@@ -46,6 +46,8 @@ export interface CibaTaskDispatchInput {
   preferredAppId?: string;
   context?: unknown;
   ttlHours?: number;
+  /** Include a relevant package from memory the source app is authorized to read. */
+  includeContext?: boolean;
 }
 
 export interface CibaTaskResultInput<T = unknown> {
