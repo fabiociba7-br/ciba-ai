@@ -488,6 +488,9 @@ export class CibaClient {
     if (!consumption.accepted || !consumption.task) {
       throw new Error(consumption.errors[0] ?? "invalid_task_request");
     }
+    if (message.task_id !== consumption.task.task_id) {
+      throw new Error("task_id_mismatch");
+    }
 
     const clientMessageId = `task-result:${consumption.task.task_id}:${message.message_id}`;
     let status: "completed" | "failed" = "completed";
