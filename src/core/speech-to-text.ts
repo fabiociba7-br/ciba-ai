@@ -173,7 +173,17 @@ export async function runWhisperCppTranscription(
     return { success: false, reasons: resolution.reasons };
   }
 
-  const result = await resolution.adapter.transcribe(request);
-  validateSpeechToTextResult(result, resolution.adapter.modelId);
-  return { success: true, result };
+  // Give the adapter an isolated copy and clear it after completion so the
+  // caller's audio remains untouched and the temporary buffer is not retained.
+  const audioBuffer = request.audio.slice();
+  try {
+    const result = await resolution.adapter.transcribe({
+      ...request,
+      audio: audioBuffer,
+    });
+    validateSpeechToTextResult(result, resolution.adapter.modelId);
+    return { success: true, result };
+  } finally {
+    audioBuffer.fill(0);
+  }
 }
