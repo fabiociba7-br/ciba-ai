@@ -122,6 +122,36 @@ export function resolveWhisperCppRuntime(
 }
 
 
+const MAX_TRANSCRIPT_CHARS = 100_000;
+const MAX_SEGMENTS = 5_000;
+const MAX_SEGMENT_TEXT_CHARS = 10_000;
+
+/** Rejects malformed or unbounded output from a local transcription adapter. */
+export function validateSpeechToTextResult(
+  result: SpeechToTextResult,
+  expectedModelId: string,
+): void {
+  if (!result || result.engine !== "whisper.cpp" ||
+      result.modelId !== expectedModelId ||
+      typeof result.text !== "string" || result.text.length > MAX_TRANSCRIPT_CHARS ||
+      typeof result.language !== "string" ||
+      !/^[a-z]{2,3}(-[A-Z]{2})?$/.test(result.language) ||
+      !Array.isArray(result.segments) || result.segments.length > MAX_SEGMENTS ||
+      !result.segments.every((segment) =>
+        segment !== null &&
+        Number.isFinite(segment.startMs) &&
+        Number.isFinite(segment.endMs) &&
+        segment.startMs >= 0 &&
+        segment.endMs >= segment.startMs &&
+        typeof segment.text === "string" &&
+        segment.text.length <= MAX_SEGMENT_TEXT_CHARS) ||
+      (result.durationMs !== undefined &&
+        (!Number.isFinite(result.durationMs) || result.durationMs < 0 ||
+          result.segments.some((segment) => segment.endMs > result.durationMs!)))) {
+    throw new Error("invalid_whisper_cpp_result");
+  }
+}
+
 export type SpeechToTextExecution =
   | { success: true; result: SpeechToTextResult }
   | { success: false; reasons: string[] };
@@ -144,20 +174,6 @@ export async function runWhisperCppTranscription(
   }
 
   const result = await resolution.adapter.transcribe(request);
-  if (result.engine !== "whisper.cpp" ||
-      result.modelId !== resolution.adapter.modelId ||
-      typeof result.text !== "string" ||
-      typeof result.language !== "string" ||
-      !Array.isArray(result.segments) ||
-      !result.segments.every((segment) =>
-        Number.isFinite(segment.startMs) &&
-        Number.isFinite(segment.endMs) &&
-        segment.startMs >= 0 &&
-        segment.endMs >= segment.startMs &&
-        typeof segment.text === "string") ||
-      (result.durationMs !== undefined &&
-        (!Number.isFinite(result.durationMs) || result.durationMs < 0))) {
-    throw new Error("invalid_whisper_cpp_result");
-  }
+  validateSpeechToTextResult(result, resolution.adapter.modelId);
   return { success: true, result };
 }
