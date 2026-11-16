@@ -601,6 +601,68 @@ describe("Ciba AI private app-to-app message relay", () => {
     expect((await acknowledged.json() as { acknowledged: number }).acknowledged).toBe(1);
     expect((await (await inbox()).json() as { messages: unknown[] }).messages).toHaveLength(0);
 
+
+    const contextGrant = (token: string, grantee: string, permission: "send" | "receive") =>
+      request("/v1/owner/access-grants", {
+        method: "POST",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          grantee_app_id: grantee,
+          source_app_id: sourceApp,
+          destination_app_id: targetApp,
+          permission,
+          scope: "context",
+          valid_hours: 24,
+        }),
+      });
+    expect((await contextGrant(sourceDevice.access_token, sourceApp, "send")).status).toBe(201);
+    expect((await contextGrant(sourceDevice.access_token, targetApp, "receive")).status).toBe(201);
+    const contextShare = await request("/v1/apps/context/share", {
+      method: "POST",
+      headers: { authorization: `Bearer ${sourceDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        destination_app_id: targetApp,
+        client_message_id: "context-share-001",
+        purpose: "Dar continuidade ao planejamento",
+        items: [
+          { key: "preferred_style", value: "Respostas diretas", kind: "preference", origin: "curated_memory" },
+          { key: "current_phase", value: "Revisão de arquitetura", kind: "project", origin: "task_state" },
+        ],
+      }),
+    });
+    expect(contextShare.status).toBe(201);
+    expect(await contextShare.json()).toMatchObject({
+      shared: true, duplicate: false,
+      message: { scope: "context", item_count: 2, conversation_history_included: false },
+    });
+    const contextInbox = await inbox();
+    const contextBody = await contextInbox.json() as {
+      messages: Array<{ scope: string; payload: { protocol: string; items: Array<{ key: string }> } }>;
+    };
+    expect(contextBody.messages).toHaveLength(1);
+    expect(contextBody.messages[0]).toMatchObject({
+      scope: "context",
+      payload: { protocol: "garcia.context.package", conversation_history_included: false,
+        items: [{ key: "preferred_style" }, { key: "current_phase" }] },
+    });
+    const deniedContext = await request("/v1/apps/context/share", {
+      method: "POST",
+      headers: { authorization: `Bearer ${sourceDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        destination_app_id: targetApp,
+        client_message_id: "context-share-invalid",
+        purpose: "Contexto inválido",
+        items: [{ key: "transcript", value: "x", kind: "fact", origin: "task_state" }],
+      }),
+    });
+    expect(deniedContext.status).toBe(403);
+    const contextAck = await request("/v1/apps/messages/ack", {
+      method: "POST",
+      headers: { authorization: `Bearer ${targetDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ message_ids: [contextBody.messages[0].message_id] }),
+    });
+    expect(contextAck.status).toBe(200);
+
     const dispatched = await request("/v1/apps/tasks/dispatch", {
       method: "POST",
       headers: { authorization: `Bearer ${sourceDevice.access_token}`, "content-type": "application/json" },
