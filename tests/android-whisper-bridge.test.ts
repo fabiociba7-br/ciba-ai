@@ -333,7 +333,7 @@ describe("Android Whisper.cpp bridge contract", () => {
       deviceRequirements,
     });
 
-    await expect(adapter.transcribe(request)).resolves.toEqual(result);
+    await expect(adapter.transcribe(request)).resolves.toEqual({ ...result, durationMs: 500 });
     expect(resultReads).toEqual({
       engine: 1, modelId: 1, text: 1, language: 1, segments: 1, durationMs: 1,
     });
