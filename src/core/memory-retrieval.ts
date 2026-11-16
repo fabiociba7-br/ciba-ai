@@ -29,8 +29,9 @@ const MAX_MEMORY_RECORDS = 500;
 
 function snapshotMemoryRecord(value: unknown): MemorySearchRecord | null {
   try {
-    if (value === null || typeof value !== "object" || Array.isArray(value) ||
-        Object.getPrototypeOf(value) !== Object.prototype) return null;
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
     const descriptors = Object.getOwnPropertyDescriptors(value);
     const allowed = new Set([
       "memory_id", "scope", "source_app_id", "memory_key", "value",

@@ -21,12 +21,12 @@ const MAX_INSIGHT_RECORDS = 200;
 function snapshotInsightRecords(value: unknown): MemoryInsightRecord[] | null {
   try {
     if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
-        value.length > MAX_INSIGHT_RECORDS) return null;
+        value.length > 10_000) return null;
     const arrayDescriptors = Object.getOwnPropertyDescriptors(value);
     if (Reflect.ownKeys(arrayDescriptors).length !== value.length + 1) return null;
     const result: MemoryInsightRecord[] = [];
     const seenIds = new Set<string>();
-    for (let index = 0; index < value.length; index += 1) {
+    for (let index = 0; index < Math.min(value.length, MAX_INSIGHT_RECORDS); index += 1) {
       const itemDescriptor = arrayDescriptors[String(index)];
       if (!itemDescriptor || !("value" in itemDescriptor) || !itemDescriptor.enumerable) return null;
       const item = itemDescriptor.value;

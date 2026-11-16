@@ -207,14 +207,17 @@ function snapshotMessages(value: unknown): ChatTurn[] {
           !role || !("value" in role) || !role.enumerable ||
           !content || !("value" in content) || !content.enumerable ||
           (role.value !== "user" && role.value !== "assistant") ||
-          typeof content.value !== "string" ||
-          content.value.length > MAX_INPUT_MESSAGE_CHARS) {
+          typeof content.value !== "string") {
         throw new Error("invalid_ensemble_input");
+      }
+      if (content.value.length > MAX_INPUT_MESSAGE_CHARS) {
+        throw new Error("ensemble_input_too_large");
       }
       messages.push(Object.freeze({ role: role.value, content: content.value }));
     }
     return messages;
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "ensemble_input_too_large") throw error;
     throw new Error("invalid_ensemble_input");
   }
 }
