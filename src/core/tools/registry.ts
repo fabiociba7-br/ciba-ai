@@ -69,6 +69,14 @@ function cloneJson(value: unknown, depth = 0): unknown {
   return result;
 }
 
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+
 function validateSchema(value: unknown, schema: unknown, depth = 0): boolean {
   if (depth > MAX_DEPTH || !schema || typeof schema !== "object" || Array.isArray(schema)) return false;
   const rule = schema as Record<string, unknown>;
@@ -198,10 +206,11 @@ export function createCibaToolRegistry(
         id: definition.id,
         description: definition.description,
         risk: definition.risk,
+        inputSchema: deepFreeze(schema),
         requiresApproval: definition.requiresApproval,
         execute: definition.execute
       }),
-      schema: Object.freeze(schema)
+      schema: deepFreeze(schema)
     });
   }
 
