@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS memory_review_proposals (
   existing_memory_id TEXT,
   existing_value_snapshot TEXT,
   classification TEXT NOT NULL CHECK (classification IN ('new', 'unchanged', 'possible_conflict')),
-  valid_hours INTEGER CHECK (valid_hours IS NULL OR valid_hours BETWEEN 1 AND 8760),
+  valid_hours INTEGER CHECK (valid_hours IS NULL OR valid_hours BETWEEN 0 AND 8760),
   status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'stale')),
   created_at TEXT NOT NULL,
   decided_at TEXT,
