@@ -100,6 +100,7 @@ export interface CibaTaskDispatchResult {
     created_at: string;
     expires_at: string;
     result_delivery?: "destination_app_must_reply_with_same_task_id";
+    context_sharing?: { requested: boolean; included: boolean; items_count: number; reason: string };
   };
 }
 
@@ -355,6 +356,7 @@ export class CibaClient {
         ...(input.preferredAppId === undefined ? {} : { preferred_app_id: input.preferredAppId }),
         ...(input.context === undefined ? {} : { context: input.context }),
         ...(input.ttlHours === undefined ? {} : { ttl_hours: input.ttlHours }),
+        ...(input.includeContext === undefined ? {} : { include_context: input.includeContext }),
       }),
     });
   }
