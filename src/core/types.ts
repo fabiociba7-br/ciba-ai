@@ -29,6 +29,10 @@ export interface AgentProfile {
 import type { CibaToolInvocationPlan } from "./tools/registry";
 export interface OrchestrationResult extends InferenceResult {
   toolProposal?: CibaToolInvocationPlan;
+  toolApproval?: {
+    status: "not_required" | "approval_required" | "approved";
+    approvalId?: string;
+  };
   toolProposalError?: "tool_proposal_rejected";
   selectedAgent: CibaRole;
   strategy: "single-pass";
