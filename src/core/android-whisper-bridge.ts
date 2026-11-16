@@ -140,16 +140,19 @@ function snapshotBridgeStatus(
       return null;
     }
     const source = value as Record<string, unknown>;
+    // Read each potentially accessor-backed field exactly once. This prevents
+    // getters with side effects from changing the value between checks.
+    const nativeLibraryReady = source.nativeLibraryReady;
+    const modelLoaded = source.modelLoaded;
+    const modelId = source.modelId;
+    const modelSha256 = source.modelSha256;
+    const engineVersion = source.engineVersion;
     const snapshot: AndroidWhisperCppBridgeStatus = {
-      nativeLibraryReady: source.nativeLibraryReady as boolean,
-      modelLoaded: source.modelLoaded as boolean,
-      ...(source.modelId !== undefined ? { modelId: source.modelId as string } : {}),
-      ...(source.modelSha256 !== undefined
-        ? { modelSha256: source.modelSha256 as string }
-        : {}),
-      ...(source.engineVersion !== undefined
-        ? { engineVersion: source.engineVersion as string }
-        : {}),
+      nativeLibraryReady: nativeLibraryReady as boolean,
+      modelLoaded: modelLoaded as boolean,
+      ...(modelId !== undefined ? { modelId: modelId as string } : {}),
+      ...(modelSha256 !== undefined ? { modelSha256: modelSha256 as string } : {}),
+      ...(engineVersion !== undefined ? { engineVersion: engineVersion as string } : {}),
     };
     if (typeof snapshot.nativeLibraryReady !== "boolean" ||
         typeof snapshot.modelLoaded !== "boolean") {
