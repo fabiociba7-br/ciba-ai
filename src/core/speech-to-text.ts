@@ -196,15 +196,12 @@ export function validateSpeechToTextRequest(
   request: SpeechToTextRequest,
   maxAudioBytes = 25 * 1024 * 1024,
 ): void {
-  if (!request.consent || request.consent.granted !== true ||
-      request.consent.purpose !== "transcription" ||
-      request.consent.source !== "explicit_user_action" ||
-      !(request.audio instanceof Uint8Array) || request.audio.byteLength === 0 ||
-      request.audio.byteLength > maxAudioBytes ||
-      !MIME_TYPES.has(request.mimeType) ||
-      (request.language !== undefined && !/^[a-z]{2,3}(-[A-Z]{2})?$/.test(request.language))) {
+  if (!Number.isInteger(maxAudioBytes) || maxAudioBytes < 1) {
     throw new Error("invalid_speech_to_text_request");
   }
+  const snapshot = snapshotSpeechToTextRequest(request, maxAudioBytes);
+  if (!snapshot) throw new Error("invalid_speech_to_text_request");
+  snapshot.audio.fill(0);
 }
 
 import { assessDeviceCompatibility, validateDeviceCapabilityRequirements, type DeviceArchitecture, type DeviceCapabilityProfile, type DeviceCapabilityRequirements, type DevicePlatform } from "./device-capabilities";
