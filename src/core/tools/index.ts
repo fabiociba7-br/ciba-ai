@@ -1,7 +1,7 @@
 export type { CibaToolDefinition, CibaToolRegistry, CibaToolRisk } from "./contracts";
 export { createCibaToolRegistry } from "./registry";
 export type {
-  CibaToolExecutionContext,
+  CibaToolAuthorizationRequest,
   CibaToolRegistryOptions,
   ExecutableCibaToolRegistry
 } from "./registry";
