@@ -131,3 +131,12 @@ Quando `memory_enabled` estiver ligado para um proprietário ativo e pareado, `c
 ## Propostas de memória com confirmação
 
 `prepareMemoryCandidate({ sourceText, key, value, scope })` envia um trecho de texto atribuído ao usuário e uma proposta de chave/valor. A resposta é somente uma prévia, com `requires_confirmation: true`, `persisted: false` e `stored: false`. O app deve exibir a proposta e aguardar confirmação explícita. Depois da confirmação, use `saveMemory({ scope, key, value, consent: "curated" })`. Não chame `saveMemory` automaticamente após preparar uma proposta. O endpoint exige que o valor seja um trecho do texto do usuário, não aceita texto atribuído ao assistente e não persiste o texto de origem nem chama IA. Para escopo do proprietário, a permissão `memory_write` precisa estar ativa.
+
+
+## Gerenciar memórias
+
+- `listMemory(scope, sourceAppId?, { search?, includeExpired? })` lista até 200 registros do escopo autorizado, com filtro textual e opção de incluir expirados.
+- `updateMemory({ memoryId, scope, key, value, sourceAppId?, validHours? })` edita chave/conteúdo e, opcionalmente, validade. `validHours: null` remove a expiração; omitir mantém a validade atual; de 1 a 8760 define uma nova validade.
+- `deleteMemory(memoryId, scope, sourceAppId?)` realiza exclusão lógica. O registro deixa de ser retornado e de participar da recuperação.
+
+A memória central e a memória de outro app continuam exigindo concessão ativa apropriada. A API autentica o proprietário pelo dispositivo pareado, não por um owner ID enviado pelo cliente.
