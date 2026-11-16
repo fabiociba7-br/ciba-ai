@@ -504,10 +504,10 @@ describe("Android Whisper.cpp bridge contract", () => {
   });
 
   it("clears the isolated audio copy when native status validation fails", async () => {
-    let isolatedAudio: Uint8Array | undefined;
+    let isolatedAudio: Uint8Array<ArrayBuffer> | undefined;
     class TrackedAudio extends Uint8Array {
-      override slice(): Uint8Array {
-        isolatedAudio = new Uint8Array(this);
+      override slice(start?: number, end?: number): Uint8Array<ArrayBuffer> {
+        isolatedAudio = new Uint8Array(super.slice(start, end));
         return isolatedAudio;
       }
     }
@@ -533,10 +533,10 @@ describe("Android Whisper.cpp bridge contract", () => {
   });
 
   it("clears the isolated audio copy when the native model is unavailable", async () => {
-    let isolatedAudio: Uint8Array | undefined;
+    let isolatedAudio: Uint8Array<ArrayBuffer> | undefined;
     class TrackedAudio extends Uint8Array {
-      override slice(): Uint8Array {
-        isolatedAudio = new Uint8Array(this);
+      override slice(start?: number, end?: number): Uint8Array<ArrayBuffer> {
+        isolatedAudio = new Uint8Array(super.slice(start, end));
         return isolatedAudio;
       }
     }
