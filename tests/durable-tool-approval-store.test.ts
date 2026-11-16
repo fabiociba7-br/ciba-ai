@@ -5,18 +5,22 @@ import { createD1ToolApprovalStore } from "../src/core/tools/durable-consent";
 const db = env.DB;
 const createdOwners: string[] = [];
 
-async function identity(ownerId = crypto.randomUUID()) {
-  const appId = "com.ciba.test";
+async function deviceForOwner(ownerId: string, appId = "com.ciba.test") {
   const deviceId = crypto.randomUUID();
-  createdOwners.push(ownerId);
-  await db.prepare("INSERT INTO owners(owner_id, status, created_at) VALUES(?, 'active', ?)")
-    .bind(ownerId, new Date().toISOString()).run();
   await db.prepare(`
     INSERT INTO devices(device_id, app_id, token_hash, created_at, last_seen_at, owner_id)
     VALUES(?, ?, ?, ?, ?, ?)
   `).bind(deviceId, appId, crypto.randomUUID(), new Date().toISOString(),
     new Date().toISOString(), ownerId).run();
   return { ownerId, appId, deviceId };
+}
+
+async function identity() {
+  const ownerId = crypto.randomUUID();
+  createdOwners.push(ownerId);
+  await db.prepare("INSERT INTO owners(owner_id, status, created_at) VALUES(?, 'active', ?)")
+    .bind(ownerId, new Date().toISOString()).run();
+  return deviceForOwner(ownerId);
 }
 
 const request = {
@@ -59,7 +63,7 @@ describe("D1 durable tool approval store", () => {
 
   it("binds approval to the same owner/app and atomically consumes it once", async () => {
     const caller = await identity();
-    const approver = await identity(caller.ownerId);
+    const approver = await deviceForOwner(caller.ownerId);
     const foreignOwner = await identity();
     const foreignApprover = foreignOwner.deviceId;
     const store = createD1ToolApprovalStore(db);
