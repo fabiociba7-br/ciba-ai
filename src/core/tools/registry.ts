@@ -5,6 +5,8 @@ const MAX_SCHEMA_BYTES = 32_000;
 const MAX_INPUT_BYTES = 64_000;
 const MAX_OUTPUT_BYTES = 256_000;
 const MAX_DEPTH = 12;
+const MAX_JSON_NODES = 20_000;
+const MAX_JSON_STRING_CHARS = MAX_OUTPUT_BYTES;
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_CONCURRENT_EXECUTIONS = 8;
 
@@ -81,9 +83,25 @@ function jsonBytes(value: unknown): number {
   return new TextEncoder().encode(serialized).byteLength;
 }
 
-function cloneJson(value: unknown, depth = 0): unknown {
+interface JsonCloneBudget {
+  nodes: number;
+  stringChars: number;
+}
+
+function cloneJson(
+  value: unknown,
+  depth = 0,
+  budget: JsonCloneBudget = { nodes: 0, stringChars: 0 }
+): unknown {
   if (depth > MAX_DEPTH) throw new Error("tool_value_too_deep");
-  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  budget.nodes += 1;
+  if (budget.nodes > MAX_JSON_NODES) throw new Error("tool_value_too_complex");
+  if (typeof value === "string") {
+    budget.stringChars += value.length;
+    if (budget.stringChars > MAX_JSON_STRING_CHARS) throw new Error("tool_value_too_large");
+    return value;
+  }
+  if (value === null || typeof value === "boolean") return value;
   if (typeof value === "number") {
     if (!Number.isFinite(value)) throw new Error("invalid_tool_value");
     return value;
@@ -102,7 +120,7 @@ function cloneJson(value: unknown, depth = 0): unknown {
       if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
         throw new Error("invalid_tool_value");
       }
-      result[index] = cloneJson(descriptor.value, depth + 1);
+      result[index] = cloneJson(descriptor.value, depth + 1, budget);
     }
     return result;
   }
@@ -120,7 +138,9 @@ function cloneJson(value: unknown, depth = 0): unknown {
     if (!("value" in descriptor) || !descriptor.enumerable) {
       throw new Error("invalid_tool_value");
     }
-    result[key] = cloneJson(descriptor.value, depth + 1);
+    budget.stringChars += key.length;
+    if (budget.stringChars > MAX_JSON_STRING_CHARS) throw new Error("tool_value_too_large");
+    result[key] = cloneJson(descriptor.value, depth + 1, budget);
   }
   return result;
 }
