@@ -144,6 +144,20 @@ describe("CibaClient", () => {
     await expect(client.updateMemory({ memoryId: "", scope: "app", key: "x", value: "y" })).rejects.toThrow("invalid_memory_id");
   });
 
+  it("retrieves deterministic memory relationship insights", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(JSON.stringify({
+      possible_conflicts: [], related: [], outdated: [], analyzed_records: 2,
+      inference_calls: 0, visibility: "own_app_and_explicit_memory_read_grants",
+      cross_app_memory_requires_explicit_grant: true, automatic_changes: false,
+    }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const result = await client.getMemoryInsights();
+    expect(result.analyzed_records).toBe(2);
+    expect(result.inference_calls).toBe(0);
+    expect(result.automatic_changes).toBe(false);
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/owner/memory/insights");
+  });
+
   it("creates, lists and decides owner-reviewed memory proposals", async () => {
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(new Response(JSON.stringify({
