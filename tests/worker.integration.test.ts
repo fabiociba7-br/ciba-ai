@@ -56,6 +56,8 @@ describe("Ciba AI Worker integration", () => {
     expect(html).toContain("/v1/owner/dashboard");
     expect(html).toContain("Aprendizado aguardando revisão");
     expect(html).toContain("/v1/owner/memory/reviews");
+    expect(html).toContain("Relações entre memórias");
+    expect(html).toContain("/v1/owner/memory/insights");
     expect(html).not.toContain("sessionStorage");
     expect(html).not.toContain("localStorage");
   });
@@ -764,6 +766,8 @@ describe("Ciba AI curated private memory", () => {
       .toEqual({ memory_enabled: false, app_messaging_enabled: false });
     const blockedMemory = await ownerRequest("/v1/owner/memory?scope=app");
     expect(blockedMemory.status).toBe(403);
+    const blockedInsights = await ownerRequest("/v1/owner/memory/insights");
+    expect(blockedInsights.status).toBe(403);
     const blockedCandidate = await ownerRequest("/v1/owner/memory/candidates", "POST", {
       source_role: "user", source_text: "Prefiro respostas diretas.", key: "response_style", value: "Prefiro respostas diretas",
     });
@@ -912,6 +916,20 @@ describe("Ciba AI curated private memory", () => {
     });
     expect(savedOwner.status).toBe(201);
     const ownerList = await ownerRequest("/v1/owner/memory?scope=owner");
+    const insightsResponse = await ownerRequest("/v1/owner/memory/insights");
+    expect(insightsResponse.status).toBe(200);
+    const insights = await insightsResponse.json() as {
+      analyzed_records: number;
+      possible_conflicts: Array<{ first: { memory_id: string }; second: { memory_id: string } }>;
+      inference_calls: number;
+      cross_app_memory_requires_explicit_grant: boolean;
+      automatic_changes: boolean;
+    };
+    expect(insights.analyzed_records).toBeGreaterThanOrEqual(2);
+    expect(insights.inference_calls).toBe(0);
+    expect(insights.cross_app_memory_requires_explicit_grant).toBe(true);
+    expect(insights.automatic_changes).toBe(false);
+
     const sharedSearch = await ownerRequest("/v1/owner/memory/retrieve", "POST", {
       query: "memória central explícita", limit: 10,
     });
