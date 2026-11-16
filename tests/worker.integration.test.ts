@@ -1091,3 +1091,72 @@ describe("Ciba AI curated private memory", () => {
   });
 });
 
+describe("CibaGenio administrative resource controls", () => {
+  it("requires admin authentication and persists global/app resource switches with an audit trail", async () => {
+    const unauthorized = await request("/v1/admin/cibagenio");
+    expect(unauthorized.status).toBe(401);
+
+    const initial = await adminRequest("/v1/admin/cibagenio", "GET");
+    expect(initial.status).toBe(200);
+    const initialBody = await initial.json() as {
+      command: string;
+      default_state: string;
+      resources: Array<{ id: string }>;
+      controls: unknown[];
+    };
+    expect(initialBody.command).toBe("CibaGenio");
+    expect(initialBody.default_state).toBe("locked");
+    expect(initialBody.resources.map((resource) => resource.id)).toContain("chat");
+    expect(initialBody.controls).toEqual([]);
+
+    const unlock = await adminRequest("/v1/admin/cibagenio", "POST", {
+      resource_id: "chat",
+      enabled: true,
+      reason: "Liberação inicial controlada",
+    });
+    expect(unlock.status).toBe(200);
+    expect(await unlock.json()).toMatchObject({
+      command: "CibaGenio",
+      saved: true,
+      resource_id: "chat",
+      enabled: true,
+      state: "unlocked",
+      scope: "global",
+    });
+
+    const appLock = await adminRequest("/v1/admin/cibagenio", "POST", {
+      resource_id: "chat",
+      enabled: false,
+      scope: "app",
+      app_id: "com.ciba.integration",
+      reason: "Bloqueio apenas neste aplicativo",
+    });
+    expect(appLock.status).toBe(200);
+    expect(await appLock.json()).toMatchObject({
+      resource_id: "chat",
+      enabled: false,
+      state: "locked",
+      scope: "app",
+      app_id: "com.ciba.integration",
+    });
+
+    const invalid = await adminRequest("/v1/admin/cibagenio", "POST", {
+      resource_id: "run_shell",
+      enabled: true,
+    });
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toEqual({ error: "unknown_resource" });
+
+    const current = await adminRequest("/v1/admin/cibagenio", "GET");
+    const currentBody = await current.json() as {
+      controls: Array<{ resource_id: string; scope: string; scope_id: string; enabled: boolean }>;
+      recent_changes: Array<{ resource_id: string }>;
+    };
+    expect(currentBody.controls).toEqual(expect.arrayContaining([
+      expect.objectContaining({ resource_id: "chat", scope: "global", scope_id: "", enabled: true }),
+      expect.objectContaining({ resource_id: "chat", scope: "app", scope_id: "com.ciba.integration", enabled: false }),
+    ]));
+    expect(currentBody.recent_changes.filter((event) => event.resource_id === "chat")).toHaveLength(2);
+  });
+});
+
