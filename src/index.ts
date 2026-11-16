@@ -31,6 +31,7 @@ import { buildTaskContextPackage } from "./core/task-context";
 import { deriveTaskLifecycle } from "./core/task-lifecycle";
 import { CIBAGENIO_RESOURCES, parseCibaGenioCommand } from "./core/cibagenio";
 import { createNativeCapabilityRegistry } from "./core/native-capabilities";
+import { createD1ToolApprovalStore } from "./core/tools/durable-consent";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -603,6 +604,145 @@ const handleAppIdentity = async (request: Request, env: Env) => {
       app_actions_executable_by_garcia: false,
     },
   });
+};
+
+
+const handleOwnerToolApprovals = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+
+  const timestamp = nowIso();
+  await env.DB.prepare(`
+    UPDATE tool_approvals SET status = 'expired', closed_at = ?
+    WHERE owner_id = ? AND app_id = ? AND status IN ('pending', 'approved')
+      AND expires_at <= ? AND EXISTS (
+        SELECT 1 FROM owners WHERE owner_id = ? AND status = 'active' AND revoked_at IS NULL
+      )
+  `).bind(timestamp, owner.owner_id, device.app_id, timestamp, owner.owner_id).run();
+
+  const rows = await env.DB.prepare(`
+    SELECT a.approval_id, a.device_id, a.conversation_id, a.invocation_id,
+      a.tool_id, a.risk, a.input_json, a.status, a.created_at, a.expires_at,
+      d.last_seen_at AS source_device_last_seen_at
+    FROM tool_approvals a
+    INNER JOIN devices d ON d.device_id = a.device_id
+    WHERE a.owner_id = ? AND a.app_id = ?
+      AND a.status IN ('pending', 'approved') AND a.expires_at > ?
+      AND d.owner_id = a.owner_id AND d.app_id = a.app_id AND d.revoked_at IS NULL
+    ORDER BY a.created_at DESC LIMIT 20
+  `).bind(owner.owner_id, device.app_id, timestamp).all<{
+    approval_id: string; device_id: string; conversation_id: string; invocation_id: string;
+    tool_id: string; risk: string; input_json: string; status: string;
+    created_at: string; expires_at: string; source_device_last_seen_at: string | null;
+  }>();
+
+  const approvals = [];
+  for (const row of rows.results || []) {
+    let input: unknown;
+    try { input = JSON.parse(row.input_json); }
+    catch { continue; }
+    approvals.push({
+      approval_id: row.approval_id,
+      source_device_id: row.device_id,
+      source_device_last_seen_at: row.source_device_last_seen_at,
+      conversation_id: row.conversation_id,
+      invocation_id: row.invocation_id,
+      tool_id: row.tool_id,
+      risk: row.risk,
+      input,
+      status: row.status,
+      created_at: row.created_at,
+      expires_at: row.expires_at,
+    });
+  }
+  return json({ approvals, count: approvals.length, limit: 20 });
+};
+
+const handleOwnerToolApprovalDecision = async (
+  request: Request,
+  env: Env,
+  approvalId: string
+) => {
+  const approver = await authenticateDevice(request, env);
+  if (!approver) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, approver.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+
+  let body: Record<string, unknown>;
+  try { body = await readJson(request, 1_000); }
+  catch (error) {
+    if (error instanceof Error && error.message === "body_too_large") return json({ error: "body_too_large" }, 413);
+    return json({ error: "invalid_json" }, 400);
+  }
+  if (typeof body.allow !== "boolean" || Object.keys(body).some((key) => key !== "allow")) {
+    return json({ error: "invalid_approval_decision" }, 400);
+  }
+
+  const row = await env.DB.prepare(`
+    SELECT approval_id, owner_id, app_id, device_id, conversation_id,
+      invocation_id, tool_id, risk, input_json, input_sha256
+    FROM tool_approvals
+    WHERE approval_id = ? AND owner_id = ? AND app_id = ?
+      AND status = 'pending' AND expires_at > ?
+  `).bind(approvalId, owner.owner_id, approver.app_id, nowIso()).first<{
+    approval_id: string; owner_id: string; app_id: string; device_id: string;
+    conversation_id: string; invocation_id: string; tool_id: string;
+    risk: string; input_json: string; input_sha256: string;
+  }>();
+  if (!row) return json({ error: "approval_not_found_or_not_pending" }, 404);
+  if (row.risk !== "write" && row.risk !== "external") {
+    return json({ error: "invalid_approval_record" }, 409);
+  }
+
+  let input: unknown;
+  try { input = JSON.parse(row.input_json); }
+  catch { return json({ error: "invalid_approval_record" }, 409); }
+  if (await sha256(row.input_json) !== row.input_sha256) {
+    return json({ error: "approval_integrity_check_failed" }, 409);
+  }
+
+  const store = createD1ToolApprovalStore(env.DB);
+  const decided = await store.answer({
+    approvalId: row.approval_id,
+    identity: { ownerId: row.owner_id, appId: row.app_id, deviceId: row.device_id },
+    request: {
+      conversationId: row.conversation_id,
+      invocationId: row.invocation_id,
+      toolId: row.tool_id,
+      risk: row.risk,
+      input,
+    },
+    approverDeviceId: approver.device_id,
+    allow: body.allow,
+  });
+  if (!decided) return json({ error: "approval_decision_rejected" }, 409);
+  return json({
+    decided: true,
+    approval_id: approvalId,
+    decision: body.allow ? "approved" : "denied",
+    approved_by_device_id: approver.device_id,
+  });
+};
+
+const handleOwnerToolApprovalCancel = async (
+  request: Request,
+  env: Env,
+  approvalId: string
+) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const cancelled = await createD1ToolApprovalStore(env.DB).cancel(approvalId, {
+    ownerId: owner.owner_id,
+    appId: device.app_id,
+    deviceId: device.device_id,
+  });
+  return cancelled
+    ? json({ cancelled: true, approval_id: approvalId })
+    : json({ error: "approval_not_found_or_not_cancellable" }, 404);
 };
 
 const handleOwnerDashboard = async (request: Request, env: Env) => {
@@ -2825,6 +2965,17 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/apps/identity" && request.method === "GET") {
     return handleAppIdentity(request, env);
+  }
+  if (url.pathname === "/v1/owner/tool-approvals" && request.method === "GET") {
+    return handleOwnerToolApprovals(request, env);
+  }
+  const toolApprovalDecision = url.pathname.match(/^\\/v1\\/owner\\/tool-approvals\\/([A-Za-z0-9_-]{16,128})\\/decision$/);
+  if (toolApprovalDecision && request.method === "POST") {
+    return handleOwnerToolApprovalDecision(request, env, toolApprovalDecision[1]);
+  }
+  const toolApprovalCancel = url.pathname.match(/^\\/v1\\/owner\\/tool-approvals\\/([A-Za-z0-9_-]{16,128})\\/cancel$/);
+  if (toolApprovalCancel && request.method === "POST") {
+    return handleOwnerToolApprovalCancel(request, env, toolApprovalCancel[1]);
   }
   if (url.pathname === "/v1/owner/dashboard" && request.method === "GET") {
     return handleOwnerDashboard(request, env);
