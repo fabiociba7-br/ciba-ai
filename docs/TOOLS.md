@@ -62,7 +62,7 @@ This is intentionally not a complete JSON Schema implementation. Unsupported key
 
 ## Execution limits
 
-Defaults are 64 tools, 32 KB per schema, 64 KB per input, 256 KB per output, 8 concurrent executions, and a 15-second wait timeout. The timeout rejects the caller's wait; it cannot forcibly cancel a function that is already running. Its concurrency slot remains occupied until that function settles.
+Defaults are 64 tools, 32 KB per schema, 64 KB per input, 256 KB per output, 8 concurrent executions, and a 15-second wait timeout. The timeout rejects the caller's wait. If authorization finishes after the deadline, the handler is not started. A handler that has already started cannot be forcibly cancelled; its concurrency slot remains occupied until it settles.
 
 Inputs and outputs are cloned through a strict JSON-value boundary. Non-finite numbers, accessors, custom prototypes, unsupported values, excessive nesting, and prototype-sensitive keys are rejected. Cloning also enforces a shared budget of 20,000 JSON nodes and 256 KB of cumulative string characters, so oversized or highly fragmented values are rejected before full serialization.
 
