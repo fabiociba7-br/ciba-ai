@@ -61,20 +61,24 @@ describe("Garcia Whisper.cpp integration contract", () => {
   it("validates audio payload, format, size, and language without processing audio", () => {
     expect(() => validateSpeechToTextRequest({
       audio: new Uint8Array([1, 2, 3]),
+      consent: { granted: true, purpose: "transcription", source: "explicit_user_action" },
       mimeType: "audio/wav",
       language: "pt-BR",
     })).not.toThrow();
     expect(() => validateSpeechToTextRequest({
       audio: new Uint8Array(),
+      consent: { granted: true, purpose: "transcription", source: "explicit_user_action" },
       mimeType: "audio/wav",
     })).toThrow("invalid_speech_to_text_request");
     expect(() => validateSpeechToTextRequest({
       audio: new Uint8Array([1]),
+      consent: { granted: true, purpose: "transcription", source: "explicit_user_action" },
       mimeType: "audio/wav",
       language: "portuguese",
     })).toThrow("invalid_speech_to_text_request");
     expect(() => validateSpeechToTextRequest({
       audio: new Uint8Array(1025),
+      consent: { granted: true, purpose: "transcription", source: "explicit_user_action" },
       mimeType: "audio/wav",
     }, 1024)).toThrow("invalid_speech_to_text_request");
   });
