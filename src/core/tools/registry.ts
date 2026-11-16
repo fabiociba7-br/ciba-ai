@@ -398,6 +398,7 @@ export function createCibaToolRegistry(
         throw new Error("tool_execution_capacity_reached");
       }
       activeExecutions += 1;
+      const deadline = Date.now() + timeoutMs;
       const execution = Promise.resolve().then(async () => {
         const authorizationInput = deepFreeze(cloneJson(safeInput));
         const authorized = await authorize({
@@ -407,6 +408,9 @@ export function createCibaToolRegistry(
           input: authorizationInput
         });
         if (authorized !== true) throw new Error("tool_authorization_denied");
+        // A delayed authorization must never start a side effect after the
+        // caller's execution window has already expired.
+        if (Date.now() >= deadline) throw new Error("tool_execution_timeout");
 
         const output = await item.definition.execute(cloneJson(safeInput));
         let safeOutput: unknown;
