@@ -168,7 +168,7 @@ export function buildOwnerProfile(
       });
     }
   }
-  for (const record of (safeRecords || [])) {
+  for (const record of (safeRecords && safeNow ? safeRecords : [])) {
     const updated = Date.parse(record.updated_at);
     const expired = !!record.expires_at && Date.parse(record.expires_at) <= (safeNow as Date).getTime();
     const stale = Number.isFinite(updated) && (safeNow as Date).getTime() - updated >= 180 * 86400000;
