@@ -34,6 +34,124 @@ const MAX_INPUT_CHARS = 3_000;
 const MAX_REPORT_CHARS = 12_000;
 const MAX_TOTAL_OUTPUT_TOKENS = 2_048;
 
+function readPlainRecord(value: unknown, keys: string[], required = keys): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value) ||
+      Object.getPrototypeOf(value) !== Object.prototype) throw new Error("invalid_ensemble_plan");
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const ownKeys = Reflect.ownKeys(descriptors);
+  if (ownKeys.some((key) => typeof key !== "string" || !keys.includes(key)) ||
+      required.some((key) => !Object.prototype.hasOwnProperty.call(descriptors, key))) {
+    throw new Error("invalid_ensemble_plan");
+  }
+  const result: Record<string, unknown> = Object.create(null);
+  for (const key of ownKeys as string[]) {
+    const descriptor = descriptors[key];
+    if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+      throw new Error("invalid_ensemble_plan");
+    }
+    result[key] = descriptor.value;
+  }
+  return result;
+}
+
+function snapshotDenseArray(value: unknown, maxLength: number): unknown[] {
+  if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+      value.length === 0 || value.length > maxLength) throw new Error("invalid_ensemble_plan");
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  if (Reflect.ownKeys(descriptors).length !== value.length + 1) throw new Error("invalid_ensemble_plan");
+  const result: unknown[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = descriptors[String(index)];
+    if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+      throw new Error("invalid_ensemble_plan");
+    }
+    result.push(descriptor.value);
+  }
+  return result;
+}
+
+function snapshotProvider(value: unknown): ModelProvider {
+  try {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("invalid_ensemble_provider");
+    }
+    const own = Object.getOwnPropertyDescriptors(value);
+    const idField = own.id;
+    const enabledField = own.enabled;
+    if (!idField || !("value" in idField) || !idField.enumerable ||
+        !enabledField || !("value" in enabledField) || !enabledField.enumerable) {
+      throw new Error("invalid_ensemble_provider");
+    }
+    let generateField = own.generate;
+    if (!generateField) {
+      const prototype = Object.getPrototypeOf(value);
+      if (prototype && prototype !== Object.prototype) {
+        generateField = Object.getOwnPropertyDescriptor(prototype, "generate");
+      }
+    }
+    const id = idField.value;
+    const enabled = enabledField.value;
+    const generate = generateField && "value" in generateField ? generateField.value : undefined;
+    if (typeof id !== "string" || !/^[a-z0-9][a-z0-9-]{1,63}$/.test(id) ||
+        enabled !== true || typeof generate !== "function") {
+      throw new Error("invalid_ensemble_provider");
+    }
+    return Object.freeze({
+      id,
+      enabled: true,
+      generate: (request) => generate.call(value, request) as ReturnType<ModelProvider["generate"]>
+    });
+  } catch {
+    throw new Error("invalid_ensemble_provider");
+  }
+}
+
+function snapshotPlan(value: unknown): EnsemblePlan {
+  const fields = readPlainRecord(
+    value,
+    ["enabled", "members", "synthesisProvider", "synthesisModel", "synthesisZeroCostApproved",
+      "maxAgentCalls", "maxOutputTokens", "maxTotalOutputTokens"],
+    ["enabled", "members", "synthesisProvider", "synthesisModel", "synthesisZeroCostApproved",
+      "maxAgentCalls", "maxOutputTokens"]
+  );
+  const rawMembers = snapshotDenseArray(fields.members, 3);
+  const members = rawMembers.map((item) => {
+    const member = readPlainRecord(item, ["role", "model", "provider", "zeroCostApproved"]);
+    const { role, model, zeroCostApproved } = member;
+    if (typeof role !== "string" || !Object.prototype.hasOwnProperty.call(AGENTS, role) ||
+        role === "general" || typeof model !== "string" || !model.trim() || model.length > 200 ||
+        zeroCostApproved !== true) throw new Error("invalid_ensemble_member");
+    return Object.freeze({
+      role: role as Exclude<CibaRole, "general">,
+      model,
+      provider: snapshotProvider(member.provider),
+      zeroCostApproved: true
+    });
+  });
+  const synthesisProvider = snapshotProvider(fields.synthesisProvider);
+  const synthesisModel = fields.synthesisModel;
+  if (typeof synthesisModel !== "string" || !synthesisModel.trim() || synthesisModel.length > 200) {
+    throw new Error("invalid_synthesis_model");
+  }
+  if (typeof fields.enabled !== "boolean" || typeof fields.synthesisZeroCostApproved !== "boolean" ||
+      !Number.isInteger(fields.maxAgentCalls) || !Number.isInteger(fields.maxOutputTokens) ||
+      (fields.maxTotalOutputTokens !== undefined && !Number.isInteger(fields.maxTotalOutputTokens))) {
+    throw new Error("invalid_ensemble_plan");
+  }
+  return Object.freeze({
+    enabled: fields.enabled,
+    members: Object.freeze(members) as unknown as EnsembleMember[],
+    synthesisProvider,
+    synthesisModel,
+    synthesisZeroCostApproved: fields.synthesisZeroCostApproved,
+    maxAgentCalls: fields.maxAgentCalls as number,
+    maxOutputTokens: fields.maxOutputTokens as number,
+    ...(fields.maxTotalOutputTokens === undefined ? {} : {
+      maxTotalOutputTokens: fields.maxTotalOutputTokens as number
+    })
+  });
+}
+
 function snapshotInferenceResult(value: unknown, errorCode: string): Pick<InferenceResult, "text" | "provider" | "model"> {
   try {
     if (value === null || typeof value !== "object" || Array.isArray(value) ||
@@ -109,7 +227,9 @@ export async function runMultiModelEnsemble(input: {
   messages: ChatTurn[];
   plan: EnsemblePlan;
 }): Promise<EnsembleResult> {
-  const { plan } = input;
+  const inputFields = readPlainRecord(input, ["messages", "plan"]);
+  const plan = snapshotPlan(inputFields.plan);
+  const safeMessages = snapshotMessages(inputFields.messages);
   if (!plan.enabled) throw new Error("multi_model_disabled");
   if (!plan.synthesisProvider.enabled) throw new Error("synthesis_provider_disabled");
   if (plan.synthesisZeroCostApproved !== true) throw new Error("synthesis_model_not_zero_cost_approved");
@@ -123,7 +243,6 @@ export async function runMultiModelEnsemble(input: {
   if (!Number.isInteger(plan.maxOutputTokens) || plan.maxOutputTokens < 1 || plan.maxOutputTokens > 512) {
     throw new Error("invalid_ensemble_output_limit");
   }
-  const safeMessages = snapshotMessages(input?.messages);
   const inputChars = safeMessages.reduce((total, message) => total + message.content.length, 0);
   if (inputChars > MAX_INPUT_CHARS) throw new Error("ensemble_input_too_large");
 
