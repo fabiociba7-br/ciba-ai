@@ -147,8 +147,7 @@ function isValidBridgeStatus(
   }
   if (status.modelLoaded &&
       (!status.nativeLibraryReady ||
-        typeof status.modelId !== "string" || status.modelId.trim().length === 0 ||
-        typeof status.modelSha256 !== "string")) {
+        typeof status.modelId !== "string" || status.modelId.trim().length === 0)) {
     return false;
   }
   return true;
