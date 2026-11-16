@@ -48,6 +48,8 @@ const registry = createCibaToolRegistry(
 
 The callback is part of the trusted application boundary. Do not implement it as an unconditional `true`, and do not treat a model-generated tool call as user approval. The `requiresApproval` flag is descriptive input to this callback; the registry deliberately does not invent or store approval state.
 
+Registry lookup (`get` and `list`) returns metadata only; executable handlers and schemas remain private. The only public execution path is `registry.execute`, which validates the input and calls the trusted authorization callback before invoking a handler.
+
 ## Supported schema subset
 
 - Objects with explicit properties, required keys, and `additionalProperties: false`
@@ -56,7 +58,7 @@ The callback is part of the trusted application boundary. Do not implement it as
 - Numbers and integers with minimum/maximum bounds and numeric enums
 - Booleans and null
 
-This is intentionally not a complete JSON Schema implementation. Unsupported keywords and schema types cause the definition to be rejected.
+This is intentionally not a complete JSON Schema implementation. Unsupported keywords and schema types cause the definition to be rejected. Schema nesting is bounded, including nested array item schemas.
 
 ## Execution limits
 
