@@ -349,6 +349,49 @@ describe("CibaClient", () => {
     expect(result.context.items[0].key).toBe("project_phase");
   });
 
+  it("executes an app-owned task processor, submits the result, then acknowledges the inbox message", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ accepted: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ acknowledged: 1, requested: 1 }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const message = {
+      message_id: "message-9", source_app_id: "com.source", destination_app_id: "com.destination",
+      task_id: "task-9", scope: "task" as const, created_at: "2026-11-15T10:00:00.000Z",
+      expires_at: "2026-11-16T10:00:00.000Z",
+      payload: { protocol: "garcia.task.request", task_id: "task-9", task_type: "summarize", instruction: "Resumir documento" },
+    };
+    const result = await client.executeTaskMessage(message, async (consumption) => {
+      expect(consumption.accepted).toBe(true);
+      return { summary: "Resumo pronto" };
+    });
+    expect(result).toMatchObject({ taskId: "task-9", status: "completed", acknowledged: true, result: { summary: "Resumo pronto" } });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/apps/tasks/results");
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({
+      task_id: "task-9", client_message_id: "task-result:task-9:message-9",
+      status: "completed", result: { summary: "Resumo pronto" },
+    });
+    expect(fetcher.mock.calls[1][0]).toBe("https://private.example/v1/apps/messages/ack");
+    expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({ message_ids: ["message-9"] });
+  });
+
+  it("reports processor errors and acknowledges only after the failed result is accepted", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ accepted: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ acknowledged: 1, requested: 1 }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const message = {
+      message_id: "message-10", source_app_id: "com.source", destination_app_id: "com.destination",
+      task_id: "task-10", scope: "task" as const, created_at: "2026-11-15T10:00:00.000Z",
+      expires_at: "2026-11-16T10:00:00.000Z",
+      payload: { protocol: "garcia.task.request", task_id: "task-10", task_type: "analyze", instruction: "Analisar" },
+    };
+    const result = await client.executeTaskMessage(message, () => { throw new Error("Falha no processador"); });
+    expect(result).toMatchObject({ status: "failed", result: { error: "Falha no processador" }, acknowledged: true });
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({ status: "failed" });
+    expect(fetcher.mock.calls[1][0]).toBe("https://private.example/v1/apps/messages/ack");
+  });
+
   it("does not treat a context-scope inbox message as a task", () => {
     const client = new CibaClient({ baseUrl: "https://private.example" });
     const result = client.consumeTaskMessage({
