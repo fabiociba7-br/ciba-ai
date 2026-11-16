@@ -1438,7 +1438,7 @@ const handleChat = async (request: Request, env: Env) => {
   const provider = registeredModel ? registry.get(registeredModel.providerId) : undefined;
   if (!registeredModel || !provider) return json({ error: "ai_provider_not_available" }, 503);
 
-  let memoryContext = { text: "", entriesUsed: 0, characters: 0, profileSignalsUsed: false };
+  let memoryContext = { text: "", entriesUsed: 0, characters: 0, profileSignalsUsed: false, duplicatesCollapsed: 0 };
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (owner) {
     const featureSettings = await readOwnerFeatureSettings(env, owner.owner_id);
@@ -1498,7 +1498,7 @@ const handleChat = async (request: Request, env: Env) => {
       strategy: orchestration.strategy,
       provider: orchestration.provider,
       inference_calls: orchestration.usedInferenceCalls,
-      memory_context: { enabled: memoryContext.entriesUsed > 0, entries_used: memoryContext.entriesUsed, characters: memoryContext.characters, profile_signals_used: memoryContext.profileSignalsUsed },
+      memory_context: { enabled: memoryContext.entriesUsed > 0, entries_used: memoryContext.entriesUsed, characters: memoryContext.characters, profile_signals_used: memoryContext.profileSignalsUsed, duplicates_collapsed: memoryContext.duplicatesCollapsed },
     },
   });
 };
