@@ -911,6 +911,24 @@ const handlePrepareMemoryCandidate = async (request: Request, env: Env) => {
 };
 
 
+type MemoryAuditAction = "created" | "updated" | "deleted" | "review_approved" | "review_rejected";
+const recordMemoryAudit = async (
+  env: Env,
+  event: {
+    ownerId: string; memoryId?: string | null; proposalId?: string | null;
+    scope: "app" | "owner"; sourceAppId: string | null;
+    key: string; action: MemoryAuditAction; actorAppId: string; occurredAt: string;
+  },
+) => env.DB.prepare(`
+  INSERT INTO memory_audit_events(
+    event_id, owner_id, memory_id, proposal_id, scope, source_app_id,
+    memory_key, action, actor_app_id, occurred_at
+  ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`).bind(
+  crypto.randomUUID(), event.ownerId, event.memoryId || null, event.proposalId || null,
+  event.scope, event.sourceAppId, event.key, event.action, event.actorAppId, event.occurredAt,
+).run();
+
 const handleMemoryReviews = async (request: Request, env: Env, url: URL) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
@@ -1003,6 +1021,39 @@ const handleMemoryReviews = async (request: Request, env: Env, url: URL) => {
     return json({ decided: true, decision: "approved", proposal_id: proposalId, updated_memory: proposal.classification === "possible_conflict" });
   }
   return json({ error: "method_not_allowed" }, 405);
+};
+
+const handleMemoryHistory = async (request: Request, env: Env, url: URL) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const settings = await readOwnerFeatureSettings(env, owner.owner_id);
+  if (!settings.memory_enabled) return json({ error: "memory_disabled" }, 403);
+  const scope = url.searchParams.get("scope") || "app";
+  if (scope !== "app" && scope !== "owner") return json({ error: "invalid_memory_scope" }, 400);
+  const sourceAppId = scope === "app" ? (url.searchParams.get("source_app_id") || device.app_id) : null;
+  if (scope === "app" && !isValidAppId(sourceAppId)) return json({ error: "invalid_memory_app" }, 400);
+  const grant = scope === "app" && sourceAppId === device.app_id ? true :
+    !!(await env.DB.prepare(`
+      SELECT grant_id FROM app_access_grants
+      WHERE owner_id = ? AND grantee_app_id = ? AND permission = 'memory_read'
+        AND scope = ? AND source_app_id IS ? AND destination_app_id IS NULL
+        AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?) LIMIT 1
+    `).bind(owner.owner_id, device.app_id, scope === "owner" ? "owner_memory" : "app_memory",
+      scope === "owner" ? null : sourceAppId, nowIso()).first<{ grant_id: string }>());
+  if (!grant) return json({ error: "memory_access_not_granted" }, 403);
+  const rawLimit = Number(url.searchParams.get("limit") || 50);
+  if (!Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > 100) return json({ error: "invalid_history_limit", minimum: 1, maximum: 100 }, 400);
+  const memoryId = url.searchParams.get("memory_id");
+  const rows = await env.DB.prepare(`
+    SELECT event_id, memory_id, proposal_id, scope, source_app_id, memory_key, action, actor_app_id, occurred_at
+    FROM memory_audit_events
+    WHERE owner_id = ? AND scope = ? AND source_app_id IS ?
+      AND (? IS NULL OR memory_id = ?)
+    ORDER BY occurred_at DESC LIMIT ?
+  `).bind(owner.owner_id, scope, sourceAppId, memoryId, memoryId, rawLimit).all<Record<string, unknown>>();
+  return json({ events: rows.results || [], count: (rows.results || []).length, limit: rawLimit, scope, source_app_id: sourceAppId, values_stored: false });
 };
 
 const handleMemoryInsights = async (request: Request, env: Env) => {
@@ -1139,10 +1190,16 @@ const handleOwnerMemory = async (request: Request, env: Env, url: URL) => {
             AND memory_key = ? AND deleted_at IS NULL
         `).bind(owner.owner_id, sourceAppId, key).first<{ memory_id: string }>();
     if (existing) {
-      await env.DB.prepare(`
-        UPDATE memory_records SET value = ?, updated_at = ?, expires_at = ?
-        WHERE memory_id = ? AND owner_id = ? AND deleted_at IS NULL
-      `).bind(value, timestamp, expiresAt, existing.memory_id, owner.owner_id).run();
+      await env.DB.batch([
+        env.DB.prepare(`
+          UPDATE memory_records SET value = ?, updated_at = ?, expires_at = ?
+          WHERE memory_id = ? AND owner_id = ? AND deleted_at IS NULL
+        `).bind(value, timestamp, expiresAt, existing.memory_id, owner.owner_id),
+        env.DB.prepare(`
+          INSERT INTO memory_audit_events(event_id, owner_id, memory_id, scope, source_app_id, memory_key, action, actor_app_id, occurred_at)
+          VALUES(?, ?, ?, ?, ?, ?, 'updated', ?, ?)
+        `).bind(crypto.randomUUID(), owner.owner_id, existing.memory_id, scope, storedSourceAppId, key, device.app_id, timestamp),
+      ]);
       return json({ saved: true, updated: true, memory_id: existing.memory_id, scope, source_app_id: storedSourceAppId });
     }
     const count = scope === "owner"
@@ -1152,13 +1209,19 @@ const handleOwnerMemory = async (request: Request, env: Env, url: URL) => {
           .bind(owner.owner_id, sourceAppId).first<{ total: number }>();
     if ((count?.total || 0) >= 200) return json({ error: "memory_limit_reached", maximum: 200 }, 409);
     const memoryId = crypto.randomUUID();
-    await env.DB.prepare(`
-      INSERT INTO memory_records(
-        memory_id, owner_id, scope, source_app_id, memory_key, value,
-        consent, created_by_app_id, created_at, updated_at, expires_at
-      ) VALUES(?, ?, ?, ?, ?, ?, 'curated', ?, ?, ?, ?)
-    `).bind(memoryId, owner.owner_id, scope, storedSourceAppId, key, value,
-      device.app_id, timestamp, timestamp, expiresAt).run();
+    await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO memory_records(
+          memory_id, owner_id, scope, source_app_id, memory_key, value,
+          consent, created_by_app_id, created_at, updated_at, expires_at
+        ) VALUES(?, ?, ?, ?, ?, ?, 'curated', ?, ?, ?, ?)
+      `).bind(memoryId, owner.owner_id, scope, storedSourceAppId, key, value,
+        device.app_id, timestamp, timestamp, expiresAt),
+      env.DB.prepare(`
+        INSERT INTO memory_audit_events(event_id, owner_id, memory_id, scope, source_app_id, memory_key, action, actor_app_id, occurred_at)
+        VALUES(?, ?, ?, ?, ?, ?, 'created', ?, ?)
+      `).bind(crypto.randomUUID(), owner.owner_id, memoryId, scope, storedSourceAppId, key, device.app_id, timestamp),
+    ]);
     return json({ saved: true, updated: false, memory_id: memoryId, scope, source_app_id: storedSourceAppId }, 201);
   }
 
@@ -1186,27 +1249,42 @@ const handleOwnerMemory = async (request: Request, env: Env, url: URL) => {
     if (duplicate) return json({ error: "memory_key_already_exists" }, 409);
     const timestamp = nowIso();
     const expiresAt = validHours === undefined ? null : validHours === null ? null : new Date(Date.now() + validHours * 60 * 60 * 1000).toISOString();
-    const result = await env.DB.prepare(`
-      UPDATE memory_records SET memory_key = ?, value = ?, updated_at = ?,
-        expires_at = CASE WHEN ? = 1 THEN NULL WHEN ? = 2 THEN expires_at ELSE ? END
-      WHERE memory_id = ? AND owner_id = ? AND scope = ?
-        AND source_app_id IS ? AND deleted_at IS NULL
-    `).bind(key, value, timestamp,
-      validHours === null ? 1 : validHours === undefined ? 2 : 0,
-      validHours === undefined ? 2 : 0, expiresAt,
-      memoryId, owner.owner_id, scope, scope === "owner" ? null : sourceAppId).run();
-    return result.meta.changes === 1 ? json({ updated: true, memory_id: memoryId, scope }) : json({ error: "memory_not_found" }, 404);
+    const result = await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE memory_records SET memory_key = ?, value = ?, updated_at = ?,
+          expires_at = CASE WHEN ? = 1 THEN NULL WHEN ? = 2 THEN expires_at ELSE ? END
+        WHERE memory_id = ? AND owner_id = ? AND scope = ?
+          AND source_app_id IS ? AND deleted_at IS NULL
+      `).bind(key, value, timestamp,
+        validHours === null ? 1 : validHours === undefined ? 2 : 0,
+        validHours === undefined ? 2 : 0, expiresAt,
+        memoryId, owner.owner_id, scope, scope === "owner" ? null : sourceAppId),
+      env.DB.prepare(`
+        INSERT INTO memory_audit_events(event_id, owner_id, memory_id, scope, source_app_id, memory_key, action, actor_app_id, occurred_at)
+        SELECT ?, ?, memory_id, ?, ?, ?, 'updated', ?, ?
+        FROM memory_records WHERE memory_id = ? AND owner_id = ? AND updated_at = ? AND deleted_at IS NULL
+      `).bind(crypto.randomUUID(), owner.owner_id, scope, scope === "owner" ? null : sourceAppId, key, device.app_id, timestamp, memoryId, owner.owner_id, timestamp),
+    ]);
+    return result[0].meta.changes === 1 ? json({ updated: true, memory_id: memoryId, scope }) : json({ error: "memory_not_found" }, 404);
   }
 
   if (request.method === "DELETE") {
     const memoryId = typeof body.memory_id === "string" ? body.memory_id.trim() : "";
     if (!memoryId || memoryId.length > 100) return json({ error: "invalid_memory_id" }, 400);
-    const result = await env.DB.prepare(`
-      UPDATE memory_records SET deleted_at = ?, updated_at = ?
-      WHERE memory_id = ? AND owner_id = ? AND scope = ?
-        AND source_app_id IS ? AND deleted_at IS NULL
-    `).bind(nowIso(), nowIso(), memoryId, owner.owner_id, scope, scope === "owner" ? null : sourceAppId).run();
-    return result.meta.changes === 1
+    const timestamp = nowIso();
+    const result = await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE memory_records SET deleted_at = ?, updated_at = ?
+        WHERE memory_id = ? AND owner_id = ? AND scope = ?
+          AND source_app_id IS ? AND deleted_at IS NULL
+      `).bind(timestamp, timestamp, memoryId, owner.owner_id, scope, scope === "owner" ? null : sourceAppId),
+      env.DB.prepare(`
+        INSERT INTO memory_audit_events(event_id, owner_id, memory_id, scope, source_app_id, memory_key, action, actor_app_id, occurred_at)
+        SELECT ?, ?, memory_id, ?, ?, memory_key, 'deleted', ?, ?
+        FROM memory_records WHERE memory_id = ? AND owner_id = ? AND deleted_at = ?
+      `).bind(crypto.randomUUID(), owner.owner_id, scope, scope === "owner" ? null : sourceAppId, device.app_id, timestamp, memoryId, owner.owner_id, timestamp),
+    ]);
+    return result[0].meta.changes === 1
       ? json({ deleted: true, memory_id: memoryId })
       : json({ error: "memory_not_found" }, 404);
   }
@@ -2301,6 +2379,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/owner/access-grants" && (request.method === "GET" || request.method === "POST")) {
     return handleOwnerAccessGrants(request, env);
+  }
+  if (url.pathname === "/v1/owner/memory/history" && request.method === "GET") {
+    return handleMemoryHistory(request, env, url);
   }
   if (url.pathname === "/v1/owner/memory/insights" && request.method === "GET") {
     return handleMemoryInsights(request, env);
