@@ -17,7 +17,7 @@ An empty or omitted allowlist registers no tools. Invalid definitions are skippe
 ## Example
 
 ```ts
-import { createCibaToolRegistry } from "./tools";
+import { createCibaToolRegistry, createCibaToolConsentStore } from "./tools";
 
 const registry = createCibaToolRegistry(
   [
@@ -113,6 +113,20 @@ if (state === "approval_required") {
 const result = await registry.execute(plan.toolId, plan.input, context);
 ```
 
-The registry's trusted `authorize` callback must consume the matching one-use grant. For example, it can call `consent.consume(request)` for approval-required tools and apply the application's normal policy for read-only tools. A grant expires after five minutes, is bound to the canonical input and cannot be reused. Denial, cancellation or a changed input cannot authorize execution. The store is in-memory only; it does not persist grants or silently approve future calls.
+The registry's trusted `authorize` callback must consume the matching one-use grant. Configure it along these lines:
+
+```ts
+const consent = createCibaToolConsentStore();
+
+const registry = createCibaToolRegistry(definitions, {
+  allowlist: enabledToolIds,
+  authorize: async (request) => {
+    if (request.requiresApproval) return consent.consume(request);
+    return await applicationPolicyAllows(request);
+  }
+});
+```
+
+Call `consent.request(...)` with the prepared plan before showing the approval panel; after the user answers, call `registry.execute(plan.toolId, plan.input, context)`. A grant expires after five minutes, is bound to the canonical input and cannot be reused. Denial, cancellation or a changed input cannot authorize execution. The store is in-memory only; it does not persist grants or silently approve future calls.
 
 Do not set `userExplicitlyAllowed` from model output, a tool proposal, or a preview. It must come from the application's trusted user interaction.
