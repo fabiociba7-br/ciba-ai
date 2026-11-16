@@ -663,6 +663,23 @@ describe("Ciba AI private app-to-app message relay", () => {
     });
     expect(contextAck.status).toBe(200);
 
+    const enableMemoryForTask = await request("/v1/owner/settings", {
+      method: "POST",
+      headers: { authorization: `Bearer ${sourceDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ settings: { memory_enabled: true } }),
+    });
+    expect(enableMemoryForTask.status).toBe(200);
+    const savedTaskMemory = await request("/v1/owner/memory?scope=app", {
+      method: "POST",
+      headers: { authorization: `Bearer ${sourceDevice.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        key: "project_phase",
+        value: "Projeto em revisão da arquitetura do aplicativo",
+        consent: "curated",
+      }),
+    });
+    expect(savedTaskMemory.status).toBe(201);
+
     const dispatched = await request("/v1/apps/tasks/dispatch", {
       method: "POST",
       headers: { authorization: `Bearer ${sourceDevice.access_token}`, "content-type": "application/json" },
@@ -671,20 +688,22 @@ describe("Ciba AI private app-to-app message relay", () => {
         instruction: "Resuma os pontos principais do texto.",
         client_message_id: "coordinator-task-001",
         context: { source: "integration-test" },
+        include_context: true,
       }),
     });
     expect(dispatched.status).toBe(201);
     const dispatchBody = await dispatched.json() as {
       dispatched: boolean;
-      route: { task_id: string; destination_app_id: string; destination_display_name: string; task_type: string };
+      route: { task_id: string; destination_app_id: string; destination_display_name: string; task_type: string; context_sharing: { requested: boolean; included: boolean; items_count: number; reason: string } };
     };
     expect(dispatchBody.dispatched).toBe(true);
+    expect(dispatchBody.route.context_sharing).toMatchObject({ requested: true, included: true, items_count: 1, reason: "authorized_relevant_memories" });
     expect(dispatchBody.route).toMatchObject({
       destination_app_id: targetApp, destination_display_name: "Relay Target", task_type: "summarize",
     });
     const taskInbox = await inbox();
     const taskInboxBody = await taskInbox.json() as {
-      messages: Array<{ message_id: string; task_id: string; payload: { protocol: string; task_type: string; instruction: string; context: { source: string } } }>;
+      messages: Array<{ message_id: string; task_id: string; payload: { protocol: string; task_type: string; instruction: string; context: { source: string }; context_package: { protocol: string; conversation_history_included: false; items: Array<{ key: string; value: string }> } } }>;
     };
     expect(taskInboxBody.messages).toHaveLength(1);
     expect(taskInboxBody.messages[0]).toMatchObject({
@@ -694,6 +713,11 @@ describe("Ciba AI private app-to-app message relay", () => {
         task_type: "summarize",
         instruction: "Resuma os pontos principais do texto.",
         context: { source: "integration-test" },
+        context_package: {
+          protocol: "garcia.context.package",
+          conversation_history_included: false,
+          items: [{ key: "project_phase", value: "Projeto em revisão da arquitetura do aplicativo" }],
+        },
       },
     });
     const taskAck = await request("/v1/apps/messages/ack", {
