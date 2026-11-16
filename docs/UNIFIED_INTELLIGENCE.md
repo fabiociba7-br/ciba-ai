@@ -57,6 +57,8 @@ A síntese semântica opcional foi adicionada em `POST /v1/apps/tasks/synthesize
 
 ## Ferramentas e MCP
 
+O protocolo de propostas foi conectado opcionalmente ao orquestrador central. Quando um chamador confiável fornece um registro de ferramentas e contexto de invocação, o modelo recebe somente contratos allowlisted e pode emitir um envelope `CIBA_TOOL_CALL_V1`. O núcleo valida o envelope e o schema via `registry.prepare`, devolvendo apenas uma prévia. Não há execução automática, nem callback de autorização durante a preparação. O Worker público ainda não injeta um registro de ferramentas; a ativação depende de aprovações duráveis de uso único, endpoints autenticados e confirmação em interface confiável. O consentimento atual em memória não é suficiente para esse fluxo em ambiente serverless.
+
 O núcleo foi organizado para receber ferramentas através de uma interface controlada. Nenhuma ferramenta externa é executada automaticamente nesta versão. Os contratos tipados de ferramentas foram criados em `src/core/tools`, mas não existe ferramenta registrada. A futura camada deverá usar allowlist, schemas validados, escopos mínimos, timeouts e aprovação explícita para ações irreversíveis.
 
 ## Segurança de provedores

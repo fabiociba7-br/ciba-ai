@@ -7,10 +7,12 @@ export { CloudflareWorkersAIProvider } from "./providers/cloudflare";
 export { OpenAICompatibleProvider } from "./providers/openai-compatible";
 export { createProviderRegistry } from "./providers/registry";
 export type { ProviderRegistry, RegisteredModel } from "./providers/registry";
-export type { CibaToolDefinition, CibaToolMetadata, CibaToolRegistry, CibaToolRisk } from "./tools";
+export type { CibaToolDefinition, CibaToolMetadata, CibaToolModelDescriptor, CibaToolRegistry, CibaToolRisk } from "./tools";
 export { createCibaToolRegistry, createCibaToolConsentStore, createCibaToolApprovalFlow } from "./tools";
 export type { CibaToolAuthorizationRequest, CibaToolInvocationPlan, CibaToolInvocationContext, CibaToolRegistryOptions, ExecutableCibaToolRegistry, CibaToolConsentRequest, CibaToolConsentCheck, CibaToolConsentStatus, CibaToolConsentStore, CibaToolApprovalFlow, CibaToolApprovalState, CibaToolProposal } from "./tools";
 export type { CibaRole, ChatTurn, ModelProvider, OrchestrationResult } from "./types";
+export { parseCibaToolModelProposal, CIBA_TOOL_PROPOSAL_PREFIX } from "./tools/model-proposal";
+export type { CibaToolModelProposal } from "./tools/model-proposal";
 
 export { buildWorkingContext, canAccessMemory, validateCuratedMemory, validateMemoryRecord } from "./memory";
 export type { MemoryAccessRequest, MemoryConsent, MemoryGrant, MemoryPermission, MemoryRecord, MemoryScope, MemoryStore } from "./memory";

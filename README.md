@@ -22,7 +22,7 @@ A franquia gratuita documentada pela Cloudflare é de 10.000 Neurons por dia. No
 
 ## Estado do projeto
 
-A base do Worker, autenticação por dispositivo, cotas, administração e API de configurações estão implementadas. O workflow de CI está configurado para execução manual e validação de TypeScript; não executa testes nem gera APK automaticamente. O registro de ferramentas do núcleo é uma primitiva opt-in e ainda não está conectado ao orquestrador ou à chamada do modelo. Ainda exige provisionamento da conta Cloudflare, criação do banco D1, aplicação das migrations, definição dos segredos, confirmação dos package IDs Android e teste real de inferência antes de uso.
+A base do Worker, autenticação por dispositivo, cotas, administração e API de configurações estão implementadas. O workflow de CI valida TypeScript e testes automaticamente em pushes e pull requests para main; não gera APK nem faz deploy. O registro de ferramentas do núcleo é uma primitiva opt-in e ainda não está conectado ao orquestrador ou à chamada do modelo. Ainda exige provisionamento da conta Cloudflare, criação do banco D1, aplicação das migrations, definição dos segredos, confirmação dos package IDs Android e teste real de inferência antes de uso.
 
 ## Arquitetura
 

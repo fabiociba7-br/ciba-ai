@@ -72,6 +72,12 @@ Defaults are 64 tools, 32 KB per schema, 64 KB per input, 256 KB per output, 8 c
 
 Inputs and outputs are cloned through a strict JSON-value boundary. Non-finite numbers, accessors, custom prototypes, unsupported values, excessive nesting, and prototype-sensitive keys are rejected. Cloning also enforces a shared budget of 20,000 JSON nodes and 256 KB of cumulative string characters, so oversized or highly fragmented values are rejected before full serialization.
 
+## Model proposal protocol (preview only)
+
+When a trusted caller supplies an `ExecutableCibaToolRegistry` and invocation context to `runCibaOrchestrator`, the allowlisted tool descriptors and validated input schemas may be included in the system prompt. A model proposal must use the exact `CIBA_TOOL_CALL_V1` prefix (including its newline) followed by one JSON object with `protocol: "ciba.tool.proposal.v1"`, `toolId`, and `input`. The core parses the envelope strictly and calls `registry.prepare`; it returns a validated preview only. Unknown tools, malformed envelopes, and schema violations are rejected. No handler, authorization callback, network request, or side effect runs during proposal parsing.
+
+This is deliberately not connected to the public Worker chat route. The current consent store is in-memory and cannot provide reliable cross-request approval state in a serverless Worker. Before connecting it, implement durable one-use approvals (with expiry, exact input binding and atomic consumption), authenticated approval endpoints, and a trusted client confirmation screen. No tool definitions are currently activated in production.
+
 ## Important integration boundary
 
 The registry is currently an application-facing primitive. It is exported by the core package but is not connected to the orchestrator or to model tool-calling. Applications must invoke `registry.execute` themselves after their own policy checks. Never pass arbitrary model-provided function names directly to an executor, and never expose privileged application functions merely by adding them to a model prompt.

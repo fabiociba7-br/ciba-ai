@@ -13,6 +13,7 @@ export type CibaToolMetadata = Pick<
   CibaToolDefinition,
   "id" | "description" | "risk" | "requiresApproval"
 >;
+export interface CibaToolModelDescriptor extends CibaToolMetadata { inputSchema: Record<string, unknown>; }
 
 /**
  * Public registry surface exposes metadata only. Implementations remain private
