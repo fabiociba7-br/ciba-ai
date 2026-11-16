@@ -159,3 +159,8 @@ A classificação `new`, `unchanged` ou `possible_conflict` é determinística e
 ## Histórico de memória
 
 `getMemoryHistory({ scope, sourceAppId, memoryId, limit })` consulta `GET /v1/owner/memory/history`. Retorna metadados de criação, edição, exclusão e decisões de revisão, sem valores armazenados ou conteúdo de conversas. O limite é de 1 a 100 eventos; por padrão, 50. O acesso segue as concessões de leitura da memória.
+
+
+## Perfil contextual do proprietário
+
+`getOwnerProfile()` consulta `GET /v1/owner/profile` e retorna memórias autorizadas agrupadas por assunto, termos recorrentes entre registros distintos e sugestões de revisão. A análise é determinística, limitada a 200 memórias e não chama IA nem altera dados. Memórias de outros aplicativos e a memória central exigem concessões ativas de leitura. Sugestões não são aplicadas automaticamente; o proprietário decide se deve revisar ou atualizar qualquer registro.
