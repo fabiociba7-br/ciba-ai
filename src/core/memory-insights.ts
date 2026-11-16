@@ -146,49 +146,4 @@ export function analyzeMemoryRelationships(
     analyzed_records: bounded.length,
     inference_calls: 0,
   };
-} {
-  const bounded = records.slice(0, 200);
-  const conflicts: MemoryInsightPair[] = [];
-  const related: MemoryInsightPair[] = [];
-  const staleMs = Math.max(1, staleAfterDays) * 86400000;
-  const outdated = bounded.flatMap((record) => {
-    const updated = Date.parse(record.updated_at);
-    if (!Number.isFinite(updated)) return [];
-    const age = Math.max(0, Math.floor((now.getTime() - updated) / 86400000));
-    const expired = !!record.expires_at && Date.parse(record.expires_at) <= now.getTime();
-    if (!expired && now.getTime() - updated < staleMs) return [];
-    return [{ ...record, reason: expired ? "expired" as const : "not_reviewed_recently" as const, age_days: age }];
-  });
-  const seen = new Set<string>();
-  for (let i = 0; i < bounded.length; i += 1) {
-    for (let j = i + 1; j < bounded.length; j += 1) {
-      const first = bounded[i], second = bounded[j];
-      const pairId = [first.memory_id, second.memory_id].sort().join(":");
-      if (seen.has(pairId)) continue;
-      const sameKey = normalize(first.memory_key) === normalize(second.memory_key);
-      const firstValue = normalize(first.value), secondValue = normalize(second.value);
-      if (sameKey && firstValue !== secondValue) {
-        conflicts.push({ first, second, shared_terms: [], similarity: 1, reason: "same_key_different_value" });
-        seen.add(pairId);
-        continue;
-      }
-      const a = tokens(first.memory_key + " " + first.value);
-      const b = tokens(second.memory_key + " " + second.value);
-      const shared = [...a].filter((word) => b.has(word)).sort();
-      const union = new Set([...a, ...b]).size;
-      const similarity = union ? shared.length / union : 0;
-      if (shared.length >= 2 && similarity >= 0.3) {
-        related.push({ first, second, shared_terms: shared.slice(0, 8), similarity, reason: "related_content" });
-        seen.add(pairId);
-      }
-    }
-  }
-  const sortPairs = (a: MemoryInsightPair, b: MemoryInsightPair) => b.similarity - a.similarity;
-  return {
-    possible_conflicts: conflicts.sort(sortPairs).slice(0, Math.min(maxPairs, 30)),
-    related: related.sort(sortPairs).slice(0, Math.min(maxPairs, 30)),
-    outdated: outdated.sort((a, b) => b.age_days - a.age_days).slice(0, 50),
-    analyzed_records: bounded.length,
-    inference_calls: 0,
-  };
 }
