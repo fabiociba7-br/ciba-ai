@@ -68,7 +68,8 @@ function snapshotProvider(value: unknown): ModelProvider {
     return Object.freeze({
       id,
       enabled,
-      generate: (request) => generate.call(value, request) as ReturnType<ModelProvider["generate"]>
+      generate: (request: Parameters<ModelProvider["generate"]>[0]) =>
+        generate.call(value, request) as ReturnType<ModelProvider["generate"]>
     });
   } catch {
     throw new Error("invalid_or_duplicate_provider");

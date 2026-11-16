@@ -383,7 +383,7 @@ function snapshotSpeechToTextRequest(
 
     // Avoid TypedArray species/constructor hooks and shadowed byteLength accessors.
     const audioCopy = new Uint8Array(audioByteLength);
-    Uint8Array.prototype.set.call(audioCopy, audio);
+    Uint8Array.prototype.set.call(audioCopy, audio as Uint8Array);
     if (audioCopy.byteLength !== audioByteLength) return null;
     return {
       audio: audioCopy,

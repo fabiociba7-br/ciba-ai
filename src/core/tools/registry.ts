@@ -158,8 +158,8 @@ function cloneJson(
   if (Array.isArray(value)) {
     if (Object.getPrototypeOf(value) !== Array.prototype) throw new Error("invalid_tool_value");
     const descriptors = Object.getOwnPropertyDescriptors(value);
-    const length = descriptors.length?.value;
-    if (!Number.isInteger(length) || length < 0 || length > MAX_INPUT_BYTES) {
+    const length = Object.getOwnPropertyDescriptor(value, "length")?.value;
+    if (typeof length !== "number" || !Number.isInteger(length) || length < 0 || length > MAX_INPUT_BYTES) {
       throw new Error("invalid_tool_value");
     }
     if (Reflect.ownKeys(descriptors).length !== length + 1) throw new Error("invalid_tool_value");
@@ -344,16 +344,20 @@ export function createCibaToolRegistry(
     snapshotDenseArray(optionFields.allowlist, MAX_TOOLS);
   if (!rawAllowlist.every(validId)) throw new Error("invalid_tool_allowlist");
   const allowlist = new Set(rawAllowlist as string[]);
-  const timeoutMs = optionFields.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const maxInputBytes = optionFields.maxInputBytes ?? MAX_INPUT_BYTES;
-  const maxOutputBytes = optionFields.maxOutputBytes ?? MAX_OUTPUT_BYTES;
-  const maxConcurrentExecutions = optionFields.maxConcurrentExecutions ?? DEFAULT_MAX_CONCURRENT_EXECUTIONS;
+  const timeoutMs = optionFields.timeoutMs === undefined ? DEFAULT_TIMEOUT_MS : optionFields.timeoutMs;
+  const maxInputBytes = optionFields.maxInputBytes === undefined ? MAX_INPUT_BYTES : optionFields.maxInputBytes;
+  const maxOutputBytes = optionFields.maxOutputBytes === undefined ? MAX_OUTPUT_BYTES : optionFields.maxOutputBytes;
+  const maxConcurrentExecutions = optionFields.maxConcurrentExecutions === undefined
+    ? DEFAULT_MAX_CONCURRENT_EXECUTIONS
+    : optionFields.maxConcurrentExecutions;
 
-  if (!Number.isInteger(maxConcurrentExecutions) || (maxConcurrentExecutions as number) < 1 ||
-      (maxConcurrentExecutions as number) > 32 ||
-      !Number.isInteger(timeoutMs) || (timeoutMs as number) < 100 || (timeoutMs as number) > 120_000 ||
-      !Number.isInteger(maxInputBytes) || (maxInputBytes as number) < 1 || (maxInputBytes as number) > MAX_INPUT_BYTES ||
-      !Number.isInteger(maxOutputBytes) || (maxOutputBytes as number) < 1 || (maxOutputBytes as number) > MAX_OUTPUT_BYTES) {
+  if (typeof maxConcurrentExecutions !== "number" || !Number.isInteger(maxConcurrentExecutions) ||
+      maxConcurrentExecutions < 1 || maxConcurrentExecutions > 32 ||
+      typeof timeoutMs !== "number" || !Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 120_000 ||
+      typeof maxInputBytes !== "number" || !Number.isInteger(maxInputBytes) ||
+      maxInputBytes < 1 || maxInputBytes > MAX_INPUT_BYTES ||
+      typeof maxOutputBytes !== "number" || !Number.isInteger(maxOutputBytes) ||
+      maxOutputBytes < 1 || maxOutputBytes > MAX_OUTPUT_BYTES) {
     throw new Error("invalid_tool_registry_limits");
   }
   const safeDefinitions = snapshotDenseArray(definitions, MAX_TOOLS);
