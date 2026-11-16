@@ -6,6 +6,7 @@ const MAX_INPUT_BYTES = 64_000;
 const MAX_OUTPUT_BYTES = 256_000;
 const MAX_DEPTH = 12;
 const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_MAX_CONCURRENT_EXECUTIONS = 8;
 
 export interface CibaToolAuthorizationRequest {
   toolId: string;
@@ -22,6 +23,7 @@ export interface CibaToolRegistryOptions {
   timeoutMs?: number;
   maxInputBytes?: number;
   maxOutputBytes?: number;
+  maxConcurrentExecutions?: number;
 }
 
 export interface ExecutableCibaToolRegistry extends CibaToolRegistry {
@@ -146,8 +148,11 @@ export function createCibaToolRegistry(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxInputBytes = options.maxInputBytes ?? MAX_INPUT_BYTES;
   const maxOutputBytes = options.maxOutputBytes ?? MAX_OUTPUT_BYTES;
+  const maxConcurrentExecutions = options.maxConcurrentExecutions ?? DEFAULT_MAX_CONCURRENT_EXECUTIONS;
 
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 120_000 ||
+  if (!Number.isInteger(maxConcurrentExecutions) || maxConcurrentExecutions < 1 ||
+      maxConcurrentExecutions > 32 ||
+      !Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 120_000 ||
       !Number.isInteger(maxInputBytes) || maxInputBytes < 1 || maxInputBytes > MAX_INPUT_BYTES ||
       !Number.isInteger(maxOutputBytes) || maxOutputBytes < 1 || maxOutputBytes > MAX_OUTPUT_BYTES) {
     throw new Error("invalid_tool_registry_limits");
@@ -160,6 +165,7 @@ export function createCibaToolRegistry(
     definition: CibaToolDefinition;
     schema: Record<string, unknown>;
   }>();
+  let activeExecutions = 0;
 
   for (const definition of definitions) {
     if (!definition || typeof definition !== "object" ||
@@ -233,10 +239,16 @@ export function createCibaToolRegistry(
       );
       if (authorized !== true) throw new Error("tool_authorization_denied");
 
-      const output = await withTimeout(
-        Promise.resolve().then(() => item.definition.execute(safeInput)),
-        timeoutMs
+      if (activeExecutions >= maxConcurrentExecutions) {
+        throw new Error("tool_execution_capacity_reached");
+      }
+      activeExecutions += 1;
+      const execution = Promise.resolve().then(() => item.definition.execute(safeInput));
+      execution.then(
+        () => { activeExecutions -= 1; },
+        () => { activeExecutions -= 1; }
       );
+      const output = await withTimeout(execution, timeoutMs);
       let safeOutput: unknown;
       try {
         safeOutput = cloneJson(output);
