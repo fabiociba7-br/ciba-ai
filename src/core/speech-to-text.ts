@@ -334,29 +334,22 @@ export async function runWhisperCppTranscription(
     maxAudioBytes ?? registry.maxAudioBytes
   );
   if (!safeRequest) throw new Error("invalid_speech_to_text_request");
-  if (safeRequest.signal?.aborted) {
-    safeRequest.audio.fill(0);
-    return { success: false, reasons: ["transcription_cancelled"] };
-  }
-  const resolution = resolveWhisperCppRuntime(registry, profile, requirements);
-  if (!resolution.available || !resolution.adapter) {
-    safeRequest.audio.fill(0);
-    return { success: false, reasons: resolution.reasons };
-  }
-
-  const releaseExecution = registry.tryAcquireExecution();
-  if (!releaseExecution) {
-    safeRequest.audio.fill(0);
-    return { success: false, reasons: ["transcription_capacity_reached"] };
-  }
-
-  // Give the adapter an isolated copy and clear it after completion so the
-  // caller's audio remains untouched and the temporary buffer is not retained.
   const audioBuffer = safeRequest.audio;
+  let releaseExecution: (() => void) | undefined;
   try {
     if (safeRequest.signal?.aborted) {
       return { success: false, reasons: ["transcription_cancelled"] };
     }
+    const resolution = resolveWhisperCppRuntime(registry, profile, requirements);
+    if (!resolution.available || !resolution.adapter) {
+      return { success: false, reasons: resolution.reasons };
+    }
+
+    releaseExecution = registry.tryAcquireExecution();
+    if (!releaseExecution) {
+      return { success: false, reasons: ["transcription_capacity_reached"] };
+    }
+
     const result = await resolution.adapter.transcribe({
       ...safeRequest,
       audio: audioBuffer,
@@ -380,6 +373,6 @@ export async function runWhisperCppTranscription(
     throw error;
   } finally {
     audioBuffer.fill(0);
-    releaseExecution();
+    releaseExecution?.();
   }
 }
