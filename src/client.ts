@@ -557,6 +557,70 @@ export class CibaClient {
     return this.executeTaskMessage(message, processor as (value: TaskRequestConsumption) => Promise<T> | T);
   }
 
+  /**
+   * Fetches one inbox page and processes only messages with locally registered task processors.
+   * Unsupported/context messages are skipped and left untouched. Per-message delivery errors
+   * are reported without preventing later messages from being considered.
+   */
+  async processTaskInbox<T extends Record<string, unknown>>(
+    processors: CibaTaskProcessorRegistry,
+    limit = 20,
+  ): Promise<{
+    fetched: number;
+    executed: number;
+    completed: number;
+    failed: number;
+    skipped: number;
+    delivery_errors: number;
+    outcomes: Array<{
+      message_id: string;
+      task_id: string;
+      status: "completed" | "failed" | "skipped_unsupported" | "skipped_non_task" | "delivery_error";
+      error?: string;
+    }>;
+  }> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+      throw new Error("invalid_task_inbox_limit");
+    }
+    const inbox = await this.getInbox(limit);
+    const outcomes: Array<{
+      message_id: string;
+      task_id: string;
+      status: "completed" | "failed" | "skipped_unsupported" | "skipped_non_task" | "delivery_error";
+      error?: string;
+    }> = [];
+    for (const message of inbox.messages) {
+      if (message.scope !== "task") {
+        outcomes.push({ message_id: message.message_id, task_id: message.task_id, status: "skipped_non_task" });
+        continue;
+      }
+      const consumption = this.consumeTaskMessage(message);
+      if (!consumption.accepted || !consumption.task) {
+        outcomes.push({ message_id: message.message_id, task_id: message.task_id,
+          status: "delivery_error", error: consumption.errors[0] ?? "invalid_task_request" });
+        continue;
+      }
+      if (typeof processors[consumption.task.task_type] !== "function") {
+        outcomes.push({ message_id: message.message_id, task_id: message.task_id, status: "skipped_unsupported" });
+        continue;
+      }
+      try {
+        const result = await this.executeRegisteredTaskMessage<T>(message, processors);
+        outcomes.push({ message_id: message.message_id, task_id: message.task_id, status: result.status });
+      } catch (error) {
+        const code = error instanceof CibaApiError ? error.code : "task_delivery_failed";
+        outcomes.push({ message_id: message.message_id, task_id: message.task_id,
+          status: "delivery_error", error: code.slice(0, 100) });
+      }
+    }
+    const completed = outcomes.filter((item) => item.status === "completed").length;
+    const failed = outcomes.filter((item) => item.status === "failed").length;
+    const skipped = outcomes.filter((item) => item.status === "skipped_unsupported" || item.status === "skipped_non_task").length;
+    const deliveryErrors = outcomes.filter((item) => item.status === "delivery_error").length;
+    return { fetched: inbox.messages.length, executed: completed + failed, completed, failed,
+      skipped, delivery_errors: deliveryErrors, outcomes };
+  }
+
   /** Validate and prepare a task message from the inbox for the app's own task processor. */
   consumeTaskMessage(message: CibaInboxMessage<unknown>): TaskRequestConsumption {
     if (message.scope !== "task") {
