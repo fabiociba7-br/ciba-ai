@@ -308,6 +308,55 @@ describe("Android Whisper.cpp bridge contract", () => {
     await expect(adapter.transcribe(request)).resolves.toEqual(result);
   });
 
+  it("reads each native result and segment accessor exactly once", async () => {
+    const resultReads: Record<string, number> = {};
+    const segmentReads: Record<string, number> = {};
+    const nativeSegment = Object.defineProperties({}, {
+      startMs: { enumerable: true, get() { segmentReads.startMs = (segmentReads.startMs ?? 0) + 1; return 0; } },
+      endMs: { enumerable: true, get() { segmentReads.endMs = (segmentReads.endMs ?? 0) + 1; return 500; } },
+      text: { enumerable: true, get() { segmentReads.text = (segmentReads.text ?? 0) + 1; return "Olá"; } },
+    });
+    const nativeResult = Object.defineProperties({}, {
+      engine: { enumerable: true, get() { resultReads.engine = (resultReads.engine ?? 0) + 1; return "whisper.cpp"; } },
+      modelId: { enumerable: true, get() { resultReads.modelId = (resultReads.modelId ?? 0) + 1; return "ggml-tiny"; } },
+      text: { enumerable: true, get() { resultReads.text = (resultReads.text ?? 0) + 1; return "Olá"; } },
+      language: { enumerable: true, get() { resultReads.language = (resultReads.language ?? 0) + 1; return "pt"; } },
+      segments: { enumerable: true, get() { resultReads.segments = (resultReads.segments ?? 0) + 1; return [nativeSegment]; } },
+      durationMs: { enumerable: true, get() { resultReads.durationMs = (resultReads.durationMs ?? 0) + 1; return 500; } },
+    });
+    const adapter = createAndroidWhisperCppAdapter(bridge({
+      transcribe: async () => nativeResult as SpeechToTextResult,
+    }), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+
+    await expect(adapter.transcribe(request)).resolves.toEqual(result);
+    expect(resultReads).toEqual({
+      engine: 1, modelId: 1, text: 1, language: 1, segments: 1, durationMs: 1,
+    });
+    expect(segmentReads).toEqual({ startMs: 1, endMs: 1, text: 1 });
+  });
+
+  it("rejects native transcription results with throwing getters", async () => {
+    const malformedResult = Object.defineProperty({}, "text", {
+      enumerable: true,
+      get() { throw new Error("native_result_getter_failed"); },
+    });
+    const adapter = createAndroidWhisperCppAdapter(bridge({
+      transcribe: async () => malformedResult as SpeechToTextResult,
+    }), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+    await expect(adapter.transcribe(request))
+      .rejects.toThrow("invalid_android_whisper_result");
+  });
+
   it("rejects oversized or inconsistent native transcription results", async () => {
     const invalidResults: SpeechToTextResult[] = [
       { ...result, text: "x".repeat(100_001) },
