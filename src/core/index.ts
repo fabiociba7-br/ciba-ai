@@ -42,3 +42,6 @@ export type { AndroidWhisperCppAdapterOptions, AndroidWhisperCppBridge, AndroidW
 
 export { createChatterboxRegistry, validateTextToSpeechRequest, runChatterboxSynthesis } from "./text-to-speech";
 export type { TextToSpeechRuntime, TextToSpeechConsent, TextToSpeechRequest, TextToSpeechResult, TextToSpeechAdapter, TextToSpeechEnginePolicy, TextToSpeechRegistry } from "./text-to-speech";
+
+export { createDesktopChatterboxAdapter } from "./desktop-chatterbox-bridge";
+export type { DesktopChatterboxAdapterOptions, DesktopChatterboxBridge, DesktopChatterboxBridgeStatus } from "./desktop-chatterbox-bridge";
