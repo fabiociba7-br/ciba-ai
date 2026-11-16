@@ -1,4 +1,11 @@
-import type { CibaToolInvocationContext, CibaToolInvocationPlan, ExecutableCibaToolRegistry } from "./registry";
+import { createCibaToolRegistry } from "./registry";
+import type {
+  CibaToolDefinition,
+  CibaToolInvocationContext,
+  CibaToolInvocationPlan,
+  CibaToolRegistryOptions,
+  ExecutableCibaToolRegistry,
+} from "./registry";
 import type {
   DurableToolApprovalIdentity,
   DurableToolApprovalRequest,
@@ -6,6 +13,55 @@ import type {
 } from "./durable-consent";
 
 export type DurableCibaToolApprovalState = "not_required" | "approval_required" | "approved";
+
+export type DurableCibaToolRegistryOptions = Omit<CibaToolRegistryOptions, "authorize"> & {
+  approvals: DurableToolApprovalStore;
+  authorize: CibaToolRegistryOptions["authorize"];
+};
+
+const durableRegistries = new WeakSet<object>();
+
+/**
+ * Creates a registry whose protected execution path consumes the exact durable
+ * approval before invoking the application's independent authorization policy.
+ * Direct registry.execute calls without a valid approval context fail closed.
+ */
+export function createDurableCibaToolRegistry(
+  definitions: CibaToolDefinition[],
+  options: DurableCibaToolRegistryOptions
+): ExecutableCibaToolRegistry {
+  const { approvals, authorize, ...registryOptions } = options;
+  if (!approvals || typeof approvals.consume !== "function" || typeof authorize !== "function") {
+    throw new Error("invalid_durable_tool_registry_options");
+  }
+  const registry = createCibaToolRegistry(definitions, {
+    ...registryOptions,
+    authorize: async (request) => {
+      if (request.requiresApproval) {
+        const approvalId = request.approvalId;
+        const identity = request.approvalIdentity;
+        if (!approvalId || !identity ||
+            (request.risk !== "write" && request.risk !== "external") ||
+            !request.conversationId || !request.invocationId) return false;
+        const consumed = await approvals.consume({
+          approvalId,
+          identity,
+          request: {
+            conversationId: request.conversationId,
+            invocationId: request.invocationId,
+            toolId: request.toolId,
+            risk: request.risk,
+            input: request.input,
+          },
+        });
+        if (consumed !== true) return false;
+      }
+      return authorize(request);
+    },
+  });
+  durableRegistries.add(registry);
+  return registry;
+}
 
 export interface DurableCibaToolProposal {
   plan: CibaToolInvocationPlan;
@@ -124,6 +180,7 @@ export function createDurableCibaToolApprovalFlow(
   approvals: DurableToolApprovalStore
 ): DurableCibaToolApprovalFlow {
   if (!registry || typeof registry.prepare !== "function" || typeof registry.execute !== "function" ||
+      !durableRegistries.has(registry as object) ||
       !approvals || typeof approvals.request !== "function" || typeof approvals.answer !== "function" ||
       typeof approvals.consume !== "function" || typeof approvals.cancel !== "function") {
     throw new Error("invalid_durable_tool_approval_dependencies");
@@ -167,15 +224,8 @@ export function createDurableCibaToolApprovalFlow(
         if (typeof approvalId !== "string" || !approvalId.trim()) {
           throw new Error("tool_approval_required");
         }
-        const consumed = await approvals.consume({
-          approvalId,
-          identity,
-          request: approvalRequest(safePlan, context),
-        });
-        if (consumed !== true) throw new Error("tool_approval_required");
+        return registry.execute(safePlan.toolId, safePlan.input, context, { approvalId, identity });
       }
-      // The store consumes approval before registry execution. If the registry's independent
-      // authorization policy denies execution, the approval remains spent (fail closed).
       return registry.execute(safePlan.toolId, safePlan.input, context);
     },
 
