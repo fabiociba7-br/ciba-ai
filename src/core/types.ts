@@ -40,6 +40,6 @@ export interface OrchestrationResult extends InferenceResult {
   toolExecutionError?: "tool_execution_failed";
   toolProposalError?: "tool_proposal_rejected";
   selectedAgent: CibaRole;
-  strategy: "single-pass";
-  usedInferenceCalls: 1;
+  strategy: "single-pass" | "tool-assisted";
+  usedInferenceCalls: 1 | 2;
 }

@@ -303,3 +303,7 @@ The authenticated `/v1/ai/chat` route now composes the native capability catalog
 The model receives the tool schemas and may propose a catalog lookup. The orchestrator executes it only through the registry authorization callback. The Worker returns the result in the optional `tool_execution` field; clients can render the structured metadata without treating it as model-authored prose. Execution failures are represented by a generic `tool_execution_error`.
 
 Unpaired devices do not receive the tool catalog in their model context. This chat integration does not register write/external handlers, does not enable arbitrary native adapters, and does not execute any operation that changes state or contacts an external service. The existing durable approval API remains separate and does not imply execution.
+
+### Segunda passagem de resposta após consulta de leitura
+
+Quando uma ferramenta de leitura é executada com sucesso em runtime confiável, o orquestrador faz uma única segunda inferência para converter o resultado técnico em resposta natural. Essa passagem recebe somente a pergunta original e o resultado serializado como dado não confiável; não recebe catálogo nem runtime de ferramentas e não pode iniciar outra execução. O resultado é limitado a 12.000 caracteres antes de entrar no contexto. Se a segunda inferência falhar ou tentar emitir uma nova proposta de ferramenta, a resposta usa um fallback seguro e preserva o campo estruturado `tool_execution`. O fluxo fica limitado a uma execução e duas inferências por turno.
