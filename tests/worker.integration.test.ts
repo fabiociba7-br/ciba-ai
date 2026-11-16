@@ -58,6 +58,8 @@ describe("Ciba AI Worker integration", () => {
     expect(html).toContain("/v1/owner/memory/reviews");
     expect(html).toContain("Relações entre memórias");
     expect(html).toContain("/v1/owner/memory/insights");
+    expect(html).toContain("Histórico de alterações da memória");
+    expect(html).toContain("/v1/owner/memory/history");
     expect(html).not.toContain("sessionStorage");
     expect(html).not.toContain("localStorage");
   });
@@ -768,6 +770,8 @@ describe("Ciba AI curated private memory", () => {
     expect(blockedMemory.status).toBe(403);
     const blockedInsights = await ownerRequest("/v1/owner/memory/insights");
     expect(blockedInsights.status).toBe(403);
+    const blockedHistory = await ownerRequest("/v1/owner/memory/history?scope=app");
+    expect(blockedHistory.status).toBe(403);
     const blockedCandidate = await ownerRequest("/v1/owner/memory/candidates", "POST", {
       source_role: "user", source_text: "Prefiro respostas diretas.", key: "response_style", value: "Prefiro respostas diretas",
     });
@@ -947,6 +951,18 @@ describe("Ciba AI curated private memory", () => {
     expect(deleted.status).toBe(200);
     const afterDelete = await ownerRequest("/v1/owner/memory?scope=app");
     expect((await afterDelete.json() as { memories: unknown[] }).memories).toHaveLength(0);
+    const historyResponse = await ownerRequest("/v1/owner/memory/history?scope=app&limit=50");
+    expect(historyResponse.status).toBe(200);
+    const history = await historyResponse.json() as {
+      events: Array<{ action: string; memory_key: string; actor_app_id: string }>;
+      values_stored: boolean;
+    };
+    expect(history.values_stored).toBe(false);
+    expect(history.events.some((event) => event.action === "created" && event.memory_key === "response_style")).toBe(true);
+    expect(history.events.some((event) => event.action === "updated" && event.memory_key === "response_style")).toBe(true);
+    expect(history.events.some((event) => event.action === "deleted" && event.memory_key === "response_style")).toBe(true);
+    expect(history.events.every((event) => event.actor_app_id === memoryApp)).toBe(true);
+
   });
 });
 
