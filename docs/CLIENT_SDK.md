@@ -126,3 +126,8 @@ O servidor autentica o dispositivo, exige proprietário ativo e memória habilit
 ## Memória contextual no chat
 
 Quando `memory_enabled` estiver ligado para um proprietário ativo e pareado, `chat(messages)` utiliza automaticamente a última mensagem do usuário para localizar até cinco memórias curadas relevantes. O app autenticado só recebe sua própria memória; itens de outros apps ou do proprietário exigem concessão ativa de leitura. A busca é lexical, não faz inferência adicional e limita os itens a 1.800 caracteres. O conteúdo é tratado como dado não confiável. Sem pareamento, sem habilitação ou sem correspondências, a chamada segue normalmente sem contexto de memória. O chat não salva mensagens nem cria memórias automaticamente.
+
+
+## Propostas de memória com confirmação
+
+`prepareMemoryCandidate({ sourceText, key, value, scope })` envia um trecho de texto atribuído ao usuário e uma proposta de chave/valor. A resposta é somente uma prévia, com `requires_confirmation: true`, `persisted: false` e `stored: false`. O app deve exibir a proposta e aguardar confirmação explícita. Depois da confirmação, use `saveMemory({ scope, key, value, consent: "curated" })`. Não chame `saveMemory` automaticamente após preparar uma proposta. O endpoint exige que o valor seja um trecho do texto do usuário, não aceita texto atribuído ao assistente e não persiste o texto de origem nem chama IA. Para escopo do proprietário, a permissão `memory_write` precisa estar ativa.
