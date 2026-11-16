@@ -18,14 +18,14 @@ describe("Garcia structured context packages", () => {
   });
 
   it("rejects empty or oversized packages and invalid item metadata", () => {
-    expect(() => buildContextPackage("ctx", "ok", [])).toThrow("invalid_context_items");
-    expect(() => buildContextPackage("ctx", "ok", Array.from({ length: 9 }, (_, i) => ({
+    expect(() => buildContextPackage("ctx", "Valid purpose", [])).toThrow("invalid_context_items");
+    expect(() => buildContextPackage("ctx", "Valid purpose", Array.from({ length: 9 }, (_, i) => ({
       key: `k${i}`, value: "v", kind: "fact" as const, origin: "task_state" as const,
     })))).toThrow("invalid_context_items");
-    expect(() => buildContextPackage("ctx", "ok", [
+    expect(() => buildContextPackage("ctx", "Valid purpose", [
       { key: "bad key", value: "v", kind: "fact", origin: "task_state" },
     ])).toThrow("invalid_context_item");
-    expect(() => buildContextPackage("ctx", "ok", [
+    expect(() => buildContextPackage("ctx", "Valid purpose", [
       { key: "k", value: "v", kind: "fact", origin: "unverified" as never },
     ])).toThrow("invalid_context_item");
   });
