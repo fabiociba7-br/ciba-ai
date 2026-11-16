@@ -190,7 +190,10 @@ describe("guarded Whisper.cpp transcription execution", () => {
     await Promise.resolve();
     expect(adapterSignal).toBe(controller.signal);
     controller.abort();
-    await expect(execution).rejects.toThrow("adapter_cancelled");
+    await expect(execution).resolves.toEqual({
+      success: false,
+      reasons: ["transcription_cancelled"],
+    });
     expect(adapterAudio && [...adapterAudio]).toEqual([0, 0, 0]);
 
     await expect(runWhisperCppTranscription(
