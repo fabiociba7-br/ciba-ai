@@ -69,3 +69,10 @@ O registry é fail-closed: não disponibiliza runtime sem adapter explicitamente
 O contrato puro de avaliação está em `src/core/device-capabilities.ts`. O cliente pode informar plataforma, arquitetura, memória total/disponível, núcleos lógicos, presença de GPU e nível de API Android. O núcleo valida limites e compara o perfil com os requisitos declarados por cada runtime, devolvendo motivos explícitos de incompatibilidade.
 
 O perfil é um relato do cliente, não uma atestação de hardware confiável. A avaliação não coleta dados sozinha, não concede permissões, não instala nem inicia processos, não baixa modelos e não envia telemetria. A decisão de executar um motor continua dependendo de adapter registrado, revisão de licença aprovada e autorização explícita.
+
+
+### Contrato da ponte nativa Android para whisper.cpp
+
+O módulo TypeScript agora define a interface que uma implementação Android/JNI deverá cumprir em `src/core/android-whisper-bridge.ts`. Antes de encaminhar áudio, a ponte precisa informar que a biblioteca nativa está pronta e que o modelo solicitado está carregado. A resposta é validada quanto ao motor, identificador do modelo e segmentos/timestamps.
+
+A ponte não carrega bibliotecas, não instala APKs, não baixa pesos e não escolhe arquivos no dispositivo. O app Android ainda precisa implementar o lado JNI/NDK e fornecer um modelo compatível. Sem biblioteca e modelo prontos, a chamada falha de forma explícita; não há fallback remoto automático.
