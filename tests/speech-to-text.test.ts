@@ -3,6 +3,7 @@ import {
   createWhisperCppRegistry,
   validateSpeechToTextRequest,
   resolveWhisperCppRuntime,
+  snapshotSpeechToTextResult,
   type SpeechToTextAdapter,
   type SpeechToTextEnginePolicy,
 } from "../src/core/speech-to-text";
@@ -216,4 +217,98 @@ describe("Garcia Whisper.cpp integration contract", () => {
     ] });
   });
 
+
+describe("Whisper.cpp adapter result boundary", () => {
+  it("captures accessor-backed output once and returns a detached immutable snapshot", () => {
+    const reads: Record<string, number> = {};
+    const counted = (key: string, value: unknown) => ({
+      get() {
+        reads[key] = (reads[key] ?? 0) + 1;
+        return value;
+      },
+    });
+    const segment = Object.defineProperties({}, {
+      startMs: counted("startMs", 0),
+      endMs: counted("endMs", 500),
+      text: counted("segmentText", "Olá"),
+    });
+    const segments = new Proxy([segment], {
+      get(target, property, receiver) {
+        if (property === "length" || property === "0") {
+          const key = String(property);
+          reads[key] = (reads[key] ?? 0) + 1;
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const source = Object.defineProperties({}, {
+      engine: counted("engine", "whisper.cpp"),
+      modelId: counted("modelId", "ggml-tiny"),
+      text: counted("text", "Olá"),
+      language: counted("language", "pt"),
+      segments: counted("segments", segments),
+      durationMs: counted("durationMs", 500),
+    });
+
+    const snapshot = snapshotSpeechToTextResult(source, "ggml-tiny");
+    expect(snapshot).toEqual({
+      engine: "whisper.cpp",
+      modelId: "ggml-tiny",
+      text: "Olá",
+      language: "pt",
+      durationMs: 500,
+      segments: [{ startMs: 0, endMs: 500, text: "Olá" }],
+    });
+    expect(reads).toEqual({
+      engine: 1, modelId: 1, text: 1, language: 1,
+      segments: 1, durationMs: 1, "0": 1, length: 1,
+      startMs: 1, endMs: 1, segmentText: 1,
+    });
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(Object.isFrozen(snapshot?.segments)).toBe(true);
+    expect(Object.isFrozen(snapshot?.segments[0])).toBe(true);
+    expect(Reflect.set(snapshot!, "text", "alterado")).toBe(false);
+  });
+
+  it("fails closed for throwing getters, malformed segments, and oversized output", () => {
+    const throwing = Object.defineProperty({}, "engine", {
+      get() { throw new Error("untrusted_getter"); },
+    });
+    expect(snapshotSpeechToTextResult(throwing, "ggml-tiny")).toBeNull();
+
+    const invalidSegment = {
+      engine: "whisper.cpp",
+      modelId: "ggml-tiny",
+      text: "Olá",
+      language: "pt",
+      segments: [{ startMs: 10, endMs: 5, text: "inválido" }],
+    };
+    expect(snapshotSpeechToTextResult(invalidSegment, "ggml-tiny")).toBeNull();
+    expect(snapshotSpeechToTextResult({
+      engine: "whisper.cpp",
+      modelId: "ggml-tiny",
+      text: "x".repeat(100_001),
+      language: "pt",
+      segments: [],
+    }, "ggml-tiny")).toBeNull();
+  });
+
+  it("does not invoke a caller-provided segments iterator", () => {
+    const segments = new Proxy([{ startMs: 0, endMs: 1, text: "x" }], {
+      get(target, property, receiver) {
+        if (property === Symbol.iterator) {
+          throw new Error("iterator_must_not_run");
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    expect(snapshotSpeechToTextResult({
+      engine: "whisper.cpp",
+      modelId: "ggml-tiny",
+      text: "x",
+      language: "pt",
+      segments,
+    }, "ggml-tiny")?.segments).toEqual([{ startMs: 0, endMs: 1, text: "x" }]);
+  });
 });
+
