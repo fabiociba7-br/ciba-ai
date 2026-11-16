@@ -21,7 +21,7 @@ import { prepareMemoryCandidate } from "./core/memory-candidates";
 import { classifyMemoryProposal } from "./core/memory-learning";
 import { analyzeMemoryRelationships, type MemoryInsightRecord } from "./core/memory-insights";
 import { buildOwnerProfile } from "./core/owner-profile";
-import { buildProfileAwareChatMemoryContext, type MemorySearchRecord } from "./core/memory-retrieval";
+import { rankRelevantMemories, buildProfileAwareChatMemoryContext, type MemorySearchRecord } from "./core/memory-retrieval";
 import { validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./core/apps/registry";
 import { isAppTaskType, selectTaskRoute } from "./core/task-coordinator";
 import { consolidateTaskResults, type TaskResultRecord } from "./core/task-results";
