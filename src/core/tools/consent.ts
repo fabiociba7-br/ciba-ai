@@ -19,6 +19,7 @@ const MAX_DEPTH = 12;
 const MAX_NODES = 20_000;
 const MAX_STRING_CHARS = 256_000;
 const CONSENT_TTL_MS = 5 * 60 * 1000;
+const MAX_TRACKED_INVOCATIONS = 1_024;
 
 interface SafeRequest extends Omit<CibaToolConsentRequest, "input"> {
   input: unknown;
@@ -170,17 +171,25 @@ export function createCibaToolConsentStore(): CibaToolConsentStore {
       first.fingerprint === next.fingerprint;
   }
 
+  function closeInvocation(invocationId: string, now: number): void {
+    if (!closed.has(invocationId) && closed.size >= MAX_TRACKED_INVOCATIONS) {
+      const oldest = closed.keys().next().value as string | undefined;
+      if (oldest !== undefined) closed.delete(oldest);
+    }
+    closed.set(invocationId, now + CONSENT_TTL_MS);
+  }
+
   function prune(now: number): void {
     for (const [id, item] of pending) {
       if (item.expiresAt <= now) {
         pending.delete(id);
-        closed.set(id, now + CONSENT_TTL_MS);
+        closeInvocation(id, now);
       }
     }
     for (const [id, item] of approved) {
       if (item.expiresAt <= now) {
         approved.delete(id);
-        closed.set(id, now + CONSENT_TTL_MS);
+        closeInvocation(id, now);
       }
     }
     for (const [id, expiresAt] of closed) if (expiresAt <= now) closed.delete(id);
@@ -195,6 +204,9 @@ export function createCibaToolConsentStore(): CibaToolConsentStore {
       if (existing) {
         if (!matches(existing, request)) throw new Error("tool_consent_invocation_conflict");
         return approved.has(request.invocationId) ? "approved" : "approval_required";
+      }
+      if (pending.size + approved.size >= MAX_TRACKED_INVOCATIONS) {
+        throw new Error("tool_consent_capacity_reached");
       }
       pending.set(request.invocationId, request);
       return "approval_required";
@@ -221,7 +233,7 @@ export function createCibaToolConsentStore(): CibaToolConsentStore {
       if (!matches(existing, candidate)) return false;
       pending.delete(invocationId);
       if (!allow) {
-        closed.set(invocationId, Date.now() + CONSENT_TTL_MS);
+        closeInvocation(invocationId, Date.now());
         return false;
       }
       approved.set(invocationId, existing);
@@ -239,7 +251,7 @@ export function createCibaToolConsentStore(): CibaToolConsentStore {
       const existing = approved.get(request.invocationId);
       if (!existing || !matches(existing, request)) return false;
       approved.delete(request.invocationId);
-      closed.set(request.invocationId, Date.now() + CONSENT_TTL_MS);
+      closeInvocation(request.invocationId, Date.now());
       return true;
     },
 
@@ -249,7 +261,7 @@ export function createCibaToolConsentStore(): CibaToolConsentStore {
       if (!item || item.conversationId !== conversationId) return false;
       pending.delete(invocationId);
       approved.delete(invocationId);
-      closed.set(invocationId, Date.now() + CONSENT_TTL_MS);
+      closeInvocation(invocationId, Date.now());
       return true;
     }
   });
