@@ -77,6 +77,38 @@ describe("guarded Whisper.cpp transcription execution", () => {
     });
   });
 
+  it("rejects concurrent work beyond the registry capacity and releases the slot afterward", async () => {
+    let finish: (() => void) | undefined;
+    let calls = 0;
+    const slowAdapter: SpeechToTextAdapter = {
+      ...adapter,
+      transcribe: async () => {
+        calls += 1;
+        await new Promise<void>((resolve) => { finish = resolve; });
+        return adapter.transcribe(request);
+      },
+    };
+    const registry = createWhisperCppRegistry({
+      ...policy,
+      maxConcurrentTranscriptions: 1,
+    }, [slowAdapter]);
+    const first = runWhisperCppTranscription(registry, profile, requirements, request);
+    await Promise.resolve();
+    await expect(runWhisperCppTranscription(
+      registry, profile, requirements, request,
+    )).resolves.toEqual({
+      success: false,
+      reasons: ["transcription_capacity_reached"],
+    });
+    expect(calls).toBe(1);
+    finish?.();
+    await expect(first).resolves.toMatchObject({ success: true });
+    await expect(runWhisperCppTranscription(
+      registry, profile, requirements, request,
+    )).resolves.toMatchObject({ success: true });
+    expect(calls).toBe(2);
+  });
+
   it("clears the temporary audio copy after successful transcription without mutating caller audio", async () => {
     const original = new Uint8Array([7, 8, 9]);
     let adapterAudio: Uint8Array | undefined;
