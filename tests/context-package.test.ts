@@ -30,6 +30,12 @@ describe("Garcia structured context packages", () => {
     ])).toThrow("invalid_context_item");
   });
 
+  it("rejects keys that imply a raw conversation or prompt dump", () => {
+    expect(() => buildContextPackage("ctx", "Contexto de trabalho", [
+      { key: "transcript", value: "texto", kind: "summary", origin: "task_state" },
+    ])).toThrow("invalid_context_item");
+  });
+
   it("caps individual values and rejects invalid purpose", () => {
     expect(() => buildContextPackage("ctx", "x", [
       { key: "k", value: "x".repeat(501), kind: "fact", origin: "task_state" },
