@@ -9,7 +9,7 @@ export function classifyMemoryProposal(
   proposedValue: string,
   existing: ExistingMemoryValue | null,
 ): { classification: MemoryProposalClassification; existing_memory_id: string | null; existing_value_snapshot: string | null } {
-  if (typeof proposedValue !== "string" || proposedValue.length > 8_000) {
+  if (typeof proposedValue !== "string" || !proposedValue.trim() || proposedValue.length > 8_000) {
     throw new Error("invalid_memory_proposal");
   }
 
@@ -29,9 +29,9 @@ export function classifyMemoryProposal(
       const valueDescriptor = descriptors.value;
       if (!idDescriptor || !("value" in idDescriptor) || !idDescriptor.enumerable ||
           !valueDescriptor || !("value" in valueDescriptor) || !valueDescriptor.enumerable ||
-          typeof idDescriptor.value !== "string" || idDescriptor.value.length < 1 ||
+          typeof idDescriptor.value !== "string" || !idDescriptor.value.trim() ||
           idDescriptor.value.length > 200 || typeof valueDescriptor.value !== "string" ||
-          valueDescriptor.value.length > 8_000) {
+          !valueDescriptor.value.trim() || valueDescriptor.value.length > 8_000) {
         throw new Error("invalid_memory_proposal");
       }
       safeExisting = Object.freeze({
