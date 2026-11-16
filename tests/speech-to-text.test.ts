@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createWhisperCppRegistry,
   validateSpeechToTextRequest,
+  resolveWhisperCppRuntime,
   type SpeechToTextAdapter,
   type SpeechToTextEnginePolicy,
 } from "../src/core/speech-to-text";
@@ -77,4 +78,36 @@ describe("Garcia Whisper.cpp integration contract", () => {
       mimeType: "audio/wav",
     }, 1024)).toThrow("invalid_speech_to_text_request");
   });
+  it("requires both a compatible device and an installed adapter before offering transcription", () => {
+    const profile = {
+      platform: "android" as const, architecture: "arm64" as const,
+      totalRamMb: 4096, availableRamMb: 2048, logicalCpuCores: 8,
+      gpuAvailable: false, androidApiLevel: 35, collectedAt: 1794800000000,
+      source: "client_report" as const,
+    };
+    const requirements = { runtime: "android_embedded" as const, minimumRamMb: 1024, minimumCpuCores: 4 };
+    const emptyRegistry = createWhisperCppRegistry({ ...policy, licenseStatus: "approved" });
+    expect(resolveWhisperCppRuntime(emptyRegistry, profile, requirements))
+      .toEqual({ available: false, reasons: ["adapter_not_installed"] });
+    const readyRegistry = createWhisperCppRegistry({ ...policy, licenseStatus: "approved" }, [adapter]);
+    expect(resolveWhisperCppRuntime(readyRegistry, profile, requirements))
+      .toMatchObject({ available: true, reasons: [], adapter });
+  });
+
+  it("does not offer transcription on an incompatible device even if an adapter exists", () => {
+    const profile = {
+      platform: "android" as const, architecture: "arm64" as const,
+      totalRamMb: 512, availableRamMb: 128, logicalCpuCores: 2,
+      gpuAvailable: false, androidApiLevel: 23, collectedAt: 1794800000000,
+      source: "client_report" as const,
+    };
+    const readyRegistry = createWhisperCppRegistry({ ...policy, licenseStatus: "approved" }, [adapter]);
+    expect(resolveWhisperCppRuntime(readyRegistry, profile, {
+      runtime: "android_embedded", minimumRamMb: 1024, minimumAvailableRamMb: 512,
+      minimumCpuCores: 4, minimumAndroidApiLevel: 26,
+    })).toEqual({ available: false, reasons: [
+      "insufficient_total_ram", "insufficient_available_ram", "insufficient_cpu_cores", "android_api_too_low",
+    ] });
+  });
+
 });
