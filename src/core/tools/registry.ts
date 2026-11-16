@@ -124,7 +124,7 @@ function isValidSchemaDefinition(schema: unknown, depth = 0): boolean {
   if (type === "array") {
     const allowed = new Set(["type", "items", "minItems", "maxItems"]);
     return Object.keys(rule).every((key) => allowed.has(key)) &&
-      isValidSchemaDefinition(rule.items) &&
+      isValidSchemaDefinition(rule.items, depth + 1) &&
       (rule.minItems === undefined || (Number.isInteger(rule.minItems) && (rule.minItems as number) >= 0)) &&
       (rule.maxItems === undefined || (Number.isInteger(rule.maxItems) && (rule.maxItems as number) >= 0)) &&
       (rule.minItems === undefined || rule.maxItems === undefined ||
