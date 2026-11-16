@@ -475,7 +475,7 @@ export async function runWhisperCppTranscription(
     });
     // An adapter may finish after cancellation if its runtime is not
     // cancellation-aware. Never publish that late result to the caller.
-    if (safeRequest.signal?.aborted) {
+    if (safeRequest.signal !== undefined && readAbortSignalAborted(safeRequest.signal) !== false) {
       return { success: false, reasons: ["transcription_cancelled"] };
     }
     const resultSnapshot = snapshotSpeechToTextResult(result, resolution.adapter.modelId);
@@ -486,7 +486,7 @@ export async function runWhisperCppTranscription(
   } catch (error) {
     // Normalize adapter-level cancellation into the same public outcome,
     // while preserving genuine engine failures when no cancellation occurred.
-    if (safeRequest.signal?.aborted) {
+    if (safeRequest.signal !== undefined && readAbortSignalAborted(safeRequest.signal) !== false) {
       return { success: false, reasons: ["transcription_cancelled"] };
     }
     throw error;
