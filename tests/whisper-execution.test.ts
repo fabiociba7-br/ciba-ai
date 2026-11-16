@@ -113,6 +113,39 @@ describe("guarded Whisper.cpp transcription execution", () => {
     expect(called).toBe(false);
   });
 
+  it("rejects oversized or inconsistent transcription output", async () => {
+    const oversized: SpeechToTextAdapter = {
+      ...adapter,
+      transcribe: async () => ({
+        text: "x".repeat(100_001),
+        language: "pt",
+        segments: [],
+        engine: "whisper.cpp",
+        modelId: "ggml-tiny",
+      }),
+    };
+    const registry = createWhisperCppRegistry(policy, [oversized]);
+    await expect(runWhisperCppTranscription(
+      registry, profile, requirements, request,
+    )).rejects.toThrow("invalid_whisper_cpp_result");
+
+    const inconsistent: SpeechToTextAdapter = {
+      ...adapter,
+      transcribe: async () => ({
+        text: "Olá",
+        language: "pt",
+        durationMs: 100,
+        segments: [{ startMs: 0, endMs: 101, text: "Olá" }],
+        engine: "whisper.cpp",
+        modelId: "ggml-tiny",
+      }),
+    };
+    const inconsistentRegistry = createWhisperCppRegistry(policy, [inconsistent]);
+    await expect(runWhisperCppTranscription(
+      inconsistentRegistry, profile, requirements, request,
+    )).rejects.toThrow("invalid_whisper_cpp_result");
+  });
+
   it("rejects malformed results from an adapter", async () => {
     const malformed: SpeechToTextAdapter = {
       ...adapter,
