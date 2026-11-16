@@ -250,6 +250,34 @@ describe("Android Whisper.cpp bridge contract", () => {
     }
   });
 
+  it("returns a detached immutable snapshot of the native transcription", async () => {
+    const nativeResult: SpeechToTextResult = {
+      ...result,
+      segments: [{ startMs: 0, endMs: 500, text: "Olá" }],
+    };
+    const adapter = createAndroidWhisperCppAdapter(bridge({
+      transcribe: async () => nativeResult,
+    }), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+
+    const output = await adapter.transcribe(request);
+    nativeResult.text = "alterado";
+    nativeResult.segments[0].text = "alterado";
+    nativeResult.segments[0].endMs = 999;
+
+    expect(output.text).toBe("Olá");
+    expect(output.segments[0]).toEqual({ startMs: 0, endMs: 500, text: "Olá" });
+    expect(Object.isFrozen(output)).toBe(true);
+    expect(Object.isFrozen(output.segments)).toBe(true);
+    expect(Object.isFrozen(output.segments[0])).toBe(true);
+    expect(Reflect.set(output, "text", "substituído")).toBe(false);
+    expect(Reflect.set(output.segments[0], "text", "substituído")).toBe(false);
+  });
+
   it("returns a valid transcription from a ready native bridge", async () => {
     const adapter = createAndroidWhisperCppAdapter(bridge(), {
       modelId: "ggml-tiny",
