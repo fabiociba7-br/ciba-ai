@@ -237,36 +237,37 @@ export function createCibaToolRegistry(
       }
       if (!validateSchema(safeInput, item.schema)) throw new Error("invalid_tool_input");
 
-      const authorized = await withTimeout(
-        Promise.resolve().then(() => authorize({
-          toolId,
-          risk: item.definition.risk,
-          requiresApproval: item.definition.requiresApproval,
-          input: safeInput
-        })),
-        timeoutMs
-      );
-      if (authorized !== true) throw new Error("tool_authorization_denied");
-
       if (activeExecutions >= maxConcurrentExecutions) {
         throw new Error("tool_execution_capacity_reached");
       }
       activeExecutions += 1;
-      const execution = Promise.resolve().then(() => item.definition.execute(safeInput));
+      const execution = Promise.resolve().then(async () => {
+        const authorized = await authorize({
+          toolId,
+          risk: item.definition.risk,
+          requiresApproval: item.definition.requiresApproval,
+          input: safeInput
+        });
+        if (authorized !== true) throw new Error("tool_authorization_denied");
+
+        const output = await item.definition.execute(safeInput);
+        let safeOutput: unknown;
+        try {
+          safeOutput = cloneJson(output);
+          if (jsonBytes(safeOutput) > maxOutputBytes) throw new Error("tool_output_too_large");
+        } catch (error) {
+          if (error instanceof Error && error.message === "tool_output_too_large") throw error;
+          throw new Error("invalid_tool_output");
+        }
+        return safeOutput;
+      });
+      // Keep the capacity slot until the underlying operation actually settles,
+      // even if the caller's timeout has already elapsed.
       execution.then(
         () => { activeExecutions -= 1; },
         () => { activeExecutions -= 1; }
       );
-      const output = await withTimeout(execution, timeoutMs);
-      let safeOutput: unknown;
-      try {
-        safeOutput = cloneJson(output);
-        if (jsonBytes(safeOutput) > maxOutputBytes) throw new Error("tool_output_too_large");
-      } catch (error) {
-        if (error instanceof Error && error.message === "tool_output_too_large") throw error;
-        throw new Error("invalid_tool_output");
-      }
-      return safeOutput;
+      return await withTimeout(execution, timeoutMs);
     }
   });
 }
