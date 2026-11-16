@@ -40,11 +40,13 @@ export interface SpeechToTextEnginePolicy {
   licenseStatus: "review_required" | "approved" | "restricted" | "rejected";
   supportedRuntimes: SpeechToTextRuntime[];
   maxAudioBytes: number;
+  maxConcurrentTranscriptions?: number;
 }
 
 export interface SpeechToTextRegistry {
   getAdapter(runtime: SpeechToTextRuntime): SpeechToTextAdapter | undefined;
   listAvailableRuntimes(): SpeechToTextRuntime[];
+  tryAcquireExecution(): (() => void) | undefined;
 }
 
 const MIME_TYPES = new Set<SpeechToTextRequest["mimeType"]>([
@@ -61,7 +63,9 @@ export function createWhisperCppRegistry(
   adapters: SpeechToTextAdapter[] = [],
 ): SpeechToTextRegistry {
   if (!Number.isInteger(policy.maxAudioBytes) || policy.maxAudioBytes < 1 ||
-      !Array.isArray(policy.supportedRuntimes) || policy.supportedRuntimes.length === 0) {
+      !Array.isArray(policy.supportedRuntimes) || policy.supportedRuntimes.length === 0 ||
+      (policy.maxConcurrentTranscriptions !== undefined &&
+        (!Number.isInteger(policy.maxConcurrentTranscriptions) || policy.maxConcurrentTranscriptions < 1 || policy.maxConcurrentTranscriptions > 8))) {
     throw new Error("invalid_speech_to_text_policy");
   }
   if (policy.licenseStatus !== "approved" && adapters.length > 0) {
@@ -69,6 +73,8 @@ export function createWhisperCppRegistry(
   }
 
   const adapterMap = new Map<SpeechToTextRuntime, SpeechToTextAdapter>();
+  const maxConcurrent = policy.maxConcurrentTranscriptions ?? 1;
+  let activeExecutions = 0;
   for (const adapter of adapters) {
     if (adapter.engine !== "whisper.cpp" ||
         !policy.supportedRuntimes.includes(adapter.runtime) ||
@@ -81,6 +87,16 @@ export function createWhisperCppRegistry(
   return {
     getAdapter: (runtime) => adapterMap.get(runtime),
     listAvailableRuntimes: () => [...adapterMap.keys()],
+    tryAcquireExecution: () => {
+      if (activeExecutions >= maxConcurrent) return undefined;
+      activeExecutions += 1;
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        activeExecutions -= 1;
+      };
+    },
   };
 }
 
@@ -173,6 +189,11 @@ export async function runWhisperCppTranscription(
     return { success: false, reasons: resolution.reasons };
   }
 
+  const releaseExecution = registry.tryAcquireExecution();
+  if (!releaseExecution) {
+    return { success: false, reasons: ["transcription_capacity_reached"] };
+  }
+
   // Give the adapter an isolated copy and clear it after completion so the
   // caller's audio remains untouched and the temporary buffer is not retained.
   const audioBuffer = request.audio.slice();
@@ -185,5 +206,6 @@ export async function runWhisperCppTranscription(
     return { success: true, result };
   } finally {
     audioBuffer.fill(0);
+    releaseExecution();
   }
 }
