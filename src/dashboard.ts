@@ -256,7 +256,7 @@ card.appendChild(el("small","Solicitado: "+dateText(item.created_at)+" · Expira
 card.appendChild(el("small","Conversa: "+item.conversation_id+" · Invocação: "+item.invocation_id));
 card.appendChild(el("strong","Parâmetros exatos"));
 var input=el("pre",JSON.stringify(item.input,null,2));input.className="approval-input";card.appendChild(input);
-var actions=el("div","");actions.className="actions";
+if(item.status==="pending"){var actions=el("div","");actions.className="actions";
 var approve=el("button","Aprovar");approve.addEventListener("click",async function(){
 if(!confirm("Autorizar uma única execução de "+item.tool_id+"? Confira os parâmetros exibidos no cartão. Nenhuma ação será executada por esta confirmação."))return;
 approve.disabled=true;reject.disabled=true;
@@ -269,7 +269,7 @@ approve.disabled=true;reject.disabled=true;
 try{await api("/v1/owner/tool-approvals/"+encodeURIComponent(item.approval_id)+"/decision","POST",{allow:false});say("Solicitação rejeitada.");await loadToolApprovals()}
 catch(error){say(error.message);approve.disabled=false;reject.disabled=false}
 });
-actions.appendChild(approve);actions.appendChild(reject);card.appendChild(actions);host.appendChild(card);
+actions.appendChild(approve);actions.appendChild(reject);card.appendChild(actions);}else{card.appendChild(el("small","Autorizada. Aguardando execução; esta tela não executa ferramentas."));}host.appendChild(card);
 });
 }catch(error){host.appendChild(el("p","Não foi possível carregar as aprovações: "+error.message))}
 };
