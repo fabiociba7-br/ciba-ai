@@ -19,6 +19,7 @@ export interface AndroidWhisperCppBridgeStatus {
   nativeLibraryReady: boolean;
   modelLoaded: boolean;
   modelId?: string;
+  modelSha256?: string;
   engineVersion?: string;
 }
 
@@ -29,6 +30,7 @@ export interface AndroidWhisperCppBridge {
 
 export interface AndroidWhisperCppAdapterOptions {
   modelId: string;
+  modelSha256: string;
   maxAudioBytes: number;
   deviceRequirements: DeviceCapabilityRequirements;
 }
@@ -49,6 +51,7 @@ export function createAndroidWhisperCppAdapter(
   // Snapshot caller-owned configuration so later mutations cannot change
   // the selected model, audio limit, or hardware compatibility requirements.
   const modelId = options.modelId;
+  const modelSha256 = options.modelSha256;
   const maxAudioBytes = options.maxAudioBytes;
   const deviceRequirements: DeviceCapabilityRequirements = Object.freeze({
     ...options.deviceRequirements,
@@ -81,7 +84,8 @@ export function createAndroidWhisperCppAdapter(
       if (!status.nativeLibraryReady) {
         throw new Error("android_whisper_native_library_unavailable");
       }
-      if (!status.modelLoaded || status.modelId !== modelId) {
+      if (!status.modelLoaded || status.modelId !== modelId ||
+          status.modelSha256 !== modelSha256) {
         throw new Error("android_whisper_model_unavailable");
       }
 
