@@ -276,6 +276,21 @@ const ANDROID_AUDIO_MIME_TYPES = new Set([
   "audio/wav", "audio/mpeg", "audio/mp4", "audio/ogg", "audio/webm", "audio/flac",
 ]);
 
+function readAndroidAudioByteLength(value: unknown): number | null {
+  try {
+    if (value === null || typeof value !== "object" || !ArrayBuffer.isView(value)) return null;
+    const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype);
+    const tagGetter = Object.getOwnPropertyDescriptor(typedArrayPrototype, Symbol.toStringTag)?.get;
+    const lengthGetter = Object.getOwnPropertyDescriptor(typedArrayPrototype, "byteLength")?.get;
+    if (typeof tagGetter !== "function" || tagGetter.call(value) !== "Uint8Array" ||
+        typeof lengthGetter !== "function") return null;
+    const length = lengthGetter.call(value);
+    return Number.isSafeInteger(length) && length >= 0 ? length : null;
+  } catch {
+    return null;
+  }
+}
+
 function snapshotAndroidTranscriptionRequest(
   value: unknown,
   maxAudioBytes: number,
@@ -293,9 +308,8 @@ function snapshotAndroidTranscriptionRequest(
     const timestamps = source.timestamps;
     const signal = source.signal;
 
-    if (!(audio instanceof Uint8Array) ||
-        Object.getPrototypeOf(audio) !== Uint8Array.prototype ||
-        audio.byteLength === 0 || audio.byteLength > maxAudioBytes ||
+    const audioByteLength = readAndroidAudioByteLength(audio);
+    if (audioByteLength === null || audioByteLength === 0 || audioByteLength > maxAudioBytes ||
         typeof mimeType !== "string" || !ANDROID_AUDIO_MIME_TYPES.has(mimeType) ||
         (language !== undefined &&
           (typeof language !== "string" || !/^[a-z]{2,3}(-[A-Z]{2})?$/.test(language))) ||
@@ -316,8 +330,10 @@ function snapshotAndroidTranscriptionRequest(
       return null;
     }
 
+    const audioCopy = new Uint8Array(audioByteLength);
+    Uint8Array.prototype.set.call(audioCopy, audio as Uint8Array);
     return {
-      audio: Uint8Array.prototype.slice.call(audio) as Uint8Array,
+      audio: audioCopy,
       consent: { granted: true, purpose: "transcription", source: "explicit_user_action" },
       mimeType: mimeType as SpeechToTextRequest["mimeType"],
       ...(language !== undefined ? { language: language as string } : {}),

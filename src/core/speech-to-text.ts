@@ -110,11 +110,12 @@ function readAbortSignalAborted(value: unknown): boolean | null {
 
 function readUint8ArrayByteLength(value: unknown): number | null {
   try {
-    if (value === null || typeof value !== "object" ||
-        Object.getPrototypeOf(value) !== Uint8Array.prototype) return null;
+    if (value === null || typeof value !== "object" || !ArrayBuffer.isView(value)) return null;
     const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype);
+    const tagGetter = Object.getOwnPropertyDescriptor(typedArrayPrototype, Symbol.toStringTag)?.get;
     const getter = Object.getOwnPropertyDescriptor(typedArrayPrototype, "byteLength")?.get;
-    if (typeof getter !== "function") return null;
+    if (typeof tagGetter !== "function" || tagGetter.call(value) !== "Uint8Array" ||
+        typeof getter !== "function") return null;
     const length = getter.call(value);
     return Number.isSafeInteger(length) && length >= 0 ? length : null;
   } catch {
@@ -454,6 +455,36 @@ const MAX_SEGMENT_TEXT_CHARS = 10_000;
  * Captures untrusted adapter output into a bounded, detached immutable value.
  * Reads accessor-backed fields once and never invokes a caller-owned iterator.
  */
+function readAccessorSnapshotRecord(
+  value: unknown,
+  allowedKeys: string[],
+  requiredKeys: string[],
+): Record<string, unknown> | null {
+  try {
+    if (value === null || typeof value !== "object" || Array.isArray(value) ||
+        Object.getPrototypeOf(value) !== Object.prototype) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.some((key) => typeof key !== "string" || !allowedKeys.includes(key)) ||
+        requiredKeys.some((key) => !Object.prototype.hasOwnProperty.call(descriptors, key))) return null;
+    const result: Record<string, unknown> = Object.create(null);
+    for (const key of keys as string[]) {
+      const descriptor = descriptors[key];
+      if (!descriptor) return null;
+      if ("value" in descriptor) {
+        if (!descriptor.enumerable) return null;
+        result[key] = descriptor.value;
+      } else {
+        if (typeof descriptor.get !== "function" || descriptor.set !== undefined) return null;
+        result[key] = descriptor.get.call(value);
+      }
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 export function snapshotSpeechToTextResult(
   value: unknown,
   expectedModelId: string,
@@ -461,7 +492,7 @@ export function snapshotSpeechToTextResult(
   try {
     if (typeof expectedModelId !== "string" || !expectedModelId.trim() ||
         expectedModelId.length > 200) return null;
-    const source = readOwnDataRecord(
+    const source = readAccessorSnapshotRecord(
       value,
       ["engine", "modelId", "text", "language", "segments", "durationMs"],
       ["engine", "modelId", "text", "language", "segments"]
@@ -492,8 +523,10 @@ export function snapshotSpeechToTextResult(
     for (let index = 0; index < segmentCount; index += 1) {
       const entry = segmentDescriptors[String(index)];
       if (!entry || !("value" in entry) || !entry.enumerable) return null;
-      const segment = readOwnDataRecord(
-        entry.value,
+      const segmentValue = rawSegments[index];
+      if (segmentValue !== entry.value) return null;
+      const segment = readAccessorSnapshotRecord(
+        segmentValue,
         ["startMs", "endMs", "text"],
         ["startMs", "endMs", "text"]
       );
