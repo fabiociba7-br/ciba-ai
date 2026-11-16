@@ -109,9 +109,11 @@ export function createWhisperCppRegistry(
     adapterMap.set(adapter.runtime, registeredAdapter);
   }
 
-  return {
+  // Freeze the public registry surface so callers cannot replace lookup,
+  // capacity, or execution-reservation methods after policy validation.
+  return Object.freeze({
     maxAudioBytes: policy.maxAudioBytes,
-    getAdapter: (runtime) => adapterMap.get(runtime),
+    getAdapter: (runtime: SpeechToTextRuntime) => adapterMap.get(runtime),
     listAvailableRuntimes: () => [...adapterMap.keys()],
     tryAcquireExecution: () => {
       if (activeExecutions >= maxConcurrent) return undefined;
@@ -123,7 +125,7 @@ export function createWhisperCppRegistry(
         activeExecutions -= 1;
       };
     },
-  };
+  });
 }
 
 export function validateSpeechToTextRequest(
