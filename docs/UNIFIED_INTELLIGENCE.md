@@ -228,6 +228,12 @@ Além das concessões de tarefa (`send`/`receive`, escopo `task`), o compartilha
 O pacote tem até cinco itens, limites do protocolo compartilhado, proveniência `curated_memory` e não contém histórico de conversa. O fluxo é determinístico, sem inferência adicional, sem escrita de memória e sem migration. O campo `includeContext` é opt-in e permanece falso por padrão.
 
 
+## Execução padronizada no app destinatário (etapa 38)
+
+O SDK oferece um fluxo de execução para o aplicativo destinatário: valida a mensagem e o contexto, confere a correspondência entre o identificador da mensagem da fila e o identificador do payload, chama um processador implementado pelo próprio app, publica resultado correlacionado e só então confirma a mensagem. A falha do processador é reportada como `failed`; falha ao publicar o resultado deixa a mensagem sem confirmação para permitir nova tentativa. O identificador de resultado é determinístico por tarefa e mensagem.
+
+Isso padroniza o transporte e o ciclo de resposta, mas não instala processadores universais nos apps. Cada app precisa implementar e proteger suas próprias funções. Nenhum texto de contexto é tratado como comando, e o SDK não executa shell nem ferramentas externas.
+
 ## Acompanhamento do ciclo de vida das tarefas (etapa 37)
 
 O endpoint autenticado `GET /v1/apps/tasks/status?task_id=...` permite ao app de origem acompanhar uma tarefa que ele próprio despachou. A resposta é calculada a partir do pedido existente, da confirmação de recebimento no inbox e dos resultados correlacionados já devolvidos pelo destino. O acesso exige proprietário ativo, mensagens habilitadas e concessões direcionais de tarefa ainda válidas.
