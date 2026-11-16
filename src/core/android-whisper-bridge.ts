@@ -17,14 +17,23 @@ function snapshotTranscriptionResult(
     if (engine !== "whisper.cpp" || modelId !== expectedModelId ||
         typeof text !== "string" || text.length > MAX_ANDROID_TRANSCRIPT_CHARS ||
         typeof language !== "string" || !/^[a-z]{2,3}(-[A-Z]{2})?$/.test(language) ||
-        !Array.isArray(rawSegments) || rawSegments.length > MAX_ANDROID_SEGMENTS ||
+        !Array.isArray(rawSegments) ||
         (durationMs !== undefined &&
           (typeof durationMs !== "number" || !Number.isFinite(durationMs) || durationMs < 0))) {
       return null;
     }
 
+    // Capture the collection size once and read each indexed entry once.
+    // Do not invoke a caller-controlled Symbol.iterator at this native boundary.
+    const segmentCount = rawSegments.length;
+    if (!Number.isInteger(segmentCount) || segmentCount < 0 ||
+        segmentCount > MAX_ANDROID_SEGMENTS) {
+      return null;
+    }
+
     const segments: SpeechSegment[] = [];
-    for (const rawSegment of rawSegments) {
+    for (let index = 0; index < segmentCount; index += 1) {
+      const rawSegment: unknown = rawSegments[index];
       if (rawSegment === null || typeof rawSegment !== "object" || Array.isArray(rawSegment)) {
         return null;
       }
