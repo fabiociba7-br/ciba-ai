@@ -283,6 +283,26 @@ describe("guarded Whisper.cpp transcription execution", () => {
     )).rejects.toThrow("invalid_whisper_cpp_result");
   });
 
+  it("enforces the audio byte limit configured in the registry", async () => {
+    let called = false;
+    const countingAdapter: SpeechToTextAdapter = {
+      ...adapter,
+      transcribe: async () => {
+        called = true;
+        return adapter.transcribe(request);
+      },
+    };
+    const registry = createWhisperCppRegistry({
+      ...policy,
+      maxAudioBytes: 2,
+    }, [countingAdapter]);
+
+    await expect(runWhisperCppTranscription(
+      registry, profile, requirements, request,
+    )).rejects.toThrow("invalid_speech_to_text_request");
+    expect(called).toBe(false);
+  });
+
   it("rejects audio larger than the execution limit", async () => {
     const registry = createWhisperCppRegistry(policy, [adapter]);
     await expect(runWhisperCppTranscription(
