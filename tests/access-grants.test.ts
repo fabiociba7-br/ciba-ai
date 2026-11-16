@@ -117,7 +117,7 @@ describe("explicit app access grants", () => {
   it("ignores malformed persisted grants while preserving valid grants", () => {
     const malformed = {
       ...messagingGrant,
-      get ownerId() { throw new Error("getter_must_not_run"); }
+      get ownerId(): string { throw new Error("getter_must_not_run"); }
     } as AppAccessGrant;
     expect(canUseAppAccessGrant(sendRequest, [malformed], 2_000)).toBe(false);
     expect(canUseAppAccessGrant(sendRequest, [malformed, messagingGrant], 2_000)).toBe(true);
