@@ -655,7 +655,7 @@ describe("Ciba AI private app-to-app message relay", () => {
         items: [{ key: "transcript", value: "x", kind: "fact", origin: "task_state" }],
       }),
     });
-    expect(deniedContext.status).toBe(403);
+    expect(deniedContext.status).toBe(400);
     const contextAck = await request("/v1/apps/messages/ack", {
       method: "POST",
       headers: { authorization: `Bearer ${targetDevice.access_token}`, "content-type": "application/json" },
