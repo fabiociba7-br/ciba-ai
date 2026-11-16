@@ -27,6 +27,26 @@ describe("device capability assessment", () => {
       "insufficient_total_ram", "insufficient_available_ram", "insufficient_cpu_cores", "gpu_required",
     ] });
   });
+  it("rejects malformed model resource requirements", () => {
+    expect(() => assessDeviceCompatibility(android, {
+      runtime: "android_embedded", minimumRamMb: -1,
+    })).toThrow("invalid_device_capability_requirements");
+    expect(() => assessDeviceCompatibility(android, {
+      runtime: "android_embedded", minimumRamMb: 512, minimumAvailableRamMb: -1,
+    })).toThrow("invalid_device_capability_requirements");
+    expect(() => assessDeviceCompatibility(android, {
+      runtime: "android_embedded", minimumRamMb: 512, minimumCpuCores: 0,
+    })).toThrow("invalid_device_capability_requirements");
+    expect(() => assessDeviceCompatibility(android, {
+      runtime: "android_embedded", minimumRamMb: 512, architectures: ["mips" as never],
+    })).toThrow("invalid_device_capability_requirements");
+    expect(() => assessDeviceCompatibility(android, {
+      runtime: "android_embedded", minimumRamMb: 512, platforms: [],
+    })).toThrow("invalid_device_capability_requirements");
+    expect(() => assessDeviceCompatibility(android, {
+      runtime: "android_embedded", minimumRamMb: 512, minimumAndroidApiLevel: 101,
+    })).toThrow("invalid_device_capability_requirements");
+  });
   it("rejects a desktop profile for Android embedded runtime", () => {
     expect(assessDeviceCompatibility({ ...android, platform: "windows", androidApiLevel: undefined }, {
       runtime: "android_embedded", minimumRamMb: 512,
