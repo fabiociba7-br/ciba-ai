@@ -57,6 +57,26 @@ const MIME_TYPES = new Set<SpeechToTextRequest["mimeType"]>([
   "audio/wav", "audio/mpeg", "audio/mp4", "audio/ogg", "audio/webm", "audio/flac",
 ]);
 
+function readOwnDataRecord(
+  value: unknown,
+  allowedKeys: string[],
+  requiredKeys: string[] = [],
+): Record<string, unknown> | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value) ||
+      Object.getPrototypeOf(value) !== Object.prototype) return null;
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Reflect.ownKeys(descriptors);
+  if (keys.some((key) => typeof key !== "string" || !allowedKeys.includes(key)) ||
+      requiredKeys.some((key) => !Object.prototype.hasOwnProperty.call(descriptors, key))) return null;
+  const result: Record<string, unknown> = Object.create(null);
+  for (const key of keys as string[]) {
+    const descriptor = descriptors[key];
+    if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
+    result[key] = descriptor.value;
+  }
+  return result;
+}
+
 /**
  * Creates a fail-closed registry for the first planned transcription engine.
  * It does not install whisper.cpp, download model weights, or enable remote
@@ -149,8 +169,12 @@ function snapshotSpeechToTextRequest(
   maxAudioBytes: number,
 ): SpeechToTextRequest | null {
   try {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
-    const source = value as Record<string, unknown>;
+    const source = readOwnDataRecord(
+      value,
+      ["audio", "consent", "mimeType", "language", "timestamps", "signal"],
+      ["audio", "consent", "mimeType"]
+    );
+    if (!source) return null;
     const audio = source.audio;
     const consentValue = source.consent;
     const mimeType = source.mimeType;
@@ -167,11 +191,14 @@ function snapshotSpeechToTextRequest(
         (timestamps !== undefined && typeof timestamps !== "boolean") ||
         (signal !== undefined &&
           (signal === null || typeof signal !== "object" ||
-            typeof (signal as AbortSignal).aborted !== "boolean")) ||
-        consentValue === null || typeof consentValue !== "object" ||
-        Array.isArray(consentValue)) return null;
+            typeof (signal as AbortSignal).aborted !== "boolean"))) return null;
 
-    const consent = consentValue as Record<string, unknown>;
+    const consent = readOwnDataRecord(
+      consentValue,
+      ["granted", "purpose", "source"],
+      ["granted", "purpose", "source"]
+    );
+    if (!consent) return null;
     const granted = consent.granted;
     const purpose = consent.purpose;
     const sourceAction = consent.source;
