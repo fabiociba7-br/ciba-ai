@@ -147,10 +147,8 @@ export function createAndroidWhisperCppAdapter(
     modelId,
     deviceRequirements,
     async transcribe(request) {
-      if (request === null || typeof request !== "object" ||
-          !(request.audio instanceof Uint8Array) ||
-          request.audio.byteLength === 0 ||
-          request.audio.byteLength > maxAudioBytes) {
+      const requestSnapshot = snapshotAndroidTranscriptionRequest(request, maxAudioBytes);
+      if (!requestSnapshot) {
         throw new Error("invalid_speech_to_text_request");
       }
 
@@ -168,11 +166,11 @@ export function createAndroidWhisperCppAdapter(
 
       // Give JNI its own audio buffer and clear it after the native promise
       // settles, including rejected calls. The caller's buffer stays untouched.
-      const nativeAudio = request.audio.slice();
+      const nativeAudio = requestSnapshot.audio;
       let result: SpeechToTextResult;
       try {
         result = await transcribe({
-          ...request,
+          ...requestSnapshot,
           audio: nativeAudio,
         });
       } finally {
@@ -271,4 +269,62 @@ function isValidResult(
     (result.durationMs === undefined ||
       (Number.isFinite(result.durationMs) && result.durationMs >= 0 &&
         result.segments.every((segment) => segment.endMs <= result.durationMs!)));
+}
+
+
+const ANDROID_AUDIO_MIME_TYPES = new Set([
+  "audio/wav", "audio/mpeg", "audio/mp4", "audio/ogg", "audio/webm", "audio/flac",
+]);
+
+function snapshotAndroidTranscriptionRequest(
+  value: unknown,
+  maxAudioBytes: number,
+): SpeechToTextRequest | null {
+  try {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return null;
+    }
+    const source = value as Record<string, unknown>;
+    // Capture each request property once before validation or asynchronous work.
+    const audio = source.audio;
+    const consentValue = source.consent;
+    const mimeType = source.mimeType;
+    const language = source.language;
+    const timestamps = source.timestamps;
+    const signal = source.signal;
+
+    if (!(audio instanceof Uint8Array) || audio.byteLength === 0 ||
+        audio.byteLength > maxAudioBytes ||
+        typeof mimeType !== "string" || !ANDROID_AUDIO_MIME_TYPES.has(mimeType) ||
+        (language !== undefined &&
+          (typeof language !== "string" || !/^[a-z]{2,3}(-[A-Z]{2})?$/.test(language))) ||
+        (timestamps !== undefined && typeof timestamps !== "boolean") ||
+        (signal !== undefined && (signal === null || typeof signal !== "object" ||
+          typeof (signal as AbortSignal).aborted !== "boolean")) ||
+        consentValue === null || typeof consentValue !== "object" ||
+        Array.isArray(consentValue)) {
+      return null;
+    }
+
+    const consent = consentValue as Record<string, unknown>;
+    const granted = consent.granted;
+    const purpose = consent.purpose;
+    const sourceAction = consent.source;
+    if (granted !== true || purpose !== "transcription" ||
+        sourceAction !== "explicit_user_action") {
+      return null;
+    }
+
+    return {
+      audio: audio.slice(),
+      consent: { granted: true, purpose: "transcription", source: "explicit_user_action" },
+      mimeType: mimeType as SpeechToTextRequest["mimeType"],
+      ...(language !== undefined ? { language: language as string } : {}),
+      ...(timestamps !== undefined ? { timestamps: timestamps as boolean } : {}),
+      ...(signal !== undefined ? { signal: signal as AbortSignal } : {}),
+    };
+  } catch {
+    // Accessors and proxies supplied by callers are untrusted input.
+    return null;
+  }
 }
