@@ -89,6 +89,25 @@ export interface CibaTaskResults<T = unknown> {
   };
 }
 
+export interface CibaTaskLifecycle {
+  task_id: string;
+  source_app_id: string;
+  destination_app_id: string;
+  task_type: CibaTaskType | null;
+  created_at: string;
+  lifecycle: {
+    status: "awaiting_delivery" | "processing" | "completed" | "partial" | "failed" | "expired";
+    acknowledged: boolean;
+    result_count: number;
+    completed_results: number;
+    partial_results: number;
+    failed_results: number;
+    expires_at: string;
+  };
+  automatic_execution: false;
+  note: string;
+}
+
 export interface CibaTaskDispatchResult {
   dispatched: true;
   duplicate: boolean;
@@ -374,6 +393,11 @@ export class CibaClient {
         result: input.result,
       }),
     });
+  }
+
+  async getTaskStatus(taskId: string): Promise<CibaTaskLifecycle> {
+    if (!taskId.trim() || taskId.length > 100) throw new Error("invalid_task_id");
+    return this.request(`/v1/apps/tasks/status?task_id=${encodeURIComponent(taskId)}`);
   }
 
   async getTaskResults<T = unknown>(taskId: string): Promise<CibaTaskResults<T>> {
