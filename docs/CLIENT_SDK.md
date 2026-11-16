@@ -188,3 +188,19 @@ await client.shareContextPackage({
 ```
 
 O destino recupera o pacote com `getInbox()` e confirma a mensagem com `acknowledgeMessages()`. Não envie transcrições ou conversas completas; selecione apenas fatos, preferências, restrições e estado necessários à tarefa.
+
+
+### Despachar tarefa com contexto relevante
+
+O contexto é opcional e permanece desativado por padrão. Para incluí-lo, use `includeContext: true`. O coordenador seleciona até cinco memórias relevantes que o app de origem pode ler, e só as encaminha se também houver permissões `send` e `receive` no escopo `context`.
+
+```ts
+await client.dispatchTask({
+  taskType: "plan",
+  instruction: "Organizar as próximas etapas do projeto",
+  clientMessageId: crypto.randomUUID(),
+  includeContext: true,
+});
+```
+
+Se o recurso de memória estiver desligado ou as permissões de contexto não existirem, o despacho com contexto solicitado é bloqueado. Se não houver memória relevante, a tarefa segue sem pacote. O app de destino recebe o pacote em `payload.context_package` junto do pedido.
