@@ -70,6 +70,43 @@ export function createCibaToolApprovalFlow(
     throw new Error("invalid_tool_approval_dependencies");
   }
 
+  function normalizePlan(value: unknown, context: CibaToolInvocationContext): CibaToolInvocationPlan {
+    if (value === null || typeof value !== "object" || Array.isArray(value) ||
+        Object.getPrototypeOf(value) !== Object.prototype) {
+      throw new Error("invalid_tool_invocation_plan");
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const allowed = new Set([
+      "conversationId", "invocationId", "toolId", "risk", "requiresApproval", "input"
+    ]);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.length !== allowed.size ||
+        keys.some((key) => typeof key !== "string" || !allowed.has(key))) {
+      throw new Error("invalid_tool_invocation_plan");
+    }
+    const fields: Record<string, unknown> = Object.create(null);
+    for (const key of keys as string[]) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+        throw new Error("invalid_tool_invocation_plan");
+      }
+      fields[key] = descriptor.value;
+    }
+    if (fields.conversationId !== context.conversationId ||
+        fields.invocationId !== context.invocationId ||
+        typeof fields.toolId !== "string" ||
+        (fields.risk !== "read" && fields.risk !== "write" && fields.risk !== "external") ||
+        typeof fields.requiresApproval !== "boolean") {
+      throw new Error("tool_invocation_plan_mismatch");
+    }
+    const canonical = registry.prepare(fields.toolId, fields.input, context);
+    if (canonical.risk !== fields.risk ||
+        canonical.requiresApproval !== fields.requiresApproval) {
+      throw new Error("tool_invocation_plan_mismatch");
+    }
+    return canonical;
+  }
+
   return Object.freeze({
     propose(toolId: string, input: unknown, rawContext: CibaToolInvocationContext): CibaToolProposal {
       const context = snapshotContext(rawContext);
@@ -95,36 +132,34 @@ export function createCibaToolApprovalFlow(
       allow: boolean
     ): boolean {
       const context = snapshotContext(rawContext);
-      if (!plan || plan.conversationId !== context.conversationId ||
-          plan.invocationId !== context.invocationId ||
-          typeof allow !== "boolean" || !plan.requiresApproval) return false;
+      if (typeof allow !== "boolean") return false;
+      let safePlan: CibaToolInvocationPlan;
+      try { safePlan = normalizePlan(plan, context); }
+      catch { return false; }
+      if (!safePlan.requiresApproval) return false;
       return consent.answer(
         context.invocationId,
         context.conversationId,
-        plan.toolId,
-        plan.input,
+        safePlan.toolId,
+        safePlan.input,
         allow
       );
     },
 
     async execute(plan: CibaToolInvocationPlan, rawContext: CibaToolInvocationContext): Promise<unknown> {
       const context = snapshotContext(rawContext);
-      if (!plan || plan.toolId === "" ||
-          plan.conversationId !== context.conversationId ||
-          plan.invocationId !== context.invocationId) {
-        throw new Error("tool_invocation_plan_mismatch");
-      }
-      if (plan.requiresApproval) {
+      const safePlan = normalizePlan(plan, context);
+      if (safePlan.requiresApproval) {
         const state = consent.request({
           conversationId: context.conversationId,
           invocationId: context.invocationId,
-          toolId: plan.toolId,
-          risk: plan.risk,
-          input: plan.input,
+          toolId: safePlan.toolId,
+          risk: safePlan.risk,
+          input: safePlan.input,
         });
         if (state !== "approved") throw new Error("tool_approval_required");
       }
-      return registry.execute(plan.toolId, plan.input, context);
+      return registry.execute(safePlan.toolId, safePlan.input, context);
     },
 
     cancel(rawContext: CibaToolInvocationContext): boolean {
