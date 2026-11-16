@@ -424,7 +424,7 @@ export class CibaClient {
     return this.request(`/v1/owner/memory?${params.toString()}`);
   }
 
-  updateMemory(input: { memoryId: string; scope: CibaMemoryScope; key: string; value: string; sourceAppId?: string; validHours?: number | null }): Promise<{ updated: boolean; memory_id: string; scope: CibaMemoryScope }> {
+  async updateMemory(input: { memoryId: string; scope: CibaMemoryScope; key: string; value: string; sourceAppId?: string; validHours?: number | null }): Promise<{ updated: boolean; memory_id: string; scope: CibaMemoryScope }> {
     if (!input.memoryId.trim() || input.memoryId.length > 100) throw new Error("invalid_memory_id");
     if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,79}$/.test(input.key.trim())) throw new Error("invalid_memory_key");
     if (!input.value.trim() || input.value.length > 500) throw new Error("invalid_memory_value");
