@@ -19,6 +19,7 @@ import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistr
 import { validateCuratedMemory } from "./core/memory";
 import { prepareMemoryCandidate } from "./core/memory-candidates";
 import { classifyMemoryProposal } from "./core/memory-learning";
+import { analyzeMemoryRelationships, type MemoryInsightRecord } from "./core/memory-insights";
 import { rankRelevantMemories, buildChatMemoryContext, type MemorySearchRecord } from "./core/memory-retrieval";
 import { validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./core/apps/registry";
 import { isAppTaskType, selectTaskRoute } from "./core/task-coordinator";
@@ -1002,6 +1003,47 @@ const handleMemoryReviews = async (request: Request, env: Env, url: URL) => {
     return json({ decided: true, decision: "approved", proposal_id: proposalId, updated_memory: proposal.classification === "possible_conflict" });
   }
   return json({ error: "method_not_allowed" }, 405);
+};
+
+const handleMemoryInsights = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const settings = await readOwnerFeatureSettings(env, owner.owner_id);
+  if (!settings.memory_enabled) return json({ error: "memory_disabled" }, 403);
+
+  const rows = await env.DB.prepare(`
+    SELECT memory_id, scope, source_app_id, memory_key, value, updated_at, expires_at
+    FROM memory_records AS m
+    WHERE m.owner_id = ? AND m.deleted_at IS NULL
+      AND (
+        (m.scope = 'app' AND m.source_app_id = ?)
+        OR (m.scope = 'app' AND EXISTS (
+          SELECT 1 FROM app_access_grants AS g
+          WHERE g.owner_id = m.owner_id AND g.grantee_app_id = ?
+            AND g.permission = 'memory_read' AND g.scope = 'app_memory'
+            AND g.source_app_id = m.source_app_id AND g.destination_app_id IS NULL
+            AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)
+        ))
+        OR (m.scope = 'owner' AND EXISTS (
+          SELECT 1 FROM app_access_grants AS g
+          WHERE g.owner_id = m.owner_id AND g.grantee_app_id = ?
+            AND g.permission = 'memory_read' AND g.scope = 'owner_memory'
+            AND g.source_app_id IS NULL AND g.destination_app_id IS NULL
+            AND g.revoked_at IS NULL AND (g.expires_at IS NULL OR g.expires_at > ?)
+        ))
+      )
+    ORDER BY m.updated_at DESC LIMIT 200
+  `).bind(owner.owner_id, device.app_id, device.app_id, nowIso(), device.app_id, nowIso())
+    .all<MemoryInsightRecord>();
+  const analysis = analyzeMemoryRelationships(rows.results || []);
+  return json({
+    ...analysis,
+    visibility: "own_app_and_explicit_memory_read_grants",
+    cross_app_memory_requires_explicit_grant: true,
+    automatic_changes: false,
+  });
 };
 
 const handleOwnerMemory = async (request: Request, env: Env, url: URL) => {
@@ -2259,6 +2301,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/owner/access-grants" && (request.method === "GET" || request.method === "POST")) {
     return handleOwnerAccessGrants(request, env);
+  }
+  if (url.pathname === "/v1/owner/memory/insights" && request.method === "GET") {
+    return handleMemoryInsights(request, env);
   }
   if (url.pathname === "/v1/owner/memory/reviews" && ["GET", "POST", "PATCH"].includes(request.method)) {
     return handleMemoryReviews(request, env, url);
