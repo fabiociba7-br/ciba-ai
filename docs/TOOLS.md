@@ -54,7 +54,7 @@ Registry lookup (`get` and `list`) returns metadata only; executable handlers an
 
 - Objects with explicit properties, required keys, and `additionalProperties: false`
 - Arrays with item schemas and optional length limits
-- Strings with length limits, regular-expression patterns, and string enums
+- Strings with length limits and string enums (regular-expression patterns are intentionally unsupported to prevent pathological matching costs)
 - Numbers and integers with minimum/maximum bounds and numeric enums
 - Booleans and null
 
