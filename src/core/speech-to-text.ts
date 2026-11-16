@@ -110,3 +110,44 @@ export function resolveWhisperCppRuntime(
   if (!adapter) return { available: false, reasons: ["adapter_not_installed"] };
   return { available: true, adapter, reasons: [] };
 }
+
+
+export type SpeechToTextExecution =
+  | { success: true; result: SpeechToTextResult }
+  | { success: false; reasons: string[] };
+
+/**
+ * Validates and executes one transcription only through a compatible,
+ * explicitly registered adapter. It never selects a remote fallback.
+ */
+export async function runWhisperCppTranscription(
+  registry: SpeechToTextRegistry,
+  profile: DeviceCapabilityProfile,
+  requirements: DeviceCapabilityRequirements,
+  request: SpeechToTextRequest,
+  maxAudioBytes = 25 * 1024 * 1024,
+): Promise<SpeechToTextExecution> {
+  validateSpeechToTextRequest(request, maxAudioBytes);
+  const resolution = resolveWhisperCppRuntime(registry, profile, requirements);
+  if (!resolution.available || !resolution.adapter) {
+    return { success: false, reasons: resolution.reasons };
+  }
+
+  const result = await resolution.adapter.transcribe(request);
+  if (result.engine !== "whisper.cpp" ||
+      result.modelId !== resolution.adapter.modelId ||
+      typeof result.text !== "string" ||
+      typeof result.language !== "string" ||
+      !Array.isArray(result.segments) ||
+      !result.segments.every((segment) =>
+        Number.isFinite(segment.startMs) &&
+        Number.isFinite(segment.endMs) &&
+        segment.startMs >= 0 &&
+        segment.endMs >= segment.startMs &&
+        typeof segment.text === "string") ||
+      (result.durationMs !== undefined &&
+        (!Number.isFinite(result.durationMs) || result.durationMs < 0))) {
+    throw new Error("invalid_whisper_cpp_result");
+  }
+  return { success: true, result };
+}
