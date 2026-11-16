@@ -47,9 +47,11 @@ function snapshotMemoryRecord(value: unknown): MemorySearchRecord | null {
     }
     if (typeof copy.memory_id !== "string" || !copy.memory_id.trim() || copy.memory_id.length > 200 ||
         (copy.scope !== "app" && copy.scope !== "owner") ||
-        !(copy.source_app_id === null || (typeof copy.source_app_id === "string" && copy.source_app_id.length > 0 && copy.source_app_id.length <= 128)) ||
-        typeof copy.memory_key !== "string" || !copy.memory_key || copy.memory_key.length > 200 ||
-        typeof copy.value !== "string" || copy.value.length > 8_000 ||
+        (copy.scope === "app"
+          ? typeof copy.source_app_id !== "string" || !copy.source_app_id.trim() || copy.source_app_id.length > 128
+          : copy.source_app_id !== null) ||
+        typeof copy.memory_key !== "string" || !copy.memory_key.trim() || copy.memory_key.length > 80 ||
+        typeof copy.value !== "string" || !copy.value.trim() || copy.value.length > 500 ||
         typeof copy.created_by_app_id !== "string" || !copy.created_by_app_id || copy.created_by_app_id.length > 128 ||
         typeof copy.updated_at !== "string" || !copy.updated_at || copy.updated_at.length > 64 ||
         !(copy.expires_at === null || (typeof copy.expires_at === "string" &&
