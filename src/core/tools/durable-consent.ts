@@ -104,7 +104,11 @@ function snapshotJson(value: unknown, depth = 0, budget = { nodes: 0, chars: 0 }
 }
 
 function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (value === null || typeof value !== "object") {
+    const serialized = JSON.stringify(value);
+    if (serialized === undefined) throw new Error("invalid_tool_approval_input");
+    return serialized;
+  }
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   const record = value as Record<string, unknown>;
   return `{${Object.keys(record).sort().map((key) =>
@@ -166,11 +170,17 @@ export function createD1ToolApprovalStore(
           invocation_id, tool_id, risk, input_json, input_sha256,
           status, created_at, expires_at
         )
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?
+        WHERE EXISTS (
+          SELECT 1 FROM devices d JOIN owners o ON o.owner_id = d.owner_id
+          WHERE d.device_id = ? AND d.owner_id = ? AND d.app_id = ?
+            AND d.revoked_at IS NULL AND o.status = 'active' AND o.revoked_at IS NULL
+        )
       `).bind(
         approvalId, identity.ownerId, identity.appId, identity.deviceId,
         request.conversationId, request.invocationId, request.toolId, request.risk,
-        inputJson, inputSha256, timestamp, expiresAt
+        inputJson, inputSha256, timestamp, expiresAt,
+        identity.deviceId, identity.ownerId, identity.appId
       ).run();
 
       const existing = await db.prepare(`
@@ -224,8 +234,9 @@ export function createD1ToolApprovalStore(
           AND conversation_id = ? AND invocation_id = ? AND tool_id = ? AND risk = ?
           AND input_json = ? AND input_sha256 = ? AND status = 'pending' AND expires_at > ?
           AND EXISTS (
-            SELECT 1 FROM devices
-            WHERE device_id = ? AND owner_id = ? AND app_id = ? AND revoked_at IS NULL
+            SELECT 1 FROM devices d JOIN owners o ON o.owner_id = d.owner_id
+            WHERE d.device_id = ? AND d.owner_id = ? AND d.app_id = ?
+              AND d.revoked_at IS NULL AND o.status = 'active' AND o.revoked_at IS NULL
           )
       `).bind(
         status, timestamp, approverDeviceId, status, timestamp,
@@ -256,10 +267,16 @@ export function createD1ToolApprovalStore(
         WHERE approval_id = ? AND owner_id = ? AND app_id = ? AND device_id = ?
           AND conversation_id = ? AND invocation_id = ? AND tool_id = ? AND risk = ?
           AND input_json = ? AND input_sha256 = ? AND status = 'approved' AND expires_at > ?
+          AND EXISTS (
+            SELECT 1 FROM devices d JOIN owners o ON o.owner_id = d.owner_id
+            WHERE d.device_id = ? AND d.owner_id = ? AND d.app_id = ?
+              AND d.revoked_at IS NULL AND o.status = 'active' AND o.revoked_at IS NULL
+          )
       `).bind(
         timestamp, timestamp, approvalId, identity.ownerId, identity.appId, identity.deviceId,
         request.conversationId, request.invocationId, request.toolId, request.risk,
-        inputJson, inputSha256, timestamp
+        inputJson, inputSha256, timestamp,
+        identity.deviceId, identity.ownerId, identity.appId
       ).run();
       if ((result.meta?.changes ?? 0) === 1) return true;
 
