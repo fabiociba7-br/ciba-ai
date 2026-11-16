@@ -82,6 +82,9 @@ export function createAndroidWhisperCppAdapter(
       }
 
       const status = await getStatus();
+      if (!isValidBridgeStatus(status)) {
+        throw new Error("android_whisper_invalid_status");
+      }
       if (!status.nativeLibraryReady) {
         throw new Error("android_whisper_native_library_unavailable");
       }
@@ -119,6 +122,36 @@ export function createAndroidWhisperCppAdapter(
     },
   };
   return Object.freeze(adapter);
+}
+
+function isValidBridgeStatus(
+  status: AndroidWhisperCppBridgeStatus,
+): boolean {
+  if (status === null ||
+      typeof status.nativeLibraryReady !== "boolean" ||
+      typeof status.modelLoaded !== "boolean") {
+    return false;
+  }
+  if (status.modelId !== undefined &&
+      (typeof status.modelId !== "string" || status.modelId.length > 200)) {
+    return false;
+  }
+  if (status.modelSha256 !== undefined &&
+      (typeof status.modelSha256 !== "string" ||
+        !/^[a-f0-9]{64}$/.test(status.modelSha256))) {
+    return false;
+  }
+  if (status.engineVersion !== undefined &&
+      (typeof status.engineVersion !== "string" || status.engineVersion.length > 128)) {
+    return false;
+  }
+  if (status.modelLoaded &&
+      (!status.nativeLibraryReady ||
+        typeof status.modelId !== "string" || status.modelId.trim().length === 0 ||
+        typeof status.modelSha256 !== "string")) {
+    return false;
+  }
+  return true;
 }
 
 const MAX_ANDROID_TRANSCRIPT_CHARS = 100_000;
