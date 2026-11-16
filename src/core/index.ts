@@ -9,7 +9,7 @@ export { createProviderRegistry } from "./providers/registry";
 export type { ProviderRegistry, RegisteredModel } from "./providers/registry";
 export type { CibaToolDefinition, CibaToolMetadata, CibaToolRegistry, CibaToolRisk } from "./tools";
 export { createCibaToolRegistry, createCibaToolConsentStore } from "./tools";
-export type { CibaToolAuthorizationRequest, CibaToolInvocationPlan, CibaToolRegistryOptions, ExecutableCibaToolRegistry, CibaToolConsentRequest, CibaToolConsentStatus, CibaToolConsentStore } from "./tools";
+export type { CibaToolAuthorizationRequest, CibaToolInvocationPlan, CibaToolInvocationContext, CibaToolRegistryOptions, ExecutableCibaToolRegistry, CibaToolConsentRequest, CibaToolConsentStatus, CibaToolConsentStore } from "./tools";
 export type { CibaRole, ChatTurn, ModelProvider, OrchestrationResult } from "./types";
 
 export { buildWorkingContext, canAccessMemory, validateCuratedMemory, validateMemoryRecord } from "./memory";
