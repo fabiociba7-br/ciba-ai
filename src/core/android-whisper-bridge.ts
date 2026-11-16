@@ -41,6 +41,7 @@ export function createAndroidWhisperCppAdapter(
   options: AndroidWhisperCppAdapterOptions,
 ): SpeechToTextAdapter {
   if (!options.modelId.trim() ||
+      !/^[a-f0-9]{64}$/.test(options.modelSha256) ||
       !Number.isInteger(options.maxAudioBytes) ||
       options.maxAudioBytes < 1 ||
       options.deviceRequirements.runtime !== "android_embedded") {
