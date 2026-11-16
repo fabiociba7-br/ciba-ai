@@ -503,6 +503,67 @@ describe("Android Whisper.cpp bridge contract", () => {
     }
   });
 
+  it("clears the isolated audio copy when native status validation fails", async () => {
+    let isolatedAudio: Uint8Array | undefined;
+    class TrackedAudio extends Uint8Array {
+      override slice(): Uint8Array {
+        isolatedAudio = new Uint8Array(this);
+        return isolatedAudio;
+      }
+    }
+    const trackedRequest = {
+      ...request,
+      audio: new TrackedAudio([1, 2, 3]),
+    };
+    const adapter = createAndroidWhisperCppAdapter(bridge({
+      getStatus: async () => {
+        throw new Error("native_status_unavailable");
+      },
+    }), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+
+    await expect(adapter.transcribe(trackedRequest))
+      .rejects.toThrow("native_status_unavailable");
+    expect(isolatedAudio && [...isolatedAudio]).toEqual([0, 0, 0]);
+    expect([...trackedRequest.audio]).toEqual([1, 2, 3]);
+  });
+
+  it("clears the isolated audio copy when the native model is unavailable", async () => {
+    let isolatedAudio: Uint8Array | undefined;
+    class TrackedAudio extends Uint8Array {
+      override slice(): Uint8Array {
+        isolatedAudio = new Uint8Array(this);
+        return isolatedAudio;
+      }
+    }
+    const trackedRequest = {
+      ...request,
+      audio: new TrackedAudio([1, 2, 3]),
+    };
+    const adapter = createAndroidWhisperCppAdapter(bridge({
+      getStatus: async () => ({
+        nativeLibraryReady: true,
+        modelLoaded: false,
+        modelId: "ggml-tiny",
+        modelSha256: MODEL_SHA256,
+      }),
+    }), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+
+    await expect(adapter.transcribe(trackedRequest))
+      .rejects.toThrow("android_whisper_model_unavailable");
+    expect(isolatedAudio && [...isolatedAudio]).toEqual([0, 0, 0]);
+    expect([...trackedRequest.audio]).toEqual([1, 2, 3]);
+  });
+
   it("isolates and clears the native audio buffer after success", async () => {
     let nativeBuffer: Uint8Array | undefined;
     const originalAudio = request.audio.slice();
