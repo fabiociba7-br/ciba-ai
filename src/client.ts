@@ -439,7 +439,7 @@ export class CibaClient {
     });
   }
 
-  prepareMemoryCandidate(input: CibaMemoryCandidateInput): Promise<{
+  async prepareMemoryCandidate(input: CibaMemoryCandidateInput): Promise<{
     candidate: { key: string; value: string; evidence_excerpt: string; source_role: "user"; requires_confirmation: true; persisted: false };
     scope: CibaMemoryScope;
     source_app_id: string | null;
