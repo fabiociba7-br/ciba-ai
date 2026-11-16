@@ -947,7 +947,7 @@ const handleMemoryReviews = async (request: Request, env: Env, url: URL) => {
     const proposalId = crypto.randomUUID();
     const timestamp = nowIso();
     await env.DB.prepare("INSERT INTO memory_review_proposals(proposal_id, owner_id, scope, source_app_id, proposed_by_app_id, memory_key, proposed_value, evidence_excerpt, existing_memory_id, existing_value_snapshot, classification, valid_hours, status, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
-      .bind(proposalId, owner.owner_id, scope, sourceAppId, device.app_id, candidate.key, candidate.value, candidate.evidence_excerpt, comparison.existing_memory_id, comparison.existing_value_snapshot, comparison.classification, validHours ?? null, timestamp).run();
+      .bind(proposalId, owner.owner_id, scope, sourceAppId, device.app_id, candidate.key, candidate.value, candidate.evidence_excerpt, comparison.existing_memory_id, comparison.existing_value_snapshot, comparison.classification, validHours === undefined ? (existing ? 0 : null) : validHours, timestamp).run();
     return json({ proposal_id: proposalId, classification: comparison.classification, requires_owner_decision: true, stored_as_memory: false, inference_calls: 0, existing_memory_id: comparison.existing_memory_id }, 201);
   }
   if (request.method === "PATCH") {
@@ -967,17 +967,22 @@ const handleMemoryReviews = async (request: Request, env: Env, url: URL) => {
     const key = String(proposal.memory_key);
     const value = validateCuratedMemory({ consent: "curated", value: String(proposal.proposed_value), maxCharacters: 500 });
     if (proposal.classification === "unchanged") {
-      await env.DB.prepare("UPDATE memory_review_proposals SET status = 'approved', decided_at = ? WHERE proposal_id = ? AND status = 'pending'").bind(timestamp, proposalId).run();
-      return json({ decided: true, decision: "approved", unchanged: true, proposal_id: proposalId });
-    }
-    if (proposal.classification === "possible_conflict") {
       const current = await env.DB.prepare("SELECT value FROM memory_records WHERE memory_id = ? AND owner_id = ? AND deleted_at IS NULL").bind(proposal.existing_memory_id, owner.owner_id).first<{ value: string }>();
       if (!current || current.value !== proposal.existing_value_snapshot) {
         await env.DB.prepare("UPDATE memory_review_proposals SET status = 'stale', decided_at = ? WHERE proposal_id = ? AND status = 'pending'").bind(timestamp, proposalId).run();
         return json({ error: "memory_proposal_stale", proposal_id: proposalId }, 409);
       }
+      await env.DB.prepare("UPDATE memory_review_proposals SET status = 'approved', decided_at = ? WHERE proposal_id = ? AND status = 'pending'").bind(timestamp, proposalId).run();
+      return json({ decided: true, decision: "approved", unchanged: true, proposal_id: proposalId });
+    }
+    if (proposal.classification === "possible_conflict") {
+      const current = await env.DB.prepare("SELECT value, expires_at FROM memory_records WHERE memory_id = ? AND owner_id = ? AND deleted_at IS NULL").bind(proposal.existing_memory_id, owner.owner_id).first<{ value: string; expires_at: string | null }>();
+      if (!current || current.value !== proposal.existing_value_snapshot) {
+        await env.DB.prepare("UPDATE memory_review_proposals SET status = 'stale', decided_at = ? WHERE proposal_id = ? AND status = 'pending'").bind(timestamp, proposalId).run();
+        return json({ error: "memory_proposal_stale", proposal_id: proposalId }, 409);
+      }
       const updated = await env.DB.prepare("UPDATE memory_records SET value = ?, updated_at = ?, expires_at = ? WHERE memory_id = ? AND owner_id = ? AND scope = ? AND source_app_id IS ? AND deleted_at IS NULL")
-        .bind(value, timestamp, proposal.valid_hours === null ? null : new Date(Date.now() + Number(proposal.valid_hours) * 3600000).toISOString(), proposal.existing_memory_id, owner.owner_id, scope, sourceAppId).run();
+        .bind(value, timestamp, proposal.valid_hours === 0 ? current.expires_at : proposal.valid_hours === null ? null : new Date(Date.now() + Number(proposal.valid_hours) * 3600000).toISOString(), proposal.existing_memory_id, owner.owner_id, scope, sourceAppId).run();
       if (updated.meta.changes !== 1) return json({ error: "memory_proposal_stale", proposal_id: proposalId }, 409);
     } else {
       const collision = scope === "owner"
