@@ -66,61 +66,117 @@ export function createWhisperCppRegistry(
   policy: SpeechToTextEnginePolicy,
   adapters: SpeechToTextAdapter[] = [],
 ): SpeechToTextRegistry {
-  const supportedRuntimes = Array.isArray(policy.supportedRuntimes)
-    ? [...policy.supportedRuntimes]
-    : [];
+  let licenseStatus: SpeechToTextEnginePolicy["licenseStatus"];
+  let maxAudioBytes: number;
+  let maxConcurrent: number;
+  let supportedRuntimes: SpeechToTextRuntime[];
+  let adapterSnapshot: SpeechToTextAdapter[];
+  try {
+    if (policy === null || typeof policy !== "object" || Array.isArray(policy) ||
+        !Array.isArray(adapters) || adapters.length > 3) {
+      throw new Error("invalid_speech_to_text_policy");
+    }
+    licenseStatus = policy.licenseStatus;
+    maxAudioBytes = policy.maxAudioBytes;
+    const configuredConcurrency = policy.maxConcurrentTranscriptions;
+    const rawRuntimes = policy.supportedRuntimes;
+    if (!Array.isArray(rawRuntimes) || rawRuntimes.length === 0 || rawRuntimes.length > 3) {
+      throw new Error("invalid_speech_to_text_policy");
+    }
+    supportedRuntimes = [];
+    for (let index = 0; index < rawRuntimes.length; index += 1) {
+      supportedRuntimes.push(rawRuntimes[index]);
+    }
+    adapterSnapshot = [];
+    for (let index = 0; index < adapters.length; index += 1) {
+      adapterSnapshot.push(adapters[index]);
+    }
+    if (!["review_required", "approved", "restricted", "rejected"].includes(licenseStatus) ||
+        !Number.isSafeInteger(maxAudioBytes) || maxAudioBytes < 1 ||
+        (configuredConcurrency !== undefined &&
+          (!Number.isInteger(configuredConcurrency) || configuredConcurrency < 1 || configuredConcurrency > 8))) {
+      throw new Error("invalid_speech_to_text_policy");
+    }
+    maxConcurrent = configuredConcurrency ?? 1;
+  } catch (error) {
+    if (error instanceof Error &&
+        ["invalid_speech_to_text_policy", "speech_to_text_license_not_approved"].includes(error.message)) {
+      throw error;
+    }
+    throw new Error("invalid_speech_to_text_policy");
+  }
+
   const validRuntimes = new Set<SpeechToTextRuntime>([
     "android_embedded", "desktop_local", "local_service",
   ]);
-  if (!Number.isInteger(policy.maxAudioBytes) || policy.maxAudioBytes < 1 ||
-      supportedRuntimes.length === 0 ||
-      supportedRuntimes.some((runtime) => !validRuntimes.has(runtime)) ||
-      new Set(supportedRuntimes).size !== supportedRuntimes.length ||
-      (policy.maxConcurrentTranscriptions !== undefined &&
-        (!Number.isInteger(policy.maxConcurrentTranscriptions) || policy.maxConcurrentTranscriptions < 1 || policy.maxConcurrentTranscriptions > 8))) {
+  if (supportedRuntimes.some((runtime) => !validRuntimes.has(runtime)) ||
+      new Set(supportedRuntimes).size !== supportedRuntimes.length) {
     throw new Error("invalid_speech_to_text_policy");
   }
-  const licenseApproved = policy.licenseStatus === "approved";
-  if (!licenseApproved && adapters.length > 0) {
+  if (licenseStatus !== "approved" && adapterSnapshot.length > 0) {
     throw new Error("speech_to_text_license_not_approved");
   }
 
   const adapterMap = new Map<SpeechToTextRuntime, SpeechToTextAdapter>();
-  const maxAudioBytes = policy.maxAudioBytes;
-  const maxConcurrent = policy.maxConcurrentTranscriptions ?? 1;
   let activeExecutions = 0;
-  for (const adapter of [...adapters]) {
-    if (adapter.engine !== "whisper.cpp" ||
-        !supportedRuntimes.includes(adapter.runtime) ||
-        !adapter.modelId.trim() ||
-        adapter.deviceRequirements.runtime !== adapter.runtime ||
-        adapterMap.has(adapter.runtime)) {
+  for (const sourceAdapter of adapterSnapshot) {
+    try {
+      if (sourceAdapter === null || typeof sourceAdapter !== "object" || Array.isArray(sourceAdapter)) {
+        throw new Error("invalid_whisper_cpp_adapter");
+      }
+      const engine = sourceAdapter.engine;
+      const runtime = sourceAdapter.runtime;
+      const modelId = sourceAdapter.modelId;
+      const rawRequirements = sourceAdapter.deviceRequirements;
+      const transcribeMethod = sourceAdapter.transcribe;
+      if (engine !== "whisper.cpp" ||
+          !supportedRuntimes.includes(runtime) ||
+          typeof modelId !== "string" || !modelId.trim() || modelId.length > 200 ||
+          typeof transcribeMethod !== "function" ||
+          rawRequirements === null || typeof rawRequirements !== "object" || Array.isArray(rawRequirements)) {
+        throw new Error("invalid_whisper_cpp_adapter");
+      }
+      const runtimeRequirement = rawRequirements.runtime;
+      const minimumRamMb = rawRequirements.minimumRamMb;
+      const minimumAvailableRamMb = rawRequirements.minimumAvailableRamMb;
+      const minimumCpuCores = rawRequirements.minimumCpuCores;
+      const requiresGpu = rawRequirements.requiresGpu;
+      const rawArchitectures = rawRequirements.architectures;
+      const rawPlatforms = rawRequirements.platforms;
+      const minimumAndroidApiLevel = rawRequirements.minimumAndroidApiLevel;
+      const architectures = rawArchitectures === undefined ? undefined : [...rawArchitectures];
+      const platforms = rawPlatforms === undefined ? undefined : [...rawPlatforms];
+      const requirementsSnapshot: DeviceCapabilityRequirements = {
+        runtime: runtimeRequirement,
+        minimumRamMb,
+        ...(minimumAvailableRamMb !== undefined ? { minimumAvailableRamMb } : {}),
+        ...(minimumCpuCores !== undefined ? { minimumCpuCores } : {}),
+        ...(requiresGpu !== undefined ? { requiresGpu } : {}),
+        ...(architectures !== undefined ? { architectures } : {}),
+        ...(platforms !== undefined ? { platforms } : {}),
+        ...(minimumAndroidApiLevel !== undefined ? { minimumAndroidApiLevel } : {}),
+      };
+      validateDeviceCapabilityRequirements(requirementsSnapshot);
+      if (runtimeRequirement !== runtime || adapterMap.has(runtime)) {
+        throw new Error("invalid_whisper_cpp_adapter");
+      }
+      if (architectures) Object.freeze(architectures);
+      if (platforms) Object.freeze(platforms);
+      Object.freeze(requirementsSnapshot);
+      const transcribe = transcribeMethod.bind(sourceAdapter);
+      const registeredAdapter: SpeechToTextAdapter = Object.freeze({
+        engine,
+        runtime,
+        modelId,
+        deviceRequirements: requirementsSnapshot,
+        transcribe,
+      });
+      adapterMap.set(runtime, registeredAdapter);
+    } catch {
       throw new Error("invalid_whisper_cpp_adapter");
     }
-    const requirementsSnapshot: DeviceCapabilityRequirements = Object.freeze({
-      ...adapter.deviceRequirements,
-      ...(adapter.deviceRequirements.architectures
-        ? { architectures: Object.freeze([...adapter.deviceRequirements.architectures]) as unknown as DeviceArchitecture[] }
-        : {}),
-      ...(adapter.deviceRequirements.platforms
-        ? { platforms: Object.freeze([...adapter.deviceRequirements.platforms]) as unknown as DevicePlatform[] }
-        : {}),
-    });
-    // Capture the approved implementation itself, not a dynamic property
-    // lookup on the caller-owned adapter object.
-    const transcribe = adapter.transcribe.bind(adapter);
-    const registeredAdapter: SpeechToTextAdapter = Object.freeze({
-      engine: adapter.engine,
-      runtime: adapter.runtime,
-      modelId: adapter.modelId,
-      deviceRequirements: requirementsSnapshot,
-      transcribe,
-    });
-    adapterMap.set(adapter.runtime, registeredAdapter);
   }
 
-  // Freeze the public registry surface so callers cannot replace lookup,
-  // capacity, or execution-reservation methods after policy validation.
   return Object.freeze({
     maxAudioBytes,
     getAdapter: (runtime: SpeechToTextRuntime) => adapterMap.get(runtime),
@@ -153,7 +209,7 @@ export function validateSpeechToTextRequest(
   }
 }
 
-import { assessDeviceCompatibility, type DeviceArchitecture, type DeviceCapabilityProfile, type DeviceCapabilityRequirements, type DevicePlatform } from "./device-capabilities";
+import { assessDeviceCompatibility, validateDeviceCapabilityRequirements, type DeviceCapabilityProfile, type DeviceCapabilityRequirements } from "./device-capabilities";
 
 export interface SpeechToTextRuntimeResolution {
   available: boolean;
