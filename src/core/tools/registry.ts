@@ -28,7 +28,16 @@ export interface CibaToolRegistryOptions {
   maxConcurrentExecutions?: number;
 }
 
+export interface CibaToolInvocationPlan {
+  toolId: string;
+  risk: CibaToolRisk;
+  requiresApproval: boolean;
+  input: unknown;
+}
+
 export interface ExecutableCibaToolRegistry extends CibaToolRegistry {
+  /** Validates and snapshots a proposed call without authorizing or executing it. */
+  prepare(toolId: string, input: unknown): CibaToolInvocationPlan;
   execute(toolId: string, input: unknown): Promise<unknown>;
 }
 
@@ -380,6 +389,24 @@ export function createCibaToolRegistry(
         risk: definition.risk,
         requiresApproval: definition.requiresApproval
       }));
+    },
+    prepare(toolId: string, input: unknown) {
+      const item = registered.get(toolId);
+      if (!item) throw new Error("tool_not_allowlisted");
+      let safeInput: unknown;
+      try {
+        safeInput = cloneJson(input);
+        if (jsonBytes(safeInput) > maxInputBytes) throw new Error("invalid_tool_input");
+      } catch {
+        throw new Error("invalid_tool_input");
+      }
+      if (!validateSchema(safeInput, item.schema)) throw new Error("invalid_tool_input");
+      return Object.freeze({
+        toolId,
+        risk: item.definition.risk,
+        requiresApproval: item.definition.requiresApproval,
+        input: deepFreeze(safeInput)
+      });
     },
     async execute(toolId: string, input: unknown) {
       const item = registered.get(toolId);
