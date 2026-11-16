@@ -117,3 +117,6 @@ O resultado devolvido pelo motor nativo também é tratado como entrada não con
 
 
 O adapter Android também é congelado após a criação: seus metadados, requisitos e referência à função de transcrição não podem ser substituídos por mutação do objeto retornado. Isso protege a configuração local do adapter; não substitui validações de segurança no módulo nativo nem torna confiável um relato de status produzido pelo próprio cliente.
+
+
+Android Whisper native result snapshots capture the segment count once and read entries by bounded numeric index. They do not invoke a caller-provided array iterator; malformed collections fail closed.
