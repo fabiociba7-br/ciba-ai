@@ -1247,6 +1247,10 @@ describe("Ciba AI authenticated durable tool approvals", () => {
   };
 
   const createPairedOwnerDevices = async () => {
+    const app = await adminRequest("/v1/admin/apps", "POST", {
+      app_id: appId, display_name: "Ciba Approval Integration", enabled: true,
+    });
+    expect(app.status).toBe(200);
     const source = await registerDevice(await createInvitation());
     const ownerResponse = await adminRequest("/v1/admin/owners", "POST", { app_id: appId });
     expect(ownerResponse.status).toBe(201);
