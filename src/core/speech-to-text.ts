@@ -90,10 +90,10 @@ export function createWhisperCppRegistry(
     const requirementsSnapshot: DeviceCapabilityRequirements = Object.freeze({
       ...adapter.deviceRequirements,
       ...(adapter.deviceRequirements.architectures
-        ? { architectures: Object.freeze([...adapter.deviceRequirements.architectures]) as unknown as string[] }
+        ? { architectures: Object.freeze([...adapter.deviceRequirements.architectures]) as unknown as DeviceArchitecture[] }
         : {}),
       ...(adapter.deviceRequirements.platforms
-        ? { platforms: Object.freeze([...adapter.deviceRequirements.platforms]) as unknown as string[] }
+        ? { platforms: Object.freeze([...adapter.deviceRequirements.platforms]) as unknown as DevicePlatform[] }
         : {}),
     });
     const registeredAdapter: SpeechToTextAdapter = Object.freeze({
@@ -138,7 +138,7 @@ export function validateSpeechToTextRequest(
   }
 }
 
-import { assessDeviceCompatibility, type DeviceCapabilityProfile, type DeviceCapabilityRequirements } from "./device-capabilities";
+import { assessDeviceCompatibility, type DeviceArchitecture, type DeviceCapabilityProfile, type DeviceCapabilityRequirements, type DevicePlatform } from "./device-capabilities";
 
 export interface SpeechToTextRuntimeResolution {
   available: boolean;
