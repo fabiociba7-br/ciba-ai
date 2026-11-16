@@ -76,6 +76,44 @@ describe("Garcia Whisper.cpp integration contract", () => {
     releaseTwo?.();
   });
 
+  it("fails closed for null, malformed, or accessor-backed registry configuration", () => {
+    expect(() => createWhisperCppRegistry(null as never)).toThrow("invalid_speech_to_text_policy");
+    const throwingPolicy = Object.defineProperty({}, "supportedRuntimes", {
+      get() { throw new Error("untrusted_policy_getter"); },
+    });
+    expect(() => createWhisperCppRegistry(throwingPolicy as never))
+      .toThrow("invalid_speech_to_text_policy");
+    const throwingAdapter = Object.defineProperty({}, "engine", {
+      get() { throw new Error("untrusted_adapter_getter"); },
+    });
+    expect(() => createWhisperCppRegistry({
+      ...policy, licenseStatus: "approved",
+    }, [throwingAdapter as never])).toThrow("invalid_whisper_cpp_adapter");
+  });
+
+  it("copies hardware requirement lists without invoking caller iterators", () => {
+    const architectures = new Proxy(["arm64"], {
+      get(target, property, receiver) {
+        if (property === Symbol.iterator) throw new Error("iterator_must_not_run");
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const sourceAdapter: SpeechToTextAdapter = {
+      ...adapter,
+      deviceRequirements: {
+        ...adapter.deviceRequirements,
+        architectures,
+      },
+    };
+    const registry = createWhisperCppRegistry({
+      ...policy, licenseStatus: "approved",
+    }, [sourceAdapter]);
+    expect(registry.getAdapter("android_embedded")?.deviceRequirements.architectures)
+      .toEqual(["arm64"]);
+    expect(Object.isFrozen(registry.getAdapter("android_embedded")?.deviceRequirements.architectures))
+      .toBe(true);
+  });
+
   it("blocks adapter registration until license review is approved", () => {
     expect(() => createWhisperCppRegistry(policy, [adapter]))
       .toThrow("speech_to_text_license_not_approved");
