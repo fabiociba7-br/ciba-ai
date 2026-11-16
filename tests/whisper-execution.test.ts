@@ -77,6 +77,42 @@ describe("guarded Whisper.cpp transcription execution", () => {
     });
   });
 
+  it("clears the temporary audio copy after successful transcription without mutating caller audio", async () => {
+    const original = new Uint8Array([7, 8, 9]);
+    let adapterAudio: Uint8Array | undefined;
+    const observingAdapter: SpeechToTextAdapter = {
+      ...adapter,
+      transcribe: async (input) => {
+        adapterAudio = input.audio;
+        expect(input.audio).not.toBe(original);
+        expect([...input.audio]).toEqual([7, 8, 9]);
+        return adapter.transcribe(request);
+      },
+    };
+    const registry = createWhisperCppRegistry(policy, [observingAdapter]);
+    await runWhisperCppTranscription(
+      registry, profile, requirements, { ...request, audio: original },
+    );
+    expect([...original]).toEqual([7, 8, 9]);
+    expect(adapterAudio && [...adapterAudio]).toEqual([0, 0, 0]);
+  });
+
+  it("clears the temporary audio copy when the adapter rejects", async () => {
+    let adapterAudio: Uint8Array | undefined;
+    const rejectingAdapter: SpeechToTextAdapter = {
+      ...adapter,
+      transcribe: async (input) => {
+        adapterAudio = input.audio;
+        throw new Error("engine_failed");
+      },
+    };
+    const registry = createWhisperCppRegistry(policy, [rejectingAdapter]);
+    await expect(runWhisperCppTranscription(
+      registry, profile, requirements, request,
+    )).rejects.toThrow("engine_failed");
+    expect(adapterAudio && [...adapterAudio]).toEqual([0, 0, 0]);
+  });
+
   it("rejects invalid audio before invoking the adapter", async () => {
     let called = false;
     const countingAdapter: SpeechToTextAdapter = {
