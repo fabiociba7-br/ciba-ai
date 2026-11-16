@@ -51,6 +51,13 @@ export interface CibaTaskDispatchInput {
   includeContext?: boolean;
 }
 
+export interface CibaTaskExecutionResult<T = Record<string, unknown>> {
+  taskId: string;
+  status: "completed" | "failed";
+  result: T | { error: string };
+  acknowledged: boolean;
+}
+
 export interface CibaTaskResultInput<T = unknown> {
   taskId: string;
   clientMessageId: string;
@@ -466,6 +473,46 @@ export class CibaClient {
         ...(input.ttlHours === undefined ? {} : { ttl_hours: input.ttlHours }),
       }),
     });
+  }
+
+  /**
+   * Runs an app-owned processor for one inbox task, submits its result, then acknowledges it.
+   * The callback is the only execution surface; received context remains untrusted reference data.
+   */
+  async executeTaskMessage<T extends Record<string, unknown>>(
+    message: CibaInboxMessage<unknown>,
+    processor: (consumption: TaskRequestConsumption) => Promise<T> | T,
+  ): Promise<CibaTaskExecutionResult<T>> {
+    if (message.scope !== "task") throw new Error("message_scope_is_not_task");
+    const consumption = consumeTaskRequest(message.payload);
+    if (!consumption.accepted || !consumption.task) {
+      throw new Error(consumption.errors[0] ?? "invalid_task_request");
+    }
+
+    const clientMessageId = `task-result:${consumption.task.task_id}:${message.message_id}`;
+    let status: "completed" | "failed" = "completed";
+    let result: T | { error: string };
+    try {
+      result = await processor(consumption);
+    } catch (error) {
+      status = "failed";
+      const messageText = error instanceof Error ? error.message : "task_processor_failed";
+      result = { error: messageText.slice(0, 300) };
+    }
+
+    await this.submitTaskResult({
+      taskId: consumption.task.task_id,
+      clientMessageId,
+      status,
+      result,
+    });
+    await this.acknowledgeMessages([message.message_id]);
+    return {
+      taskId: consumption.task.task_id,
+      status,
+      result,
+      acknowledged: true,
+    };
   }
 
   /** Validate and prepare a task message from the inbox for the app's own task processor. */
