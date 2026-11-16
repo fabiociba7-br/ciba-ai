@@ -367,6 +367,39 @@ describe("Android Whisper.cpp bridge contract", () => {
     await expect(adapter.transcribe(request)).resolves.toEqual(result);
   });
 
+  it("rejects malformed adapter, bridge, and transcription request inputs", async () => {
+    const validOptions = {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    };
+    for (const invalidOptions of [null, undefined, 1, "options"]) {
+      expect(() => createAndroidWhisperCppAdapter(
+        bridge(),
+        invalidOptions as never,
+      )).toThrow("invalid_android_whisper_options");
+    }
+    for (const invalidBridge of [
+      null,
+      undefined,
+      {},
+      { getStatus: "not-a-function", transcribe: async () => result },
+      { getStatus: async () => ({}), transcribe: null },
+    ]) {
+      expect(() => createAndroidWhisperCppAdapter(
+        invalidBridge as never,
+        validOptions,
+      )).toThrow("invalid_android_whisper_options");
+    }
+
+    const adapter = createAndroidWhisperCppAdapter(bridge(), validOptions);
+    for (const invalidRequest of [null, undefined, 1, "audio", {}]) {
+      await expect(adapter.transcribe(invalidRequest as never))
+        .rejects.toThrow("invalid_speech_to_text_request");
+    }
+  });
+
   it("rejects invalid adapter configuration and malformed model digests", () => {
     expect(() => createAndroidWhisperCppAdapter(bridge(), {
       modelId: " ", modelSha256: MODEL_SHA256, maxAudioBytes: 1024,
