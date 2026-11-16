@@ -8,8 +8,8 @@ export { OpenAICompatibleProvider } from "./providers/openai-compatible";
 export { createProviderRegistry } from "./providers/registry";
 export type { ProviderRegistry, RegisteredModel } from "./providers/registry";
 export type { CibaToolDefinition, CibaToolMetadata, CibaToolRegistry, CibaToolRisk } from "./tools";
-export { createCibaToolRegistry, createCibaToolConsentStore } from "./tools";
-export type { CibaToolAuthorizationRequest, CibaToolInvocationPlan, CibaToolInvocationContext, CibaToolRegistryOptions, ExecutableCibaToolRegistry, CibaToolConsentRequest, CibaToolConsentCheck, CibaToolConsentStatus, CibaToolConsentStore } from "./tools";
+export { createCibaToolRegistry, createCibaToolConsentStore, createCibaToolApprovalFlow } from "./tools";
+export type { CibaToolAuthorizationRequest, CibaToolInvocationPlan, CibaToolInvocationContext, CibaToolRegistryOptions, ExecutableCibaToolRegistry, CibaToolConsentRequest, CibaToolConsentCheck, CibaToolConsentStatus, CibaToolConsentStore, CibaToolApprovalFlow, CibaToolApprovalState, CibaToolProposal } from "./tools";
 export type { CibaRole, ChatTurn, ModelProvider, OrchestrationResult } from "./types";
 
 export { buildWorkingContext, canAccessMemory, validateCuratedMemory, validateMemoryRecord } from "./memory";
