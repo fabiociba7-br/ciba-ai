@@ -486,3 +486,57 @@ describe("CibaClient", () => {
     expect(result.errors).toContain("message_scope_is_not_task");
   });
 });
+
+
+describe("CibaClient durable tool approvals", () => {
+  it("lists the authenticated app's pending and approved tool requests", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      approvals: [{
+        approval_id: "approval_123456789012",
+        source_device_id: "device-source",
+        source_device_last_seen_at: "2026-11-16T20:00:00.000Z",
+        conversation_id: "conversation-1",
+        invocation_id: "invocation-1",
+        tool_id: "calendar.create",
+        risk: "write",
+        input: { title: "Meeting" },
+        status: "pending",
+        created_at: "2026-11-16T20:00:00.000Z",
+        expires_at: "2026-11-16T20:05:00.000Z",
+      }],
+      count: 1,
+      limit: 20,
+    }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const inbox = await client.listToolApprovals();
+    expect(inbox.approvals[0].tool_id).toBe("calendar.create");
+    expect(inbox.approvals[0].input).toEqual({ title: "Meeting" });
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/owner/tool-approvals");
+    expect(new Headers(fetcher.mock.calls[0][1]?.headers).get("authorization")).toBe("Bearer device-token");
+  });
+
+  it("records explicit one-time approval or denial decisions", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      decided: true, approval_id: "approval_123456789012", decision: "approved", approved_by_device_id: "device-owner",
+    }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const result = await client.decideToolApproval("approval_123456789012", true);
+    expect(result.decision).toBe("approved");
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/owner/tool-approvals/approval_123456789012/decision");
+    expect(fetcher.mock.calls[0][1]?.method).toBe("POST");
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ allow: true });
+    await expect(client.decideToolApproval("bad", true)).rejects.toThrow("invalid_tool_approval_id");
+  });
+
+  it("cancels a request without executing its tool", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      cancelled: true, approval_id: "approval_123456789012",
+    }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const result = await client.cancelToolApproval("approval_123456789012");
+    expect(result.cancelled).toBe(true);
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/owner/tool-approvals/approval_123456789012/cancel");
+    expect(fetcher.mock.calls[0][1]?.method).toBe("POST");
+    expect(fetcher.mock.calls[0][1]?.body).toBeUndefined();
+  });
+});
