@@ -130,3 +130,40 @@ const registry = createCibaToolRegistry(definitions, {
 Call `consent.request(...)` with the prepared plan before showing the approval panel; after the user answers, call `registry.execute(plan.toolId, plan.input, context)`. A grant expires after five minutes, is bound to the canonical input and cannot be reused. Denial, cancellation or a changed input cannot authorize execution. The store is in-memory only; it does not persist grants or silently approve future calls.
 
 Do not set `userExplicitlyAllowed` from model output, a tool proposal, or a preview. It must come from the application's trusted user interaction.
+
+
+## Application approval flow
+
+For application code that needs one consistent proposal/approval/execution sequence, use the exported `createCibaToolApprovalFlow(registry, consent)`. It wraps the existing registry and one-use consent store; it does not connect model output to execution.
+
+```ts
+const consent = createCibaToolConsentStore();
+
+const registry = createCibaToolRegistry(definitions, {
+  allowlist: enabledToolIds,
+  authorize: async (request) => {
+    if (request.requiresApproval) return consent.consume(request);
+    return await applicationPolicyAllows(request);
+  }
+});
+
+const approvalFlow = createCibaToolApprovalFlow(registry, consent);
+const context = { conversationId, invocationId };
+
+// 1. Prepare only. This does not execute the handler.
+const proposal = approvalFlow.propose(toolId, proposedInput, context);
+
+// 2. Display the exact proposal in trusted UI. For protected actions,
+//    call answer only after a real user Allow/Deny interaction.
+if (proposal.approval === "approval_required") {
+  const allowed = approvalFlow.answer(proposal.plan, context, userExplicitlyAllowed);
+  if (!allowed) throw new Error("tool_authorization_denied");
+}
+
+// 3. Execute only after the explicit decision (when required).
+const result = await approvalFlow.execute(proposal.plan, context);
+```
+
+For `write` and `external` tools, `propose` only creates a validated preview and a pending consent request. The application must display the exact proposal and call `answer` only from a trusted Allow/Deny interaction. `execute` refuses while approval is pending; the registry's trusted authorizer consumes the one-use consent immediately before the handler. Read-only tools still pass through the application's authorization policy. Call `cancel(context)` when the user abandons a pending approval.
+
+This helper is an application integration primitive, not a UI component. It is not wired into `runCibaOrchestrator`, provider tool-calling, or any app screen. No tool can be invoked merely because a model proposed it.
