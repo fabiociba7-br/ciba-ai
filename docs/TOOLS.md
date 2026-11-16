@@ -243,3 +243,17 @@ The durable registry factory wraps the trusted authorizer. For `write` and `exte
 The authorization context is supplied only by trusted application code through `flow.execute({ identity, approvalId, plan, context })`. Never construct identity from model output or request-body identifiers. The SDK approval endpoints only record a decision; they do not invoke the tool. A failed application-policy check leaves the approval spent, which is intentional fail-closed behavior.
 
 Tests must cover direct registry execution without approval, altered input, wrong identity, replay/concurrent consumption, expiry, and application-policy denial. This factory remains an application integration primitive; it does not activate tools in the public Worker or perform migrations/deployments.
+
+
+## First built-in Garcia tools: native capability catalog
+
+`createGarciaCapabilityTools({ authorize })` provides two read-only tools for inspecting Garcia's native capability catalog:
+
+- `garcia.capabilities.list`: lists catalog entries and optionally filters by category.
+- `garcia.capabilities.get`: returns one entry by capability ID.
+
+Both tools are explicitly allowlisted, marked `risk: "read"`, and require no durable approval because they do not mutate state or contact external services. They still pass through the caller's trusted authorization callback, which must enforce the current user's read access.
+
+These tools return catalog metadata only. They do not install or download models, invoke native adapters, change capability status, or imply that a planned capability is available. Unknown IDs return `{ found: false }`. Invalid inputs are rejected before the authorization callback.
+
+This factory is an opt-in application primitive. It is not connected to the public Worker, chat runtime, or production tool catalog by this change. A caller must deliberately construct the registry and supply it to a trusted orchestration runtime. No deployment or migration is performed.
