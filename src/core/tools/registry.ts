@@ -131,16 +131,12 @@ function isValidSchemaDefinition(schema: unknown, depth = 0): boolean {
         (rule.minItems as number) <= (rule.maxItems as number));
   }
   if (type === "string") {
-    const allowed = new Set(["type", "minLength", "maxLength", "pattern", "enum"]);
+    const allowed = new Set(["type", "minLength", "maxLength", "enum"]);
     if (Object.keys(rule).some((key) => !allowed.has(key)) ||
         (rule.minLength !== undefined && (!Number.isInteger(rule.minLength) || (rule.minLength as number) < 0)) ||
         (rule.maxLength !== undefined && (!Number.isInteger(rule.maxLength) || (rule.maxLength as number) < 0)) ||
         (rule.minLength !== undefined && rule.maxLength !== undefined &&
           (rule.minLength as number) > (rule.maxLength as number))) return false;
-    if (rule.pattern !== undefined) {
-      if (typeof rule.pattern !== "string" || rule.pattern.length > 256) return false;
-      try { new RegExp(rule.pattern); } catch { return false; }
-    }
     return rule.enum === undefined ||
       (Array.isArray(rule.enum) && rule.enum.length <= 128 &&
         rule.enum.every((item) => typeof item === "string"));
@@ -198,10 +194,6 @@ function validateSchema(value: unknown, schema: unknown, depth = 0): boolean {
     if (typeof value !== "string") return false;
     if (typeof rule.maxLength === "number" && value.length > rule.maxLength) return false;
     if (typeof rule.minLength === "number" && value.length < rule.minLength) return false;
-    if (typeof rule.pattern === "string") {
-      try { if (!new RegExp(rule.pattern).test(value)) return false; }
-      catch { return false; }
-    }
     return true;
   }
 
