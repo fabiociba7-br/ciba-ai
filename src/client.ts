@@ -156,6 +156,16 @@ export interface CibaMemoryReviewProposal {
   inference_calls: 0;
   existing_memory_id: string | null;
 }
+export interface CibaMemoryInsights<T = Record<string, unknown>> {
+  possible_conflicts: Array<{ first: T; second: T; reason: "same_key_different_value"; similarity: number }>;
+  related: Array<{ first: T; second: T; shared_terms: string[]; similarity: number; reason: "related_content" }>;
+  outdated: Array<T & { reason: "expired" | "not_reviewed_recently"; age_days: number }>;
+  analyzed_records: number;
+  inference_calls: 0;
+  visibility: "own_app_and_explicit_memory_read_grants";
+  cross_app_memory_requires_explicit_grant: true;
+  automatic_changes: false;
+}
 export interface CibaMemoryInput {
   scope: CibaMemoryScope;
   key: string;
@@ -429,6 +439,10 @@ export class CibaClient {
         ...(input.validHours === undefined ? {} : { valid_hours: input.validHours }),
       }),
     });
+  }
+
+  getMemoryInsights<T = Record<string, unknown>>(): Promise<CibaMemoryInsights<T>> {
+    return this.request("/v1/owner/memory/insights");
   }
 
   listMemory<T = Record<string, unknown>>(scope: CibaMemoryScope = "app", sourceAppId?: string, options: { search?: string; includeExpired?: boolean } = {}): Promise<{ memories: T[]; maximum: number; scope: CibaMemoryScope; search: string; include_expired: boolean }> {
