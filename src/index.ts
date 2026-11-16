@@ -1038,7 +1038,7 @@ const handleMemoryHistory = async (request: Request, env: Env, url: URL) => {
   const scope = url.searchParams.get("scope") || "app";
   if (scope !== "app" && scope !== "owner") return json({ error: "invalid_memory_scope" }, 400);
   const sourceAppId = scope === "app" ? (url.searchParams.get("source_app_id") || device.app_id) : null;
-  if (scope === "app" && !isValidAppId(sourceAppId)) return json({ error: "invalid_memory_app" }, 400);
+  if (scope === "app" && (typeof sourceAppId !== "string" || !isValidAppId(sourceAppId))) return json({ error: "invalid_memory_app" }, 400);
   const grant = scope === "app" && sourceAppId === device.app_id ? true :
     !!(await env.DB.prepare(`
       SELECT grant_id FROM app_access_grants
