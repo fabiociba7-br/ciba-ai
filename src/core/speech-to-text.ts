@@ -87,7 +87,23 @@ export function createWhisperCppRegistry(
         adapterMap.has(adapter.runtime)) {
       throw new Error("invalid_whisper_cpp_adapter");
     }
-    adapterMap.set(adapter.runtime, adapter);
+    const requirementsSnapshot: DeviceCapabilityRequirements = Object.freeze({
+      ...adapter.deviceRequirements,
+      ...(adapter.deviceRequirements.architectures
+        ? { architectures: Object.freeze([...adapter.deviceRequirements.architectures]) as unknown as string[] }
+        : {}),
+      ...(adapter.deviceRequirements.platforms
+        ? { platforms: Object.freeze([...adapter.deviceRequirements.platforms]) as unknown as string[] }
+        : {}),
+    });
+    const registeredAdapter: SpeechToTextAdapter = Object.freeze({
+      engine: adapter.engine,
+      runtime: adapter.runtime,
+      modelId: adapter.modelId,
+      deviceRequirements: requirementsSnapshot,
+      transcribe: (request: SpeechToTextRequest) => adapter.transcribe(request),
+    });
+    adapterMap.set(adapter.runtime, registeredAdapter);
   }
 
   return {
