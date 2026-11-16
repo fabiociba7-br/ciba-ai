@@ -55,8 +55,8 @@ export function validateAppAccessGrant(grant: AppAccessGrant): AppAccessGrant {
     const destinationAppId = read("destinationAppId");
     const permission = read("permission");
     const scope = read("scope");
-    const expiresAt = read("expiresAt");
-    const revokedAt = read("revokedAt");
+    const expiresAt = descriptors.expiresAt ? read("expiresAt") : undefined;
+    const revokedAt = descriptors.revokedAt ? read("revokedAt") : undefined;
 
     if (!validId(ownerId) || !validId(granteeAppId) ||
         (sourceAppId !== null && !validId(sourceAppId)) ||
