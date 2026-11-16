@@ -44,7 +44,21 @@ export interface MemoryStore {
  * turns or create memories automatically.
  */
 export function buildWorkingContext(messages: ChatTurn[]): ChatTurn[] {
-  return messages.map(({ role, content }) => ({ role, content }));
+  const entries = snapshotMemoryArray(messages, 100);
+  if (!entries) throw new Error("invalid_memory_context");
+  return entries.map((entry) => {
+    const fields = snapshotMemoryRecord(entry, ["role", "content"]);
+    if (!fields || !Object.prototype.hasOwnProperty.call(fields, "role") ||
+        !Object.prototype.hasOwnProperty.call(fields, "content") ||
+        (fields.role !== "user" && fields.role !== "assistant") ||
+        typeof fields.content !== "string" || fields.content.length > 32_000) {
+      throw new Error("invalid_memory_context");
+    }
+    return Object.freeze({
+      role: fields.role,
+      content: fields.content,
+    }) as ChatTurn;
+  });
 }
 
 function isNonEmptyString(value: unknown): value is string {
