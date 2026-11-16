@@ -77,6 +77,24 @@ function readOwnDataRecord(
   return result;
 }
 
+function snapshotDenseArray(value: unknown, maxLength: number): unknown[] | null {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+        value.length > maxLength) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Reflect.ownKeys(descriptors).length !== value.length + 1) return null;
+    const result: unknown[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
+      result.push(descriptor.value);
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Creates a fail-closed registry for the first planned transcription engine.
  * It does not install whisper.cpp, download model weights, or enable remote
@@ -86,31 +104,42 @@ export function createWhisperCppRegistry(
   policy: SpeechToTextEnginePolicy,
   adapters: SpeechToTextAdapter[] = [],
 ): SpeechToTextRegistry {
-  const supportedRuntimes = Array.isArray(policy.supportedRuntimes)
-    ? [...policy.supportedRuntimes]
-    : [];
+  const policyFields = readOwnDataRecord(
+    policy,
+    ["licenseStatus", "supportedRuntimes", "maxAudioBytes", "maxConcurrentTranscriptions"],
+    ["licenseStatus", "supportedRuntimes", "maxAudioBytes"]
+  );
+  if (!policyFields) throw new Error("invalid_speech_to_text_policy");
+  const supportedRuntimeValues = snapshotDenseArray(policyFields.supportedRuntimes, 3);
+  const supportedRuntimes = supportedRuntimeValues as SpeechToTextRuntime[] | null;
   const validRuntimes = new Set<SpeechToTextRuntime>([
     "android_embedded", "desktop_local", "local_service",
   ]);
-  if (!Number.isInteger(policy.maxAudioBytes) || policy.maxAudioBytes < 1 ||
-      policy.maxAudioBytes > 25 * 1024 * 1024 ||
+  const maxAudioBytes = policyFields.maxAudioBytes;
+  const maxConcurrentTranscriptions = policyFields.maxConcurrentTranscriptions;
+  if (!supportedRuntimes || !Number.isInteger(maxAudioBytes) ||
+      (maxAudioBytes as number) < 1 || (maxAudioBytes as number) > 25 * 1024 * 1024 ||
       supportedRuntimes.length === 0 ||
       supportedRuntimes.some((runtime) => !validRuntimes.has(runtime)) ||
       new Set(supportedRuntimes).size !== supportedRuntimes.length ||
-      (policy.maxConcurrentTranscriptions !== undefined &&
-        (!Number.isInteger(policy.maxConcurrentTranscriptions) || policy.maxConcurrentTranscriptions < 1 || policy.maxConcurrentTranscriptions > 8))) {
+      (maxConcurrentTranscriptions !== undefined &&
+        (!Number.isInteger(maxConcurrentTranscriptions) ||
+          (maxConcurrentTranscriptions as number) < 1 ||
+          (maxConcurrentTranscriptions as number) > 8))) {
     throw new Error("invalid_speech_to_text_policy");
   }
-  const licenseApproved = policy.licenseStatus === "approved";
-  if (!licenseApproved && adapters.length > 0) {
+  const licenseApproved = policyFields.licenseStatus === "approved";
+  const adapterValues = snapshotDenseArray(adapters, 3);
+  if (!adapterValues) throw new Error("invalid_whisper_cpp_adapter");
+  if (!licenseApproved && adapterValues.length > 0) {
     throw new Error("speech_to_text_license_not_approved");
   }
 
   const adapterMap = new Map<SpeechToTextRuntime, SpeechToTextAdapter>();
-  const maxAudioBytes = policy.maxAudioBytes;
-  const maxConcurrent = policy.maxConcurrentTranscriptions ?? 1;
+  const safeMaxAudioBytes = maxAudioBytes as number;
+  const maxConcurrent = (maxConcurrentTranscriptions as number | undefined) ?? 1;
   let activeExecutions = 0;
-  for (const adapter of [...adapters]) {
+  for (const adapter of adapterValues as SpeechToTextAdapter[]) {
     if (adapter.engine !== "whisper.cpp" ||
         !supportedRuntimes.includes(adapter.runtime) ||
         !adapter.modelId.trim() ||
@@ -148,7 +177,7 @@ export function createWhisperCppRegistry(
   // Freeze the public registry surface so callers cannot replace lookup,
   // capacity, or execution-reservation methods after policy validation.
   return Object.freeze({
-    maxAudioBytes,
+    maxAudioBytes: safeMaxAudioBytes,
     getAdapter: (runtime: SpeechToTextRuntime) => adapterMap.get(runtime),
     listAvailableRuntimes: () => [...adapterMap.keys()],
     tryAcquireExecution: () => {
