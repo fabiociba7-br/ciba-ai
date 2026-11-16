@@ -66,7 +66,7 @@ export function buildContextPackage(
   purpose: string,
   items: ContextPackageItem[],
 ): ContextPackage {
-  if (!contextId || contextId.length > 100) throw new Error("invalid_context_id");
+  if (typeof contextId !== "string" || !contextId.trim() || contextId.length > 100) throw new Error("invalid_context_id");
   if (typeof purpose !== "string" || purpose.trim().length < 3 || purpose.trim().length > MAX_PURPOSE_CHARS) {
     throw new Error("invalid_context_purpose");
   }
