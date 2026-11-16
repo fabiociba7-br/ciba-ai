@@ -139,6 +139,66 @@ describe("guarded Whisper.cpp transcription execution", () => {
     expect(calls).toBe(2);
   });
 
+  it("does not start a transcription when its signal is already aborted", async () => {
+    let called = false;
+    const controller = new AbortController();
+    controller.abort();
+    const countingAdapter: SpeechToTextAdapter = {
+      ...adapter,
+      transcribe: async () => {
+        called = true;
+        return adapter.transcribe(request);
+      },
+    };
+    const registry = createWhisperCppRegistry(policy, [countingAdapter]);
+    await expect(runWhisperCppTranscription(
+      registry, profile, requirements, { ...request, signal: controller.signal },
+    )).resolves.toEqual({
+      success: false,
+      reasons: ["transcription_cancelled"],
+    });
+    expect(called).toBe(false);
+  });
+
+  it("forwards cancellation to the adapter and releases capacity after it settles", async () => {
+    const controller = new AbortController();
+    let adapterSignal: AbortSignal | undefined;
+    let adapterAudio: Uint8Array | undefined;
+    const cancellableAdapter: SpeechToTextAdapter = {
+      ...adapter,
+      transcribe: async (input) => {
+        adapterSignal = input.signal;
+        adapterAudio = input.audio;
+        return new Promise((_, reject) => {
+          input.signal?.addEventListener(
+            "abort",
+            () => reject(new Error("adapter_cancelled")),
+            { once: true },
+          );
+        });
+      },
+    };
+    const registry = createWhisperCppRegistry({
+      ...policy,
+      maxConcurrentTranscriptions: 1,
+    }, [cancellableAdapter]);
+    const execution = runWhisperCppTranscription(
+      registry, profile, requirements, { ...request, signal: controller.signal },
+    );
+    await Promise.resolve();
+    expect(adapterSignal).toBe(controller.signal);
+    controller.abort();
+    await expect(execution).rejects.toThrow("adapter_cancelled");
+    expect(adapterAudio && [...adapterAudio]).toEqual([0, 0, 0]);
+
+    await expect(runWhisperCppTranscription(
+      registry, profile, requirements, request,
+    )).resolves.toMatchObject({
+      success: false,
+      reasons: ["adapter_not_installed"],
+    });
+  });
+
   it("clears the temporary audio copy after successful transcription without mutating caller audio", async () => {
     const original = new Uint8Array([7, 8, 9]);
     let adapterAudio: Uint8Array | undefined;
