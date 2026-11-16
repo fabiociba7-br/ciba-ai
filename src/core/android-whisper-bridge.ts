@@ -1,4 +1,60 @@
-import {
+function snapshotTranscriptionResult(
+  value: unknown,
+  expectedModelId: string,
+): SpeechToTextResult | null {
+  try {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return null;
+    }
+    const source = value as Record<string, unknown>;
+    // Read every result field once, including the segments collection.
+    const engine = source.engine;
+    const modelId = source.modelId;
+    const text = source.text;
+    const language = source.language;
+    const rawSegments = source.segments;
+    const durationMs = source.durationMs;
+    if (engine !== "whisper.cpp" || modelId !== expectedModelId ||
+        typeof text !== "string" || text.length > MAX_ANDROID_TRANSCRIPT_CHARS ||
+        typeof language !== "string" || !/^[a-z]{2,3}(-[A-Z]{2})?$/.test(language) ||
+        !Array.isArray(rawSegments) || rawSegments.length > MAX_ANDROID_SEGMENTS ||
+        (durationMs !== undefined &&
+          (typeof durationMs !== "number" || !Number.isFinite(durationMs) || durationMs < 0))) {
+      return null;
+    }
+
+    const segments: SpeechSegment[] = [];
+    for (const rawSegment of rawSegments) {
+      if (rawSegment === null || typeof rawSegment !== "object" || Array.isArray(rawSegment)) {
+        return null;
+      }
+      const segment = rawSegment as Record<string, unknown>;
+      const startMs = segment.startMs;
+      const endMs = segment.endMs;
+      const segmentText = segment.text;
+      if (typeof startMs !== "number" || !Number.isFinite(startMs) || startMs < 0 ||
+          typeof endMs !== "number" || !Number.isFinite(endMs) || endMs < startMs ||
+          typeof segmentText !== "string" ||
+          segmentText.length > MAX_ANDROID_SEGMENT_TEXT_CHARS ||
+          (typeof durationMs === "number" && endMs > durationMs)) {
+        return null;
+      }
+      segments.push(Object.freeze({ startMs, endMs, text: segmentText }));
+    }
+
+    return Object.freeze({
+      engine: "whisper.cpp",
+      modelId: expectedModelId,
+      text,
+      language,
+      segments: Object.freeze(segments),
+      ...(durationMs !== undefined ? { durationMs: durationMs as number } : {}),
+    }) as SpeechToTextResult;
+  } catch {
+    // Malformed objects and throwing getters fail closed at the native boundary.
+    return null;
+  }
+}import {
   validateDeviceCapabilityRequirements,
   type DeviceCapabilityRequirements,
   type DeviceArchitecture,
@@ -114,19 +170,11 @@ export function createAndroidWhisperCppAdapter(
         nativeAudio.fill(0);
       }
 
-      if (!isValidResult(result, modelId)) {
+      const snapshot = snapshotTranscriptionResult(result, modelId);
+      if (!snapshot) {
         throw new Error("invalid_android_whisper_result");
       }
-
-      // Return a detached immutable snapshot. The native bridge or downstream
-      // caller cannot mutate validated text or segment timestamps afterward.
-      const segments = Object.freeze(
-        result.segments.map((segment) => Object.freeze({ ...segment })),
-      );
-      return Object.freeze({
-        ...result,
-        segments,
-      }) as SpeechToTextResult;
+      return snapshot;
     },
   };
   return Object.freeze(adapter);
