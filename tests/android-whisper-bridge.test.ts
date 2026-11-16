@@ -57,6 +57,25 @@ describe("Android Whisper.cpp bridge contract", () => {
     expect(adapter.engine).toBe("whisper.cpp");
   });
 
+  it("freezes adapter metadata and prevents replacing its transcriber", async () => {
+    const adapter = createAndroidWhisperCppAdapter(bridge(), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+    const originalTranscribe = adapter.transcribe;
+
+    expect(Object.isFrozen(adapter)).toBe(true);
+    expect(Reflect.set(adapter, "modelId", "replacement-model")).toBe(false);
+    expect(Reflect.set(adapter, "transcribe", async () => {
+      throw new Error("replacement_transcriber_must_not_run");
+    })).toBe(false);
+    expect(adapter.modelId).toBe("ggml-tiny");
+    expect(adapter.transcribe).toBe(originalTranscribe);
+    await expect(adapter.transcribe(request)).resolves.toEqual(result);
+  });
+
   it("fails closed when the native library is unavailable", async () => {
     const adapter = createAndroidWhisperCppAdapter(bridge({
       getStatus: async () => ({ nativeLibraryReady: false, modelLoaded: false }),
