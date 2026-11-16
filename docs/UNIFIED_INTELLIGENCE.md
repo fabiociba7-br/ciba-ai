@@ -153,3 +153,14 @@ A proposta é apenas uma prévia: `stored: false`, `persisted: false`, `requires
 A API autenticada de memória agora oferece busca textual por chave/conteúdo via `GET /v1/owner/memory?scope=app&q=...` e `scope=owner`, com opção `include_expired=true` para revisar registros expirados. O limite continua em 200 registros por escopo. Edição usa `PATCH /v1/owner/memory?scope=...` com `memory_id`, `key`, `value`, `consent: "curated"` e validade opcional. `valid_hours: null` remove a expiração; um inteiro de 1 a 8760 renova/define a validade; omitir mantém a validade atual. Exclusão continua sendo lógica (soft delete), removendo imediatamente o registro das consultas e da recuperação contextual.
 
 O painel privado inclui busca, seleção entre memória do app e memória central, opção para mostrar expiradas, edição e exclusão. Cada escopo mantém a autorização existente: o próprio app pode gerenciar sua memória; memória central ou de outro app exige concessão ativa de leitura/escrita correspondente. O endpoint não oferece acesso cruzado implícito. Nenhuma migration nova foi necessária.
+
+
+## Aprendizado contínuo com revisão do proprietário (etapa 28)
+
+O endpoint autenticado `POST /v1/owner/memory/reviews?scope=app|owner` recebe uma proposta baseada em trecho literal atribuído pelo aplicativo ao usuário. A API valida a proposta e a compara com a memória ativa de mesma chave: `new` (não existe registro), `unchanged` (mesmo valor após normalização) ou `possible_conflict` (valor diferente). A classificação é determinística e não afirma que uma informação é verdadeira ou falsa.
+
+As propostas ficam em uma fila privada e limitada a 100 itens pendentes por proprietário. `GET /v1/owner/memory/reviews` lista propostas pendentes; `PATCH` com `decision: approve|reject` registra a decisão do proprietário. Somente a aprovação grava ou atualiza a memória curada. Antes de substituir um registro em conflito, o servidor confere se o valor atual ainda corresponde ao valor observado quando a proposta foi criada; caso contrário, marca a proposta como obsoleta e exige nova revisão. Propostas rejeitadas não alteram a memória.
+
+A fila guarda somente a informação proposta e o trecho de evidência correspondente (máximo de 500 caracteres), não a conversa completa nem o texto de origem integral. O app informa `source_role: user`; o servidor não consegue autenticar independentemente esse papel, portanto a interface do aplicativo precisa garantir que a evidência seja realmente uma fala do usuário. A aprovação deve ser uma ação explícita do proprietário.
+
+O fluxo não treina nem ajusta pesos do modelo, não cria histórico de chat e não chama IA: comparação e classificação são determinísticas (`inference_calls: 0`). A migration `0013_memory_review_proposals.sql` precisa ser aplicada e o Worker publicado antes de o recurso ficar disponível em produção.
