@@ -685,7 +685,7 @@ describe("Ciba AI private app-to-app message relay", () => {
       headers: { authorization: `Bearer ${sourceDevice.access_token}`, "content-type": "application/json" },
       body: JSON.stringify({
         task_type: "summarize",
-        instruction: "Resuma os pontos principais do texto.",
+        instruction: "Resuma a arquitetura do aplicativo e a fase do projeto.",
         client_message_id: "coordinator-task-001",
         context: { source: "integration-test" },
         include_context: true,
@@ -711,7 +711,7 @@ describe("Ciba AI private app-to-app message relay", () => {
       payload: {
         protocol: "garcia.task.request",
         task_type: "summarize",
-        instruction: "Resuma os pontos principais do texto.",
+        instruction: "Resuma a arquitetura do aplicativo e a fase do projeto.",
         context: { source: "integration-test" },
         context_package: {
           protocol: "garcia.context.package",
