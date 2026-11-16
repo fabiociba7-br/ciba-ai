@@ -303,7 +303,16 @@ export function createCibaToolRegistry(
   }
 
   return Object.freeze({
-    get(toolId: string) { return registered.get(toolId)?.definition; },
+    get(toolId: string) {
+      const definition = registered.get(toolId)?.definition;
+      if (!definition) return undefined;
+      return Object.freeze({
+        id: definition.id,
+        description: definition.description,
+        risk: definition.risk,
+        requiresApproval: definition.requiresApproval
+      });
+    },
     list() {
       return Array.from(registered.values(), ({ definition }) => Object.freeze({
         id: definition.id,
