@@ -24,6 +24,7 @@ export interface AndroidWhisperCppBridge {
 export interface AndroidWhisperCppAdapterOptions {
   modelId: string;
   maxAudioBytes: number;
+  deviceRequirements: DeviceCapabilityRequirements;
 }
 
 /** Creates a fail-closed adapter around an explicitly supplied native bridge. */
@@ -33,7 +34,8 @@ export function createAndroidWhisperCppAdapter(
 ): SpeechToTextAdapter {
   if (!options.modelId.trim() ||
       !Number.isInteger(options.maxAudioBytes) ||
-      options.maxAudioBytes < 1) {
+      options.maxAudioBytes < 1 ||
+      options.deviceRequirements.runtime !== "android_embedded") {
     throw new Error("invalid_android_whisper_options");
   }
 
@@ -41,6 +43,7 @@ export function createAndroidWhisperCppAdapter(
     engine: "whisper.cpp",
     runtime: "android_embedded",
     modelId: options.modelId,
+    deviceRequirements: options.deviceRequirements,
     async transcribe(request) {
       if (!(request.audio instanceof Uint8Array) ||
           request.audio.byteLength === 0 ||
