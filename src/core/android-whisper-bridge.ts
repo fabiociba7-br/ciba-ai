@@ -81,8 +81,8 @@ export function createAndroidWhisperCppAdapter(
         throw new Error("invalid_speech_to_text_request");
       }
 
-      const status = await getStatus();
-      if (!isValidBridgeStatus(status)) {
+      const status = snapshotBridgeStatus(await getStatus());
+      if (!status) {
         throw new Error("android_whisper_invalid_status");
       }
       if (!status.nativeLibraryReady) {
@@ -124,33 +124,52 @@ export function createAndroidWhisperCppAdapter(
   return Object.freeze(adapter);
 }
 
-function isValidBridgeStatus(
-  status: AndroidWhisperCppBridgeStatus,
-): boolean {
-  if (status === null ||
-      typeof status.nativeLibraryReady !== "boolean" ||
-      typeof status.modelLoaded !== "boolean") {
-    return false;
+function snapshotBridgeStatus(
+  value: unknown,
+): AndroidWhisperCppBridgeStatus | null {
+  try {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return null;
+    }
+    const source = value as Record<string, unknown>;
+    const snapshot: AndroidWhisperCppBridgeStatus = {
+      nativeLibraryReady: source.nativeLibraryReady as boolean,
+      modelLoaded: source.modelLoaded as boolean,
+      ...(source.modelId !== undefined ? { modelId: source.modelId as string } : {}),
+      ...(source.modelSha256 !== undefined
+        ? { modelSha256: source.modelSha256 as string }
+        : {}),
+      ...(source.engineVersion !== undefined
+        ? { engineVersion: source.engineVersion as string }
+        : {}),
+    };
+    if (typeof snapshot.nativeLibraryReady !== "boolean" ||
+        typeof snapshot.modelLoaded !== "boolean") {
+      return null;
+    }
+    if (snapshot.modelId !== undefined &&
+        (typeof snapshot.modelId !== "string" || snapshot.modelId.length > 200)) {
+      return null;
+    }
+    if (snapshot.modelSha256 !== undefined &&
+        (typeof snapshot.modelSha256 !== "string" ||
+          !/^[a-f0-9]{64}$/.test(snapshot.modelSha256))) {
+      return null;
+    }
+    if (snapshot.engineVersion !== undefined &&
+        (typeof snapshot.engineVersion !== "string" ||
+          snapshot.engineVersion.length > 128)) {
+      return null;
+    }
+    if (snapshot.modelLoaded &&
+        (!snapshot.nativeLibraryReady ||
+          typeof snapshot.modelId !== "string" || snapshot.modelId.trim().length === 0)) {
+      return null;
+    }
+    return Object.freeze(snapshot);
+  } catch {
+    return null;
   }
-  if (status.modelId !== undefined &&
-      (typeof status.modelId !== "string" || status.modelId.length > 200)) {
-    return false;
-  }
-  if (status.modelSha256 !== undefined &&
-      (typeof status.modelSha256 !== "string" ||
-        !/^[a-f0-9]{64}$/.test(status.modelSha256))) {
-    return false;
-  }
-  if (status.engineVersion !== undefined &&
-      (typeof status.engineVersion !== "string" || status.engineVersion.length > 128)) {
-    return false;
-  }
-  if (status.modelLoaded &&
-      (!status.nativeLibraryReady ||
-        typeof status.modelId !== "string" || status.modelId.trim().length === 0)) {
-    return false;
-  }
-  return true;
 }
 
 const MAX_ANDROID_TRANSCRIPT_CHARS = 100_000;
