@@ -169,3 +169,22 @@ A classificação `new`, `unchanged` ou `possible_conflict` é determinística e
 ## Perfil contextual aplicado ao chat
 
 O chat normal usa o perfil de comunicação presente nas memórias curadas autorizadas para orientar o estilo da resposta, mesmo quando a pergunta atual é sobre outro assunto. As demais memórias continuam sujeitas à recuperação lexical por relevância. A seleção é limitada a cinco registros e 1.800 caracteres; nenhuma chamada de inferência adicional é feita. O campo `intelligence.memory_context.profile_signals_used` informa se padrões recorrentes de comunicação foram incluídos.
+
+
+### Compartilhar contexto selecionado entre aplicativos
+
+Use `shareContextPackage()` para enviar somente itens estruturados e selecionados a outro app. É necessário que o proprietário tenha habilitado mensagens e concedido `send` ao remetente e `receive` ao destino no escopo `context`.
+
+```ts
+await client.shareContextPackage({
+  destinationAppId: "com.exemplo.destino",
+  clientMessageId: crypto.randomUUID(),
+  purpose: "Continuar o planejamento",
+  items: [
+    { key: "preferred_style", value: "Respostas diretas", kind: "preference", origin: "curated_memory" },
+    { key: "project_phase", value: "Revisão técnica", kind: "project", origin: "task_state" },
+  ],
+});
+```
+
+O destino recupera o pacote com `getInbox()` e confirma a mensagem com `acknowledgeMessages()`. Não envie transcrições ou conversas completas; selecione apenas fatos, preferências, restrições e estado necessários à tarefa.
