@@ -104,6 +104,27 @@ A resposta tipada `CibaAppIdentity` inclui o perfil do app autenticado, capacida
 O destino só pode responder a uma solicitação ativa originalmente encaminhada a ele. A resposta exige concessões direcionais inversas no escopo `task`; a consulta exige autenticação do proprietário pareado. O SDK não persiste resultados nem executa a consolidação semântica por conta própria.
 
 
+## Execução padronizada no aplicativo destinatário (etapa 38)
+
+O SDK oferece `executeTaskMessage(message, processor)` para conectar a validação do inbox ao processador que pertence ao próprio aplicativo. O método valida o escopo e o envelope, confirma que o `task_id` do payload corresponde ao identificador do registro da fila, chama o callback local e envia um resultado correlacionado por `submitTaskResult()`. Só depois da aceitação do resultado pelo servidor a mensagem é confirmada com `acknowledgeMessages()`.
+
+O callback recebe a estrutura validada e o contexto continua marcado como dado não confiável. O aplicativo decide quais recursos internos usar; o SDK não interpreta texto recebido como comandos, não executa shell, não chama ferramentas arbitrárias e não concede permissões. Erros do callback são devolvidos como resultado `failed` com mensagem limitada a 300 caracteres. Se o envio do resultado falhar, a mensagem não é confirmada, permitindo nova tentativa; o identificador idempotente do resultado é derivado da tarefa e da mensagem.
+
+Exemplo:
+
+```ts
+const inbox = await client.getInbox();
+for (const message of inbox.messages) {
+  if (message.scope !== "task") continue;
+  await client.executeTaskMessage(message, async ({ task, context }) => {
+    // Implementação específica do app; validar os dados antes de usar.
+    return await meuProcessadorLocal(task, context);
+  });
+}
+```
+
+O SDK fornece o ciclo de integração, não um executor universal: cada aplicativo conectado precisa implementar `meuProcessadorLocal` e decidir como tratar cada tipo de tarefa.
+
 ## Acompanhamento do ciclo de vida das tarefas (etapa 37)
 
 `getTaskStatus(taskId)` consulta `GET /v1/apps/tasks/status?task_id=...`. O endpoint só retorna tarefas originadas pelo aplicativo autenticado e exige proprietário pareado, mensagens habilitadas e concessões direcionais de tarefa ainda válidas.
