@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createCibaToolRegistry } from "../src/core/tools/registry";
+import { createDurableCibaToolRegistry } from "../src/core/tools/durable-approval-flow";
 import { createDurableCibaToolApprovalFlow } from "../src/core/tools/durable-approval-flow";
 import type { DurableToolApprovalIdentity, DurableToolApprovalRequest, DurableToolApprovalStore } from "../src/core/tools/durable-consent";
 
@@ -16,15 +16,6 @@ const schema = {
 function setup() {
   const execute = vi.fn(async (input: unknown) => ({ ok: true, input }));
   const authorize = vi.fn(async () => true);
-  const registry = createCibaToolRegistry([{
-    id: "profile.update",
-    description: "Update a profile field",
-    risk: "write",
-    requiresApproval: true,
-    inputSchema: schema,
-    execute,
-  }], { allowlist: ["profile.update"], authorize });
-
   const request = vi.fn(async (_identity: typeof identity, _request: DurableToolApprovalRequest) => ({
     approvalId: "approval-1",
     status: "approval_required" as const,
@@ -33,8 +24,16 @@ function setup() {
   const consume = vi.fn(async (_args: Parameters<DurableToolApprovalStore["consume"]>[0]) => true);
   const cancel = vi.fn(async (_id: string, _identity: typeof identity) => true);
   const store: DurableToolApprovalStore = { request, answer, consume, cancel };
+  const registry = createDurableCibaToolRegistry([{
+    id: "profile.update",
+    description: "Update a profile field",
+    risk: "write",
+    requiresApproval: true,
+    inputSchema: schema,
+    execute,
+  }], { allowlist: ["profile.update"], approvals: store, authorize });
   const flow = createDurableCibaToolApprovalFlow(registry, store);
-  return { flow, execute, authorize, request, answer, consume, cancel };
+  return { flow, registry, execute, authorize, request, answer, consume, cancel };
 }
 
 describe("durable tool approval flow", () => {
@@ -79,6 +78,14 @@ describe("durable tool approval flow", () => {
     await expect(flow.execute({ identity, approvalId: proposal.approvalId, plan: proposal.plan, context }))
       .rejects.toThrow("tool_approval_required");
     expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it("blocks direct registry execution without a durable approval capability", async () => {
+    const { registry, execute, consume } = setup();
+    await expect(registry.execute("profile.update", { value: "Curitiba" }, context))
+      .rejects.toThrow("tool_approval_required");
+    expect(consume).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it("does not execute when approval is missing", async () => {
