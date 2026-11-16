@@ -4,6 +4,7 @@ import {
 } from "../native-capabilities";
 import {
   createCibaToolRegistry,
+  type CibaToolInvocationContext,
   type CibaToolRegistryOptions,
   type ExecutableCibaToolRegistry,
 } from "./registry";
@@ -92,5 +93,55 @@ export function createGarciaCapabilityTools(
     maxInputBytes: 2_048,
     maxOutputBytes: 64_000,
     maxConcurrentExecutions: 4,
+  });
+}
+
+export interface GarciaCapabilityToolRuntimeOptions extends GarciaCapabilityToolOptions {
+  context: CibaToolInvocationContext;
+  /** Defaults to false. Set true only in a trusted application runtime. */
+  executeReadOnlyProposals?: boolean;
+}
+
+export interface GarciaCapabilityToolRuntime {
+  registry: ExecutableCibaToolRegistry;
+  context: CibaToolInvocationContext;
+  executeReadOnlyProposals: boolean;
+}
+
+/** Builds the exact runtime shape accepted by runCibaOrchestrator. */
+export function createGarciaCapabilityToolRuntime(
+  options: GarciaCapabilityToolRuntimeOptions
+): GarciaCapabilityToolRuntime {
+  if (!options || typeof options.authorize !== "function") {
+    throw new Error("garcia_capability_authorizer_required");
+  }
+  if (options.executeReadOnlyProposals !== undefined &&
+      typeof options.executeReadOnlyProposals !== "boolean") {
+    throw new Error("invalid_garcia_capability_runtime");
+  }
+  const rawContext = options.context;
+  if (rawContext === null || typeof rawContext !== "object" || Array.isArray(rawContext) ||
+      Object.getPrototypeOf(rawContext) !== Object.prototype) {
+    throw new Error("invalid_garcia_capability_runtime");
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(rawContext);
+  const keys = Reflect.ownKeys(descriptors);
+  if (keys.length !== 2 || !descriptors.conversationId ||
+      !("value" in descriptors.conversationId) || !descriptors.conversationId.enumerable ||
+      !descriptors.invocationId || !("value" in descriptors.invocationId) ||
+      !descriptors.invocationId.enumerable ||
+      typeof descriptors.conversationId.value !== "string" ||
+      !descriptors.conversationId.value.trim() || descriptors.conversationId.value.length > 128 ||
+      typeof descriptors.invocationId.value !== "string" ||
+      !descriptors.invocationId.value.trim() || descriptors.invocationId.value.length > 128) {
+    throw new Error("invalid_garcia_capability_runtime");
+  }
+  return Object.freeze({
+    registry: createGarciaCapabilityTools({ authorize: options.authorize }),
+    context: Object.freeze({
+      conversationId: descriptors.conversationId.value,
+      invocationId: descriptors.invocationId.value,
+    }),
+    executeReadOnlyProposals: options.executeReadOnlyProposals === true,
   });
 }
