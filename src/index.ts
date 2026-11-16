@@ -2969,11 +2969,11 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   if (url.pathname === "/v1/owner/tool-approvals" && request.method === "GET") {
     return handleOwnerToolApprovals(request, env);
   }
-  const toolApprovalDecision = url.pathname.match(/^\\/v1\\/owner\\/tool-approvals\\/([A-Za-z0-9_-]{16,128})\\/decision$/);
+  const toolApprovalDecision = url.pathname.match(/^\/v1\/owner\/tool-approvals\/([A-Za-z0-9_-]{16,128})\/decision$/);
   if (toolApprovalDecision && request.method === "POST") {
     return handleOwnerToolApprovalDecision(request, env, toolApprovalDecision[1]);
   }
-  const toolApprovalCancel = url.pathname.match(/^\\/v1\\/owner\\/tool-approvals\\/([A-Za-z0-9_-]{16,128})\\/cancel$/);
+  const toolApprovalCancel = url.pathname.match(/^\/v1\/owner\/tool-approvals\/([A-Za-z0-9_-]{16,128})\/cancel$/);
   if (toolApprovalCancel && request.method === "POST") {
     return handleOwnerToolApprovalCancel(request, env, toolApprovalCancel[1]);
   }
