@@ -143,6 +143,55 @@ export function createWhisperCppRegistry(
   });
 }
 
+function snapshotSpeechToTextRequest(
+  value: unknown,
+  maxAudioBytes: number,
+): SpeechToTextRequest | null {
+  try {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+    const source = value as Record<string, unknown>;
+    const audio = source.audio;
+    const consentValue = source.consent;
+    const mimeType = source.mimeType;
+    const language = source.language;
+    const timestamps = source.timestamps;
+    const signal = source.signal;
+
+    if (!(audio instanceof Uint8Array) ||
+        Object.getPrototypeOf(audio) !== Uint8Array.prototype ||
+        audio.byteLength === 0 || audio.byteLength > maxAudioBytes ||
+        typeof mimeType !== "string" || !MIME_TYPES.has(mimeType as SpeechToTextRequest["mimeType"]) ||
+        (language !== undefined &&
+          (typeof language !== "string" || !/^[a-z]{2,3}(-[A-Z]{2})?$/.test(language))) ||
+        (timestamps !== undefined && typeof timestamps !== "boolean") ||
+        (signal !== undefined &&
+          (signal === null || typeof signal !== "object" ||
+            typeof (signal as AbortSignal).aborted !== "boolean")) ||
+        consentValue === null || typeof consentValue !== "object" ||
+        Array.isArray(consentValue)) return null;
+
+    const consent = consentValue as Record<string, unknown>;
+    const granted = consent.granted;
+    const purpose = consent.purpose;
+    const sourceAction = consent.source;
+    if (granted !== true || purpose !== "transcription" ||
+        sourceAction !== "explicit_user_action") return null;
+
+    const audioCopy = Uint8Array.prototype.slice.call(audio) as Uint8Array;
+    if (audioCopy.byteLength !== audio.byteLength) return null;
+    return {
+      audio: audioCopy,
+      consent: { granted: true, purpose: "transcription", source: "explicit_user_action" },
+      mimeType: mimeType as SpeechToTextRequest["mimeType"],
+      ...(language !== undefined ? { language: language as string } : {}),
+      ...(timestamps !== undefined ? { timestamps: timestamps as boolean } : {}),
+      ...(signal !== undefined ? { signal: signal as AbortSignal } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function validateSpeechToTextRequest(
   request: SpeechToTextRequest,
   maxAudioBytes = 25 * 1024 * 1024,
@@ -280,34 +329,41 @@ export async function runWhisperCppTranscription(
   request: SpeechToTextRequest,
   maxAudioBytes?: number,
 ): Promise<SpeechToTextExecution> {
-  validateSpeechToTextRequest(request, maxAudioBytes ?? registry.maxAudioBytes);
-  if (request.signal?.aborted) {
+  const safeRequest = snapshotSpeechToTextRequest(
+    request,
+    maxAudioBytes ?? registry.maxAudioBytes
+  );
+  if (!safeRequest) throw new Error("invalid_speech_to_text_request");
+  if (safeRequest.signal?.aborted) {
+    safeRequest.audio.fill(0);
     return { success: false, reasons: ["transcription_cancelled"] };
   }
   const resolution = resolveWhisperCppRuntime(registry, profile, requirements);
   if (!resolution.available || !resolution.adapter) {
+    safeRequest.audio.fill(0);
     return { success: false, reasons: resolution.reasons };
   }
 
   const releaseExecution = registry.tryAcquireExecution();
   if (!releaseExecution) {
+    safeRequest.audio.fill(0);
     return { success: false, reasons: ["transcription_capacity_reached"] };
   }
 
   // Give the adapter an isolated copy and clear it after completion so the
   // caller's audio remains untouched and the temporary buffer is not retained.
-  const audioBuffer = request.audio.slice();
+  const audioBuffer = safeRequest.audio;
   try {
-    if (request.signal?.aborted) {
+    if (safeRequest.signal?.aborted) {
       return { success: false, reasons: ["transcription_cancelled"] };
     }
     const result = await resolution.adapter.transcribe({
-      ...request,
+      ...safeRequest,
       audio: audioBuffer,
     });
     // An adapter may finish after cancellation if its runtime is not
     // cancellation-aware. Never publish that late result to the caller.
-    if (request.signal?.aborted) {
+    if (safeRequest.signal?.aborted) {
       return { success: false, reasons: ["transcription_cancelled"] };
     }
     const resultSnapshot = snapshotSpeechToTextResult(result, resolution.adapter.modelId);
@@ -318,7 +374,7 @@ export async function runWhisperCppTranscription(
   } catch (error) {
     // Normalize adapter-level cancellation into the same public outcome,
     // while preserving genuine engine failures when no cancellation occurred.
-    if (request.signal?.aborted) {
+    if (safeRequest.signal?.aborted) {
       return { success: false, reasons: ["transcription_cancelled"] };
     }
     throw error;
