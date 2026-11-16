@@ -96,6 +96,76 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
+function isValidSchemaDefinition(schema: unknown, depth = 0): boolean {
+  if (depth > MAX_DEPTH || schema === null || typeof schema !== "object" || Array.isArray(schema)) {
+    return false;
+  }
+  const rule = schema as Record<string, unknown>;
+  const type = rule.type;
+  if (type === "object") {
+    const allowed = new Set(["type", "properties", "required", "additionalProperties", "maxProperties"]);
+    if (Object.keys(rule).some((key) => !allowed.has(key)) ||
+        rule.additionalProperties !== false ||
+        !rule.properties || typeof rule.properties !== "object" || Array.isArray(rule.properties) ||
+        (rule.maxProperties !== undefined &&
+          (!Number.isInteger(rule.maxProperties) || (rule.maxProperties as number) < 0))) return false;
+    const properties = rule.properties as Record<string, unknown>;
+    if (Object.keys(properties).length > 128 ||
+        Object.keys(properties).some((key) => !key || key.length > 128 ||
+          key === "__proto__" || key === "constructor" || key === "prototype" ||
+          !isValidSchemaDefinition(properties[key], depth + 1))) return false;
+    if (rule.required !== undefined &&
+        (!Array.isArray(rule.required) || rule.required.length > 128 ||
+          new Set(rule.required).size !== rule.required.length ||
+          !rule.required.every((key) => typeof key === "string" &&
+            Object.prototype.hasOwnProperty.call(properties, key)))) return false;
+    return true;
+  }
+  if (type === "array") {
+    const allowed = new Set(["type", "items", "minItems", "maxItems"]);
+    return Object.keys(rule).every((key) => allowed.has(key)) &&
+      isValidSchemaDefinition(rule.items) &&
+      (rule.minItems === undefined || (Number.isInteger(rule.minItems) && (rule.minItems as number) >= 0)) &&
+      (rule.maxItems === undefined || (Number.isInteger(rule.maxItems) && (rule.maxItems as number) >= 0)) &&
+      (rule.minItems === undefined || rule.maxItems === undefined ||
+        (rule.minItems as number) <= (rule.maxItems as number));
+  }
+  if (type === "string") {
+    const allowed = new Set(["type", "minLength", "maxLength", "pattern", "enum"]);
+    if (Object.keys(rule).some((key) => !allowed.has(key)) ||
+        (rule.minLength !== undefined && (!Number.isInteger(rule.minLength) || (rule.minLength as number) < 0)) ||
+        (rule.maxLength !== undefined && (!Number.isInteger(rule.maxLength) || (rule.maxLength as number) < 0)) ||
+        (rule.minLength !== undefined && rule.maxLength !== undefined &&
+          (rule.minLength as number) > (rule.maxLength as number))) return false;
+    if (rule.pattern !== undefined) {
+      if (typeof rule.pattern !== "string" || rule.pattern.length > 256) return false;
+      try { new RegExp(rule.pattern); } catch { return false; }
+    }
+    return rule.enum === undefined ||
+      (Array.isArray(rule.enum) && rule.enum.length <= 128 &&
+        rule.enum.every((item) => typeof item === "string"));
+  }
+  if (type === "number" || type === "integer") {
+    const allowed = new Set(["type", "minimum", "maximum", "enum"]);
+    if (Object.keys(rule).some((key) => !allowed.has(key)) ||
+        (rule.minimum !== undefined && (typeof rule.minimum !== "number" || !Number.isFinite(rule.minimum))) ||
+        (rule.maximum !== undefined && (typeof rule.maximum !== "number" || !Number.isFinite(rule.maximum))) ||
+        (rule.minimum !== undefined && rule.maximum !== undefined &&
+          (rule.minimum as number) > (rule.maximum as number))) return false;
+    return rule.enum === undefined ||
+      (Array.isArray(rule.enum) && rule.enum.length <= 128 &&
+        rule.enum.every((item) => typeof item === "number" && Number.isFinite(item) &&
+          (type !== "integer" || Number.isInteger(item))));
+  }
+  if (type === "boolean" || type === "null") {
+    return Object.keys(rule).every((key) => key === "type" || key === "enum") &&
+      (rule.enum === undefined ||
+        (Array.isArray(rule.enum) && rule.enum.length <= 2 &&
+          rule.enum.every((item) => type === "null" ? item === null : typeof item === "boolean")));
+  }
+  return false;
+}
+
 function validateSchema(value: unknown, schema: unknown, depth = 0): boolean {
   if (depth > MAX_DEPTH || !schema || typeof schema !== "object" || Array.isArray(schema)) return false;
   const rule = schema as Record<string, unknown>;
@@ -211,8 +281,7 @@ export function createCibaToolRegistry(
     catch { continue; }
 
     if (!schema || schema.type !== "object" ||
-        !schema.properties || typeof schema.properties !== "object" ||
-        Array.isArray(schema.properties) ||
+        !isValidSchemaDefinition(schema) ||
         jsonBytes(schema) > MAX_SCHEMA_BYTES ||
         (schema.required !== undefined &&
           (!Array.isArray(schema.required) ||
