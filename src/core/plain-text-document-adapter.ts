@@ -21,11 +21,7 @@ export interface PlainTextDocumentResult {
   preview: string;
 }
 
-/**
- * Dependency-free local text extraction/structure adapter.
- * It deliberately accepts text only: it does not parse binary files, run OCR,
- * access the filesystem, or make network requests.
- */
+/** Dependency-free local text analyzer. Text only; no filesystem, OCR, or network access. */
 export function createPlainTextDocumentAdapter(): NativeCapabilityAdapter {
   return Object.freeze({
     capabilityId: "document_understanding",
@@ -38,8 +34,7 @@ export function createPlainTextDocumentAdapter(): NativeCapabilityAdapter {
       const descriptors = Object.getOwnPropertyDescriptors(input);
       const keys = Reflect.ownKeys(descriptors);
       if (keys.some((key) => typeof key !== "string" || !["text", "fileName"].includes(key)) ||
-          !descriptors.text || !("value" in descriptors.text) ||
-          !descriptors.text.enumerable ||
+          !descriptors.text || !("value" in descriptors.text) || !descriptors.text.enumerable ||
           (descriptors.fileName && (!("value" in descriptors.fileName) ||
             !descriptors.fileName.enumerable))) {
         throw new Error("invalid_document_input");
@@ -49,21 +44,21 @@ export function createPlainTextDocumentAdapter(): NativeCapabilityAdapter {
       if (typeof text !== "string" || !text.trim() ||
           (fileName !== undefined &&
             (typeof fileName !== "string" || fileName.length > MAX_FILE_NAME_CHARS ||
-             /[\\/\\u0000-\\u001f]/.test(fileName)))) {
+             /[\/\u0000-\u001f]/.test(fileName)))) {
         throw new Error("invalid_document_input");
       }
       const byteCount = encoder.encode(text).byteLength;
       if (byteCount > MAX_TEXT_BYTES) throw new Error("document_text_too_large");
 
-      const normalized = text.replace(/\\r\\n?/g, "\\n");
-      const lines = normalized.split("\\n");
+      const normalized = text.replace(/\r\n?/g, "\n");
+      const lines = normalized.split("\n");
       const nonEmptyLines = lines.filter((line) => line.trim().length > 0);
       const headings = lines
-        .map((line) => line.match(/^\\s{0,3}#{1,6}\\s+(.+?)\\s*#*\\s*$/)?.[1])
+        .map((line) => line.match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/)?.[1])
         .filter((heading): heading is string => Boolean(heading))
         .slice(0, 50);
-      const words = normalized.match(/[\\p{L}\\p{N}]+(?:['’_-][\\p{L}\\p{N}]+)*/gu) ?? [];
-      const paragraphs = normalized.trim().split(/\\n\\s*\\n+/).filter(Boolean);
+      const words = normalized.match(/[\p{L}\p{N}]+(?:['’_-][\p{L}\p{N}]+)*/gu) ?? [];
+      const paragraphs = normalized.trim().split(/\n\s*\n+/).filter(Boolean);
 
       return {
         fileName: typeof fileName === "string" ? fileName : null,
