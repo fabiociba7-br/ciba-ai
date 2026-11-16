@@ -4,7 +4,6 @@ import {
 } from "../native-capabilities";
 import {
   createCibaToolRegistry,
-  type CibaToolAuthorizationRequest,
   type CibaToolRegistryOptions,
   type ExecutableCibaToolRegistry,
 } from "./registry";
