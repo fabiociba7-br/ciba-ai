@@ -62,3 +62,10 @@ O endpoint público informa explicitamente que o catálogo é apenas metadado: m
 A primeira integração concreta começa pelo contrato TypeScript de `whisper.cpp` em `src/core/speech-to-text.ts`. O contrato padroniza entrada de áudio, idioma opcional, segmentos com timestamps e resultado identificado pelo motor/modelo. A validação limita formatos aceitos e tamanho do áudio.
 
 O registry é fail-closed: não disponibiliza runtime sem adapter explicitamente registrado e bloqueia registro enquanto a revisão de licença não estiver aprovada. Android embarcado, desktop local e serviço local são os runtimes previstos; não existe fallback remoto automático. Esta etapa não inclui binários nativos, NDK/JNI, downloads de modelos ou execução de transcrição.
+
+
+### Compatibilidade do dispositivo antes da instalação
+
+O contrato puro de avaliação está em `src/core/device-capabilities.ts`. O cliente pode informar plataforma, arquitetura, memória total/disponível, núcleos lógicos, presença de GPU e nível de API Android. O núcleo valida limites e compara o perfil com os requisitos declarados por cada runtime, devolvendo motivos explícitos de incompatibilidade.
+
+O perfil é um relato do cliente, não uma atestação de hardware confiável. A avaliação não coleta dados sozinha, não concede permissões, não instala nem inicia processos, não baixa modelos e não envia telemetria. A decisão de executar um motor continua dependendo de adapter registrado, revisão de licença aprovada e autorização explícita.
