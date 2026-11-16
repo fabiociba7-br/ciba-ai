@@ -39,50 +39,73 @@ function validId(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.length <= MAX_ID_LENGTH;
 }
 
+function snapshotRecord(value: unknown, allowed: string[]): Record<string, unknown> | null {
+  try {
+    if (value === null || typeof value !== "object" || Array.isArray(value) ||
+        Object.getPrototypeOf(value) !== Object.prototype) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.some((key) => typeof key !== "string" || !allowed.includes(key))) return null;
+    const result: Record<string, unknown> = Object.create(null);
+    for (const key of keys as string[]) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
+      result[key] = descriptor.value;
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+function snapshotDenseArray(value: unknown, maxLength = 16): unknown[] | null {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+        value.length > maxLength) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Reflect.ownKeys(descriptors).length !== value.length + 1) return null;
+    const result: unknown[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
+      result.push(descriptor.value);
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 /** Normalizes a persisted relay grant into an immutable, validated snapshot. */
 export function validateAppMessageGrant(grant: AppMessageGrant): AppMessageGrant {
-  try {
-    if (!grant || typeof grant !== "object") throw new Error("invalid_app_message_grant");
-    const descriptors = Object.getOwnPropertyDescriptors(grant);
-    const read = (key: string): unknown => {
-      const descriptor = descriptors[key];
-      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
-        throw new Error("invalid_app_message_grant");
-      }
-      return descriptor.value;
-    };
-    const ownerId = read("ownerId");
-    const granteeAppId = read("granteeAppId");
-    const sourceAppId = read("sourceAppId");
-    const destinationAppId = read("destinationAppId");
-    const permissions = read("permissions");
-    const scopes = read("scopes");
-    const expiresAt = read("expiresAt");
-
-    if (!validId(ownerId) || !validId(granteeAppId) ||
-        !validId(sourceAppId) || !validId(destinationAppId) ||
-        sourceAppId === destinationAppId ||
-        !Array.isArray(permissions) || permissions.length === 0 ||
-        !permissions.every((item) => item === "send" || item === "receive") ||
-        new Set(permissions).size !== permissions.length ||
-        !Array.isArray(scopes) || scopes.length === 0 ||
-        !scopes.every((item) => item === "task" || item === "context") ||
-        new Set(scopes).size !== scopes.length ||
-        (expiresAt !== undefined && !Number.isSafeInteger(expiresAt))) {
-      throw new Error("invalid_app_message_grant");
-    }
-    return Object.freeze({
-      ownerId,
-      granteeAppId,
-      sourceAppId,
-      destinationAppId,
-      permissions: Object.freeze([...permissions]) as AppMessagePermission[],
-      scopes: Object.freeze([...scopes]) as AppMessageScope[],
-      ...(expiresAt !== undefined ? { expiresAt: expiresAt as number } : {})
-    });
-  } catch {
+  const source = snapshotRecord(grant, [
+    "ownerId", "granteeAppId", "sourceAppId", "destinationAppId",
+    "permissions", "scopes", "expiresAt"
+  ]);
+  const permissions = source ? snapshotDenseArray(source.permissions, 2) : null;
+  const scopes = source ? snapshotDenseArray(source.scopes, 2) : null;
+  if (!source || !permissions || !scopes ||
+      !validId(source.ownerId) || !validId(source.granteeAppId) ||
+      !validId(source.sourceAppId) || !validId(source.destinationAppId) ||
+      source.sourceAppId === source.destinationAppId ||
+      permissions.length === 0 ||
+      !permissions.every((item) => item === "send" || item === "receive") ||
+      new Set(permissions).size !== permissions.length ||
+      scopes.length === 0 ||
+      !scopes.every((item) => item === "task" || item === "context") ||
+      new Set(scopes).size !== scopes.length ||
+      (source.expiresAt !== undefined && !Number.isSafeInteger(source.expiresAt))) {
     throw new Error("invalid_app_message_grant");
   }
+  return Object.freeze({
+    ownerId: source.ownerId as string,
+    granteeAppId: source.granteeAppId as string,
+    sourceAppId: source.sourceAppId as string,
+    destinationAppId: source.destinationAppId as string,
+    permissions: Object.freeze(permissions as AppMessagePermission[]),
+    scopes: Object.freeze(scopes as AppMessageScope[]),
+    ...(source.expiresAt !== undefined ? { expiresAt: source.expiresAt as number } : {})
+  });
 }
 
 export function canRelayAppMessage(
@@ -90,35 +113,36 @@ export function canRelayAppMessage(
   grants: AppMessageGrant[],
   now = Date.now()
 ): boolean {
-  if (!request || !validId(request.ownerId) || !validId(request.requesterAppId) ||
-      !validId(request.sourceAppId) || !validId(request.destinationAppId) ||
-      request.sourceAppId === request.destinationAppId ||
-      (request.permission !== "send" && request.permission !== "receive") ||
-      (request.scope !== "task" && request.scope !== "context") ||
-      !Array.isArray(grants) || !Number.isSafeInteger(now)) {
+  try {
+    const safeRequest = snapshotRecord(request, [
+      "ownerId", "requesterAppId", "sourceAppId", "destinationAppId", "permission", "scope"
+    ]);
+    const safeGrants = snapshotDenseArray(grants, 256);
+    if (!safeRequest || !safeGrants ||
+        !validId(safeRequest.ownerId) || !validId(safeRequest.requesterAppId) ||
+        !validId(safeRequest.sourceAppId) || !validId(safeRequest.destinationAppId) ||
+        safeRequest.sourceAppId === safeRequest.destinationAppId ||
+        (safeRequest.permission !== "send" && safeRequest.permission !== "receive") ||
+        (safeRequest.scope !== "task" && safeRequest.scope !== "context") ||
+        !Number.isSafeInteger(now)) return false;
+
+    return safeGrants.some((rawGrant) => {
+      try {
+        const grant = validateAppMessageGrant(rawGrant as AppMessageGrant);
+        return grant.ownerId === safeRequest.ownerId &&
+          grant.granteeAppId === safeRequest.requesterAppId &&
+          grant.sourceAppId === safeRequest.sourceAppId &&
+          grant.destinationAppId === safeRequest.destinationAppId &&
+          grant.permissions.includes(safeRequest.permission as AppMessagePermission) &&
+          grant.scopes.includes(safeRequest.scope as AppMessageScope) &&
+          (grant.expiresAt === undefined || grant.expiresAt > now);
+      } catch {
+        return false;
+      }
+    });
+  } catch {
     return false;
   }
-
-  return grants.some((grant) => {
-    if (!grant || typeof grant !== "object" ||
-        !validId(grant.ownerId) || !validId(grant.granteeAppId) ||
-        !validId(grant.sourceAppId) || !validId(grant.destinationAppId) ||
-        !Array.isArray(grant.permissions) ||
-        !grant.permissions.every((permission) => permission === "send" || permission === "receive") ||
-        !Array.isArray(grant.scopes) ||
-        !grant.scopes.every((scope) => scope === "task" || scope === "context") ||
-        (grant.expiresAt !== undefined && !Number.isSafeInteger(grant.expiresAt))) {
-      return false;
-    }
-
-    return grant.ownerId === request.ownerId &&
-      grant.granteeAppId === request.requesterAppId &&
-      grant.sourceAppId === request.sourceAppId &&
-      grant.destinationAppId === request.destinationAppId &&
-      grant.permissions.includes(request.permission) &&
-      grant.scopes.includes(request.scope) &&
-      (grant.expiresAt === undefined || grant.expiresAt > now);
-  });
 }
 
 function cloneMessageJson(value: unknown, depth = 0): unknown {
