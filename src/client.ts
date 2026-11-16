@@ -153,6 +153,26 @@ export interface CibaTaskDispatchResult {
   };
 }
 
+export interface CibaToolApproval {
+  approval_id: string;
+  source_device_id: string;
+  source_device_last_seen_at: string | null;
+  conversation_id: string;
+  invocation_id: string;
+  tool_id: string;
+  risk: "write" | "external";
+  input: unknown;
+  status: "pending" | "approved";
+  created_at: string;
+  expires_at: string;
+}
+
+export interface CibaToolApprovalInbox {
+  approvals: CibaToolApproval[];
+  count: number;
+  limit: number;
+}
+
 export interface CibaClientOptions {
   /** Base URL of the private Ciba AI Worker, e.g. https://api.example.com */
   baseUrl: string;
@@ -830,6 +850,30 @@ export class CibaClient {
     if (sourceAppId) params.set("source_app_id", sourceAppId);
     return this.request(`/v1/owner/memory?${params.toString()}`, {
       method: "DELETE", body: JSON.stringify({ memory_id: memoryId }),
+    });
+  }
+
+  listToolApprovals(): Promise<CibaToolApprovalInbox> {
+    return this.request("/v1/owner/tool-approvals");
+  }
+
+  async decideToolApproval(approvalId: string, allow: boolean): Promise<{
+    decided: true;
+    approval_id: string;
+    decision: "approved" | "denied";
+    approved_by_device_id: string;
+  }> {
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(approvalId)) throw new Error("invalid_tool_approval_id");
+    return this.request(`/v1/owner/tool-approvals/${encodeURIComponent(approvalId)}/decision`, {
+      method: "POST",
+      body: JSON.stringify({ allow }),
+    });
+  }
+
+  async cancelToolApproval(approvalId: string): Promise<{ cancelled: true; approval_id: string }> {
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(approvalId)) throw new Error("invalid_tool_approval_id");
+    return this.request(`/v1/owner/tool-approvals/${encodeURIComponent(approvalId)}/cancel`, {
+      method: "POST",
     });
   }
 
