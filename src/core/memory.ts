@@ -47,12 +47,29 @@ export function buildWorkingContext(messages: ChatTurn[]): ChatTurn[] {
   return messages.map(({ role, content }) => ({ role, content }));
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isValidScope(scope: unknown): scope is MemoryScope {
+  if (!scope || typeof scope !== "object") return false;
+  const candidate = scope as Record<string, unknown>;
+  if (!isNonEmptyString(candidate.ownerId)) return false;
+  if (candidate.type === "owner") return true;
+  return candidate.type === "app" && isNonEmptyString(candidate.appId);
+}
+
 export function canAccessMemory(
   request: MemoryAccessRequest,
   grants: MemoryGrant[],
   now = Date.now()
 ): boolean {
-  if (!request.ownerId || request.target.ownerId !== request.ownerId || !request.requesterAppId) {
+  if (!request || !isNonEmptyString(request.ownerId) ||
+      !isNonEmptyString(request.requesterAppId) ||
+      (request.permission !== "read" && request.permission !== "write") ||
+      !isValidScope(request.target) ||
+      request.target.ownerId !== request.ownerId ||
+      !Array.isArray(grants) || !Number.isFinite(now)) {
     return false;
   }
 
@@ -61,6 +78,17 @@ export function canAccessMemory(
   }
 
   return grants.some((grant) => {
+    if (!grant || typeof grant !== "object" ||
+        !isNonEmptyString(grant.ownerId) ||
+        !isNonEmptyString(grant.granteeAppId) ||
+        (grant.scope !== "owner" && grant.scope !== "app") ||
+        !Array.isArray(grant.permissions) ||
+        !grant.permissions.every((permission) => permission === "read" || permission === "write") ||
+        (grant.expiresAt !== undefined && !Number.isFinite(grant.expiresAt)) ||
+        (grant.scope === "app" && !isNonEmptyString(grant.sourceAppId))) {
+      return false;
+    }
+
     if (
       grant.ownerId !== request.ownerId ||
       grant.granteeAppId !== request.requesterAppId ||
@@ -80,30 +108,38 @@ export function canAccessMemory(
 
 /**
  * Memory entries must be explicitly curated by the owner or an authorized app.
- * This validator rejects obvious credential-like strings; it is not a
- * sensitive-data classifier and must not be treated as one.
+ * This rejects common credential formats but is not a sensitive-data classifier.
  */
 export function validateCuratedMemory(input: {
   consent: MemoryConsent;
   value: string;
   maxCharacters?: number;
 }): string {
-  if (input.consent !== "curated") {
+  if (!input || input.consent !== "curated") {
     throw new Error("memory_consent_required");
+  }
+  if (typeof input.value !== "string") {
+    throw new Error("invalid_memory_value");
   }
 
   const value = input.value.trim();
   const maxCharacters = input.maxCharacters ?? 500;
 
-  if (!value || value.length > maxCharacters) {
+  if (!Number.isInteger(maxCharacters) || maxCharacters < 1 ||
+      maxCharacters > 500 || !value || value.length > maxCharacters) {
     throw new Error("invalid_memory_value");
   }
 
-  const looksLikeSecret =
-    /(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret)\s*[:=]\s*\S+/i.test(value) ||
-    /\bsk-[A-Za-z0-9_-]{16,}\b/.test(value);
+  const secretPatterns = [
+    /(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|passwd|secret|client[_-]?secret)\s*[:=]\s*\S+/i,
+    /\bsk-[A-Za-z0-9_-]{16,}\b/,
+    /\bgh[pousr]_[A-Za-z0-9]{20,}\b/,
+    /\bAKIA[0-9A-Z]{16}\b/,
+    /\bBearer\s+[A-Za-z0-9._~+/-]{16,}/i,
+    /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/
+  ];
 
-  if (looksLikeSecret) {
+  if (secretPatterns.some((pattern) => pattern.test(value))) {
     throw new Error("memory_secret_rejected");
   }
 
