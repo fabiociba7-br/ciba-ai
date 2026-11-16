@@ -698,6 +698,16 @@ describe("Ciba AI private app-to-app message relay", () => {
     };
     expect(dispatchBody.dispatched).toBe(true);
     expect(dispatchBody.route.context_sharing).toMatchObject({ requested: true, included: true, items_count: 1, reason: "authorized_relevant_memories" });
+    const queuedStatus = await request(`/v1/apps/tasks/status?task_id=${encodeURIComponent(dispatchBody.route.task_id)}`, {
+      headers: { authorization: `Bearer ${sourceDevice.access_token}` },
+    });
+    expect(queuedStatus.status).toBe(200);
+    expect(await queuedStatus.json()).toMatchObject({
+      task_id: dispatchBody.route.task_id,
+      lifecycle: { status: "awaiting_delivery", acknowledged: false, result_count: 0 },
+      automatic_execution: false,
+    });
+
     expect(dispatchBody.route).toMatchObject({
       destination_app_id: targetApp, destination_display_name: "Relay Target", task_type: "summarize",
     });
@@ -755,6 +765,15 @@ describe("Ciba AI private app-to-app message relay", () => {
       headers: { authorization: `Bearer ${sourceDevice.access_token}` },
     });
     expect(taskResults.status).toBe(200);
+    const completedStatus = await request(`/v1/apps/tasks/status?task_id=${encodeURIComponent(dispatchBody.route.task_id)}`, {
+      headers: { authorization: `Bearer ${sourceDevice.access_token}` },
+    });
+    expect(completedStatus.status).toBe(200);
+    expect(await completedStatus.json()).toMatchObject({
+      lifecycle: { status: "completed", acknowledged: true, result_count: 1, completed_results: 1 },
+      destination_app_id: targetApp,
+    });
+
     expect(await taskResults.json()).toMatchObject({
       task_id: dispatchBody.route.task_id,
       count: 1,
