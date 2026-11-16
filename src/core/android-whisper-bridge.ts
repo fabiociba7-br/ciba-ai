@@ -69,7 +69,7 @@ export function createAndroidWhisperCppAdapter(
   const getStatus = bridge.getStatus.bind(bridge);
   const transcribe = bridge.transcribe.bind(bridge);
 
-  return {
+  const adapter: SpeechToTextAdapter = {
     engine: "whisper.cpp",
     runtime: "android_embedded",
     modelId,
@@ -97,6 +97,7 @@ export function createAndroidWhisperCppAdapter(
       return result;
     },
   };
+  return Object.freeze(adapter);
 }
 
 function isValidSegment(segment: SpeechSegment): boolean {
