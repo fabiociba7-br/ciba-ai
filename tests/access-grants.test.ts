@@ -89,4 +89,45 @@ describe("explicit app access grants", () => {
     expect(canUseAppAccessGrant({ ...sendRequest, requesterAppId: "" }, [messagingGrant], 2_000)).toBe(false);
     expect(canUseAppAccessGrant({ ...sendRequest, ownerId: "" }, [messagingGrant], 2_000)).toBe(false);
   });
+  it("denies accessor-backed requests without invoking getters", () => {
+    let invoked = false;
+    const hostile = { ...sendRequest } as Record<string, unknown>;
+    Object.defineProperty(hostile, "ownerId", {
+      enumerable: true,
+      get() { invoked = true; return "owner-1"; }
+    });
+    expect(canUseAppAccessGrant(hostile as unknown as AppAccessRequest, [messagingGrant], 2_000)).toBe(false);
+    expect(invoked).toBe(false);
+  });
+
+  it("denies sparse or accessor-backed grant collections", () => {
+    const sparse = new Array(1) as AppAccessGrant[];
+    expect(canUseAppAccessGrant(sendRequest, sparse, 2_000)).toBe(false);
+
+    let invoked = false;
+    const hostile = [messagingGrant] as AppAccessGrant[];
+    Object.defineProperty(hostile, "0", {
+      enumerable: true,
+      get() { invoked = true; return messagingGrant; }
+    });
+    expect(canUseAppAccessGrant(sendRequest, hostile, 2_000)).toBe(false);
+    expect(invoked).toBe(false);
+  });
+
+  it("ignores malformed persisted grants while preserving valid grants", () => {
+    const malformed = {
+      ...messagingGrant,
+      get ownerId() { throw new Error("getter_must_not_run"); }
+    } as AppAccessGrant;
+    expect(canUseAppAccessGrant(sendRequest, [malformed], 2_000)).toBe(false);
+    expect(canUseAppAccessGrant(sendRequest, [malformed, messagingGrant], 2_000)).toBe(true);
+  });
+
+  it("rejects requests with unexpected own properties", () => {
+    expect(canUseAppAccessGrant({
+      ...sendRequest,
+      isAdmin: true
+    } as AppAccessRequest, [messagingGrant], 2_000)).toBe(false);
+  });
+
 });
