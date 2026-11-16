@@ -193,7 +193,7 @@ export function consumeTaskRequest(input: unknown): TaskRequestConsumption {
         typeof pkg.purpose === "string" ? pkg.purpose : "",
         pkg.items as Parameters<typeof buildContextPackage>[2],
       );
-      contextWarning = "";
+      if (contextWarning !== "invalid_task_context") contextWarning = "";
     } catch (error) {
       contextWarning = error instanceof Error ? error.message : "invalid_context_package";
       errors.push(`context_rejected:${contextWarning}`);
