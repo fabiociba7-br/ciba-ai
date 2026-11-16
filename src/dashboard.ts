@@ -57,12 +57,12 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 </section>
 </div>
 <section class="panel" style="margin-bottom:16px">
-<section class="panel" style="margin-bottom:16px">
 <h3>Aprovações de ferramentas</h3>
 <p class="small muted">Pedidos de ações que exigem autorização. Confira o nome da ferramenta, o risco e todos os parâmetros antes de aprovar. Aprovar não executa a ação; apenas registra sua autorização de uso único.</p>
 <div class="actions"><button id="tool-approvals-refresh" class="secondary">Atualizar solicitações</button></div>
 <div id="tool-approvals" class="muted small">Carregando solicitações de aprovação...</div>
 </section>
+<section class="panel" style="margin-bottom:16px">
 <h3>Gerenciar memórias</h3>
 <p class="small muted">Pesquise, revise, corrija ou exclua memórias curadas. A memória central exige permissão específica para este dispositivo/app.</p>
 <div class="formgrid">
