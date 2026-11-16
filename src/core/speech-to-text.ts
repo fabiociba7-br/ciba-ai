@@ -88,3 +88,25 @@ export function validateSpeechToTextRequest(
     throw new Error("invalid_speech_to_text_request");
   }
 }
+
+import { assessDeviceCompatibility, type DeviceCapabilityProfile, type DeviceCapabilityRequirements } from "./device-capabilities";
+
+export interface SpeechToTextRuntimeResolution {
+  available: boolean;
+  adapter?: SpeechToTextAdapter;
+  reasons: string[];
+}
+
+/** Resolves only an already registered adapter after hardware/runtime checks. */
+export function resolveWhisperCppRuntime(
+  registry: SpeechToTextRegistry,
+  profile: DeviceCapabilityProfile,
+  requirements: DeviceCapabilityRequirements,
+): SpeechToTextRuntimeResolution {
+  const decision = assessDeviceCompatibility(profile, requirements);
+  if (!decision.compatible) return { available: false, reasons: decision.reasons };
+  const runtime = requirements.runtime as SpeechToTextRuntime;
+  const adapter = registry.getAdapter(runtime);
+  if (!adapter) return { available: false, reasons: ["adapter_not_installed"] };
+  return { available: true, adapter, reasons: [] };
+}
