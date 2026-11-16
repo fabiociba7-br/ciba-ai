@@ -25,6 +25,7 @@ function snapshotInsightRecords(value: unknown): MemoryInsightRecord[] | null {
     const arrayDescriptors = Object.getOwnPropertyDescriptors(value);
     if (Reflect.ownKeys(arrayDescriptors).length !== value.length + 1) return null;
     const result: MemoryInsightRecord[] = [];
+    const seenIds = new Set<string>();
     for (let index = 0; index < value.length; index += 1) {
       const itemDescriptor = arrayDescriptors[String(index)];
       if (!itemDescriptor || !("value" in itemDescriptor) || !itemDescriptor.enumerable) return null;
@@ -41,7 +42,7 @@ function snapshotInsightRecords(value: unknown): MemoryInsightRecord[] | null {
         if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
         fields[key] = descriptor.value;
       }
-      if (typeof fields.memory_id !== "string" || !fields.memory_id || fields.memory_id.length > 200 ||
+      if (typeof fields.memory_id !== "string" || !fields.memory_id.trim() || fields.memory_id.length > 200 ||
           (fields.scope !== "app" && fields.scope !== "owner") ||
           !(fields.source_app_id === null || (typeof fields.source_app_id === "string" &&
             fields.source_app_id.length > 0 && fields.source_app_id.length <= 128)) ||
@@ -50,6 +51,8 @@ function snapshotInsightRecords(value: unknown): MemoryInsightRecord[] | null {
           typeof fields.updated_at !== "string" || !fields.updated_at || fields.updated_at.length > 64 ||
           !(fields.expires_at === null || (typeof fields.expires_at === "string" &&
             fields.expires_at.length > 0 && fields.expires_at.length <= 64))) return null;
+      if (seenIds.has(fields.memory_id)) return null;
+      seenIds.add(fields.memory_id);
       result.push(Object.freeze({
         memory_id: fields.memory_id,
         scope: fields.scope,
