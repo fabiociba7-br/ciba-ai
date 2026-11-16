@@ -816,6 +816,35 @@ describe("Ciba AI curated private memory", () => {
     expect(listBody.memories).toHaveLength(1);
     expect(listBody.memories[0].memory_id).toBe(savedBody.memory_id);
 
+    const filteredMemory = await ownerRequest("/v1/owner/memory?scope=app&q=RESP");
+    expect((await filteredMemory.json() as { memories: Array<{ memory_id: string }> }).memories.map((item) => item.memory_id))
+      .toContain(savedBody.memory_id);
+    const noMatchMemory = await ownerRequest("/v1/owner/memory?scope=app&q=nao-existe");
+    expect((await noMatchMemory.json() as { memories: unknown[] }).memories).toHaveLength(0);
+
+    const updatedMemory = await ownerRequest("/v1/owner/memory?scope=app", "PATCH", {
+      memory_id: savedBody.memory_id,
+      key: "response_style",
+      value: "Prefere respostas objetivas e claras.",
+      consent: "curated",
+      valid_hours: 72,
+    });
+    expect(updatedMemory.status).toBe(200);
+    const updatedList = await ownerRequest("/v1/owner/memory?scope=app&q=objetivas");
+    const updatedRecords = (await updatedList.json() as { memories: Array<{ memory_id: string; value: string; expires_at: string }> }).memories;
+    expect(updatedRecords).toHaveLength(1);
+    expect(updatedRecords[0].memory_id).toBe(savedBody.memory_id);
+    expect(updatedRecords[0].value).toBe("Prefere respostas objetivas e claras.");
+    expect(updatedRecords[0].expires_at).toBeTruthy();
+
+    const clearExpiry = await ownerRequest("/v1/owner/memory?scope=app", "PATCH", {
+      memory_id: savedBody.memory_id, key: "response_style",
+      value: "Prefere respostas objetivas e claras.", consent: "curated", valid_hours: null,
+    });
+    expect(clearExpiry.status).toBe(200);
+    const permanentList = await ownerRequest("/v1/owner/memory?scope=app");
+    expect((await permanentList.json() as { memories: Array<{ expires_at: string | null }> }).memories[0].expires_at).toBeNull();
+
     const ownSearch = await ownerRequest("/v1/owner/memory/retrieve", "POST", {
       query: "estilo de resposta", limit: 5,
     });
