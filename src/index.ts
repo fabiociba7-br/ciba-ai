@@ -18,6 +18,7 @@ import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PE
 import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents } from "./core";
 import { validateCuratedMemory } from "./core/memory";
 import { prepareMemoryCandidate } from "./core/memory-candidates";
+import { classifyMemoryProposal } from "./core/memory-learning";
 import { rankRelevantMemories, buildChatMemoryContext, type MemorySearchRecord } from "./core/memory-retrieval";
 import { validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./core/apps/registry";
 import { isAppTaskType, selectTaskRoute } from "./core/task-coordinator";
@@ -906,6 +907,89 @@ const handlePrepareMemoryCandidate = async (request: Request, env: Env) => {
     const code = error instanceof Error ? error.message : "invalid_memory_candidate";
     return json({ error: code }, 400);
   }
+};
+
+
+const handleMemoryReviews = async (request: Request, env: Env, url: URL) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const settings = await readOwnerFeatureSettings(env, owner.owner_id);
+  if (!settings.memory_enabled) return json({ error: "memory_disabled" }, 403);
+  const scope = url.searchParams.get("scope") || "app";
+  if (scope !== "app" && scope !== "owner") return json({ error: "invalid_memory_scope" }, 400);
+  const sourceAppId = scope === "app" ? device.app_id : null;
+  if (scope === "owner") {
+    const grant = await env.DB.prepare("SELECT grant_id FROM app_access_grants WHERE owner_id = ? AND grantee_app_id = ? AND permission = 'memory_write' AND scope = 'owner_memory' AND source_app_id IS NULL AND destination_app_id IS NULL AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?) LIMIT 1")
+      .bind(owner.owner_id, device.app_id, nowIso()).first<{ grant_id: string }>();
+    if (!grant) return json({ error: "memory_access_not_granted" }, 403);
+  }
+  if (request.method === "GET") {
+    const rows = await env.DB.prepare("SELECT proposal_id, scope, source_app_id, proposed_by_app_id, memory_key, proposed_value, evidence_excerpt, existing_memory_id, existing_value_snapshot, classification, valid_hours, status, created_at, decided_at FROM memory_review_proposals WHERE owner_id = ? AND scope = ? AND source_app_id IS ? AND status = 'pending' ORDER BY created_at DESC LIMIT 100")
+      .bind(owner.owner_id, scope, sourceAppId).all<Record<string, unknown>>();
+    return json({ proposals: rows.results || [], count: (rows.results || []).length, maximum: 100, scope });
+  }
+  if (request.method === "POST") {
+    const body = await readJson(request, 4_000);
+    const validHours = body.valid_hours;
+    if (validHours !== undefined && (typeof validHours !== "number" || !Number.isInteger(validHours) || validHours < 1 || validHours > 8760)) return json({ error: "invalid_memory_valid_hours", minimum: 1, maximum: 8760 }, 400);
+    let candidate;
+    try {
+      candidate = prepareMemoryCandidate({ sourceRole: body.source_role, sourceText: body.source_text, key: body.key, value: body.value });
+    } catch (error) { return json({ error: error instanceof Error ? error.message : "invalid_memory_candidate" }, 400); }
+    const existing = scope === "owner"
+      ? await env.DB.prepare("SELECT memory_id, value FROM memory_records WHERE owner_id = ? AND scope = 'owner' AND memory_key = ? AND deleted_at IS NULL").bind(owner.owner_id, candidate.key).first<{ memory_id: string; value: string }>()
+      : await env.DB.prepare("SELECT memory_id, value FROM memory_records WHERE owner_id = ? AND scope = 'app' AND source_app_id = ? AND memory_key = ? AND deleted_at IS NULL").bind(owner.owner_id, device.app_id, candidate.key).first<{ memory_id: string; value: string }>();
+    const comparison = classifyMemoryProposal(candidate.value, existing || null);
+    const pending = await env.DB.prepare("SELECT COUNT(*) AS total FROM memory_review_proposals WHERE owner_id = ? AND status = 'pending'").bind(owner.owner_id).first<{ total: number }>();
+    if ((pending?.total || 0) >= 100) return json({ error: "memory_review_queue_full", maximum: 100 }, 409);
+    const proposalId = crypto.randomUUID();
+    const timestamp = nowIso();
+    await env.DB.prepare("INSERT INTO memory_review_proposals(proposal_id, owner_id, scope, source_app_id, proposed_by_app_id, memory_key, proposed_value, evidence_excerpt, existing_memory_id, existing_value_snapshot, classification, valid_hours, status, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)")
+      .bind(proposalId, owner.owner_id, scope, sourceAppId, device.app_id, candidate.key, candidate.value, candidate.evidence_excerpt, comparison.existing_memory_id, comparison.existing_value_snapshot, comparison.classification, validHours ?? null, timestamp).run();
+    return json({ proposal_id: proposalId, classification: comparison.classification, requires_owner_decision: true, stored_as_memory: false, inference_calls: 0, existing_memory_id: comparison.existing_memory_id }, 201);
+  }
+  if (request.method === "PATCH") {
+    const body = await readJson(request, 2_000);
+    const proposalId = typeof body.proposal_id === "string" ? body.proposal_id.trim() : "";
+    const decision = body.decision;
+    if (!proposalId || proposalId.length > 100) return json({ error: "invalid_memory_proposal_id" }, 400);
+    if (decision !== "approve" && decision !== "reject") return json({ error: "invalid_memory_review_decision" }, 400);
+    const proposal = await env.DB.prepare("SELECT * FROM memory_review_proposals WHERE proposal_id = ? AND owner_id = ? AND scope = ? AND source_app_id IS ? AND status = 'pending'")
+      .bind(proposalId, owner.owner_id, scope, sourceAppId).first<Record<string, unknown>>();
+    if (!proposal) return json({ error: "memory_proposal_not_found" }, 404);
+    const timestamp = nowIso();
+    if (decision === "reject") {
+      await env.DB.prepare("UPDATE memory_review_proposals SET status = 'rejected', decided_at = ? WHERE proposal_id = ? AND status = 'pending'").bind(timestamp, proposalId).run();
+      return json({ decided: true, decision: "rejected", proposal_id: proposalId });
+    }
+    const key = String(proposal.memory_key);
+    const value = validateCuratedMemory({ consent: "curated", value: String(proposal.proposed_value), maxCharacters: 500 });
+    if (proposal.classification === "unchanged") {
+      await env.DB.prepare("UPDATE memory_review_proposals SET status = 'approved', decided_at = ? WHERE proposal_id = ? AND status = 'pending'").bind(timestamp, proposalId).run();
+      return json({ decided: true, decision: "approved", unchanged: true, proposal_id: proposalId });
+    }
+    if (proposal.classification === "possible_conflict") {
+      const current = await env.DB.prepare("SELECT value FROM memory_records WHERE memory_id = ? AND owner_id = ? AND deleted_at IS NULL").bind(proposal.existing_memory_id, owner.owner_id).first<{ value: string }>();
+      if (!current || current.value !== proposal.existing_value_snapshot) {
+        await env.DB.prepare("UPDATE memory_review_proposals SET status = 'stale', decided_at = ? WHERE proposal_id = ? AND status = 'pending'").bind(timestamp, proposalId).run();
+        return json({ error: "memory_proposal_stale", proposal_id: proposalId }, 409);
+      }
+      const updated = await env.DB.prepare("UPDATE memory_records SET value = ?, updated_at = ?, expires_at = ? WHERE memory_id = ? AND owner_id = ? AND scope = ? AND source_app_id IS ? AND deleted_at IS NULL")
+        .bind(value, timestamp, proposal.valid_hours === null ? null : new Date(Date.now() + Number(proposal.valid_hours) * 3600000).toISOString(), proposal.existing_memory_id, owner.owner_id, scope, sourceAppId).run();
+      if (updated.meta.changes !== 1) return json({ error: "memory_proposal_stale", proposal_id: proposalId }, 409);
+    } else {
+      const count = await env.DB.prepare("SELECT COUNT(*) AS total FROM memory_records WHERE owner_id = ? AND scope = ? AND source_app_id IS ? AND deleted_at IS NULL").bind(owner.owner_id, scope, sourceAppId).first<{ total: number }>();
+      if ((count?.total || 0) >= 200) return json({ error: "memory_limit_reached", maximum: 200 }, 409);
+      const memoryId = crypto.randomUUID();
+      await env.DB.prepare("INSERT INTO memory_records(memory_id, owner_id, scope, source_app_id, memory_key, value, consent, created_by_app_id, created_at, updated_at, expires_at) VALUES(?, ?, ?, ?, ?, ?, 'curated', ?, ?, ?, ?)")
+        .bind(memoryId, owner.owner_id, scope, sourceAppId, key, value, device.app_id, timestamp, timestamp, proposal.valid_hours === null ? null : new Date(Date.now() + Number(proposal.valid_hours) * 3600000).toISOString()).run();
+    }
+    await env.DB.prepare("UPDATE memory_review_proposals SET status = 'approved', decided_at = ? WHERE proposal_id = ? AND status = 'pending'").bind(timestamp, proposalId).run();
+    return json({ decided: true, decision: "approved", proposal_id: proposalId, updated_memory: proposal.classification === "possible_conflict" });
+  }
+  return json({ error: "method_not_allowed" }, 405);
 };
 
 const handleOwnerMemory = async (request: Request, env: Env, url: URL) => {
@@ -2163,6 +2247,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/owner/access-grants" && (request.method === "GET" || request.method === "POST")) {
     return handleOwnerAccessGrants(request, env);
+  }
+  if (url.pathname === "/v1/owner/memory/reviews" && ["GET", "POST", "PATCH"].includes(request.method)) {
+    return handleMemoryReviews(request, env, url);
   }
   if (url.pathname === "/v1/owner/memory/candidates" && request.method === "POST") {
     return handlePrepareMemoryCandidate(request, env);
