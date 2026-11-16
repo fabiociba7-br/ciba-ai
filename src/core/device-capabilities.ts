@@ -155,6 +155,10 @@ export function assessDeviceCompatibility(
       "requiresGpu", "architectures", "platforms", "minimumAndroidApiLevel"],
     ["runtime", "minimumRamMb"]
   )!;
+  const architectureList = requirementData.architectures === undefined ? undefined
+    : snapshotStringArray(requirementData.architectures, ["arm64", "arm32", "x64", "x86", "unknown"]);
+  const platformList = requirementData.platforms === undefined ? undefined
+    : snapshotStringArray(requirementData.platforms, ["android", "windows", "macos", "linux", "unknown"]);
   const reasons: string[] = [];
   if (profileData.totalRamMb < requirementData.minimumRamMb) reasons.push("insufficient_total_ram");
   if (requirementData.minimumAvailableRamMb !== undefined &&
@@ -162,10 +166,10 @@ export function assessDeviceCompatibility(
   if (requirementData.minimumCpuCores !== undefined &&
       profileData.logicalCpuCores < requirementData.minimumCpuCores) reasons.push("insufficient_cpu_cores");
   if (requirementData.requiresGpu && !profileData.gpuAvailable) reasons.push("gpu_required");
-  if (requirementData.architectures && !requirementData.architectures.includes(profileData.architecture)) {
+  if (architectureList && !architectureList.includes(profileData.architecture as DeviceArchitecture)) {
     reasons.push("unsupported_architecture");
   }
-  if (requirementData.platforms && !requirementData.platforms.includes(profileData.platform)) {
+  if (platformList && !platformList.includes(profileData.platform as DevicePlatform)) {
     reasons.push("unsupported_platform");
   }
   if (requirementData.runtime === "android_embedded" && profileData.platform !== "android") {
