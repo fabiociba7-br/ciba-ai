@@ -155,8 +155,8 @@ export function createWhisperCppRegistry(
         }
         return copied;
       };
-      const architectures = copyBoundedList(rawArchitectures, 5) as DeviceCapabilityRequirements["architectures"];
-      const platforms = copyBoundedList(rawPlatforms, 5) as DeviceCapabilityRequirements["platforms"];
+      const architectures = copyBoundedList(rawArchitectures, 5) as unknown as DeviceCapabilityRequirements["architectures"];
+      const platforms = copyBoundedList(rawPlatforms, 5) as unknown as DeviceCapabilityRequirements["platforms"];
       const requirementsSnapshot: DeviceCapabilityRequirements = {
         runtime: runtimeRequirement,
         minimumRamMb,
