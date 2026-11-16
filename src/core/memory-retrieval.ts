@@ -267,6 +267,18 @@ function emptyChatMemoryContext(): ChatMemoryContext {
   return { text: "", entriesUsed: 0, characters: 0, profileSignalsUsed: false, duplicatesCollapsed: 0 };
 }
 
+function toInsightRecords(records: readonly MemorySearchRecord[]) {
+  return records.map((record) => ({
+    memory_id: record.memory_id,
+    scope: record.scope,
+    source_app_id: record.source_app_id,
+    memory_key: record.memory_key,
+    value: record.value,
+    updated_at: record.updated_at,
+    expires_at: record.expires_at,
+  }));
+}
+
 /** Formats authorized curated records as bounded, explicitly untrusted context. */
 export function buildChatMemoryContext(
   records: RankedMemory[],
@@ -285,7 +297,7 @@ export function buildChatMemoryContext(
   const lines: string[] = [];
   let used = 0;
   let entriesUsed = 0;
-  const profile = buildOwnerProfile(safeRecords);
+  const profile = buildOwnerProfile(toInsightRecords(safeRecords));
   const categoryById = new Map<string, string>();
   for (const [category, entries] of Object.entries(profile.profile)) {
     for (const entry of entries) categoryById.set(entry.memory_id, category);
@@ -341,7 +353,7 @@ export function buildProfileAwareChatMemoryContext(
     return emptyChatMemoryContext();
   }
   const uniqueRecords = deduplicateAuthorizedMemories(records);
-  const profile = buildOwnerProfile(uniqueRecords);
+  const profile = buildOwnerProfile(toInsightRecords(uniqueRecords));
   const entryLimit = Math.min(Math.max(Math.floor(maxEntries), 0), MAX_CHAT_MEMORY_ENTRIES);
   const communicationEntries = profile.profile.communication.slice(0, Math.min(2, entryLimit));
   const selected: RankedMemory[] = communicationEntries.map((entry) => ({
