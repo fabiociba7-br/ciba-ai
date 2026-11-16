@@ -10,9 +10,9 @@ export interface OwnerProfileEntry extends MemoryInsightRecord {
 
 const CATEGORY_RULES: Array<[OwnerProfileCategory, string[]]> = [
   ["communication", ["communication", "response", "style", "language", "tone", "resposta", "idioma", "tom", "comunicacao"]],
-  ["preferences", ["preference", "prefer", "gosto", "prefiro", "favorit", "preferencia"]],
-  ["work", ["work", "job", "business", "project", "trabalho", "profissao", "empresa", "projeto"]],
   ["interests", ["interest", "music", "sport", "hobby", "interesse", "musica", "esporte", "hobby"]],
+  ["work", ["work", "job", "business", "project", "trabalho", "profissao", "empresa", "projeto"]],
+  ["preferences", ["preference", "prefer", "gosto", "prefiro", "favorit", "preferencia"]],
   ["routines", ["routine", "schedule", "habit", "rotina", "horario", "habito"]],
   ["personal_context", ["personal", "family", "location", "family", "pessoal", "familia", "local", "cidade"]],
 ];
@@ -20,7 +20,7 @@ const CATEGORY_RULES: Array<[OwnerProfileCategory, string[]]> = [
 const STOP = new Set([
   "a","as","o","os","de","da","do","das","dos","e","em","no","na","nos","nas",
   "para","por","com","que","um","uma","uns","umas","the","and","of","to","is",
-  "meu","minha","seu","sua","sobre","mais","muito","muita","ser","ter","são",
+  "meu","minha","seu","sua","sobre","mais","muito","muita","ser","ter","são","prefere","preferem",
 ]);
 
 function normalize(value: string): string {
