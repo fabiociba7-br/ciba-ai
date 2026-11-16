@@ -1040,6 +1040,12 @@ const handleOwnerMemory = async (request: Request, env: Env, url: URL) => {
       (typeof validHours !== "number" || !Number.isInteger(validHours) || validHours < 1 || validHours > 8760)) {
       return json({ error: "invalid_memory_valid_hours", minimum: 1, maximum: 8760 }, 400);
     }
+    const duplicate = scope === "owner"
+      ? await env.DB.prepare("SELECT memory_id FROM memory_records WHERE owner_id = ? AND scope = 'owner' AND memory_key = ? AND deleted_at IS NULL AND memory_id <> ?")
+          .bind(owner.owner_id, key, memoryId).first<{ memory_id: string }>()
+      : await env.DB.prepare("SELECT memory_id FROM memory_records WHERE owner_id = ? AND scope = 'app' AND source_app_id = ? AND memory_key = ? AND deleted_at IS NULL AND memory_id <> ?")
+          .bind(owner.owner_id, sourceAppId, key, memoryId).first<{ memory_id: string }>();
+    if (duplicate) return json({ error: "memory_key_already_exists" }, 409);
     const timestamp = nowIso();
     const expiresAt = validHours === undefined ? null : validHours === null ? null : new Date(Date.now() + validHours * 60 * 60 * 1000).toISOString();
     const result = await env.DB.prepare(`
