@@ -149,3 +149,8 @@ A memória central e a memória de outro app continuam exigindo concessão ativa
 - `decideMemoryReview(proposalId, "approve" | "reject", scope?)` aplica a decisão explícita. A aprovação pode criar um registro ou atualizar um valor em conflito; rejeitar não altera a memória.
 
 A classificação `new`, `unchanged` ou `possible_conflict` é determinística e não substitui a avaliação humana. A API não verifica por conta própria se o texto atribuído ao usuário foi realmente escrito por ele.
+
+
+## Análise de relações entre memórias
+
+`getMemoryInsights()` consulta `GET /v1/owner/memory/insights` e retorna possíveis conflitos, conteúdos lexicalmente relacionados e registros expirados/antigos. A API inclui somente memórias próprias e escopos de outros apps/centrais com concessão ativa de leitura. A análise é determinística, limitada a 200 registros e não modifica dados nem chama IA.
