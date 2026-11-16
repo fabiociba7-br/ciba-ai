@@ -12,7 +12,7 @@ export { createCibaToolRegistry } from "./tools";
 export type { CibaToolAuthorizationRequest, CibaToolRegistryOptions, ExecutableCibaToolRegistry } from "./tools";
 export type { CibaRole, ChatTurn, ModelProvider, OrchestrationResult } from "./types";
 
-export { buildWorkingContext, canAccessMemory, validateCuratedMemory } from "./memory";
+export { buildWorkingContext, canAccessMemory, validateCuratedMemory, validateMemoryRecord } from "./memory";
 export type { MemoryAccessRequest, MemoryConsent, MemoryGrant, MemoryPermission, MemoryRecord, MemoryScope, MemoryStore } from "./memory";
 
 export { canRelayAppMessage, validateAppMessageEnvelope } from "./messaging";
