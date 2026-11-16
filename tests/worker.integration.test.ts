@@ -54,6 +54,8 @@ describe("Ciba AI Worker integration", () => {
     const html = await response.text();
     expect(html).toContain("Garcia");
     expect(html).toContain("/v1/owner/dashboard");
+    expect(html).toContain("Aprendizado aguardando revisão");
+    expect(html).toContain("/v1/owner/memory/reviews");
     expect(html).not.toContain("sessionStorage");
     expect(html).not.toContain("localStorage");
   });
