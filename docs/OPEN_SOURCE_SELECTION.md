@@ -33,3 +33,26 @@ Não importar repositórios completos indiscriminadamente. O Ciba AI mantém um 
 - Não presumir que open source significa licença permissiva ou uso comercial irrestrito.
 - Não executar código de terceiros sem sandbox e revisão.
 - Não habilitar provider que possa cobrar sem configuração e autorização explícitas.
+
+## Catálogo nativo de capacidades da Garcia
+
+O catálogo executável de metadados está em `src/core/native-capabilities.ts` e é exposto em `GET /v1/ai/capabilities`. Ele organiza as capacidades que a Garcia pretende incorporar:
+
+- Geração e edição de imagens.
+- Geração e edição de vídeos.
+- Transcrição e reconhecimento de fala.
+- Síntese, conversão e personalização de voz.
+- Visão computacional.
+- OCR e compreensão de documentos.
+- Programação e manutenção de projetos.
+- Geração e processamento de áudio.
+- Orquestração de agentes especialistas.
+
+Cada capacidade declara projetos de origem, estado da revisão de licença, runtimes compatíveis, runtime preferido, política de instalação, exigência de GPU, memória mínima estimada e política de custo zero. O catálogo começa com estado `planned` e revisão de licença `review_required`; isso evita anunciar como disponível algo que ainda não foi incorporado e validado.
+
+### Regra de incorporação
+
+A incorporação será feita por etapas, com adapters tipados e isolados. O catálogo não instala dependências, não baixa pesos, não executa código de terceiros e não habilita serviços externos. Pesos de modelos ficam fora do Git e serão obtidos sob demanda somente depois da revisão de licença, compatibilidade, segurança, tamanho e custo. Capacidades que exigem GPU ou infraestrutura remota não serão instaladas automaticamente em celulares.
+
+O endpoint público informa explicitamente que o catálogo é apenas metadado: modelos ainda não estão instalados e adapters ainda não são executáveis. A disponibilidade real só poderá mudar depois da implementação e validação do adapter correspondente.
+
