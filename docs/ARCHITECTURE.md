@@ -18,7 +18,7 @@ O Worker usa o módulo src/core para identidade Ciba, roteamento determinístico
 
 A memória usa apenas o contexto recebido na requisição e não grava conversas. Fan-out multi-modelo, ferramentas externas e memória persistente ficam desativados até existir infraestrutura, orçamento e controles próprios.
 
-Consulte UNIFIED_INTELLIGENCE.md e OPEN_SOURCE_SELECTION.md para a estratégia de aproveitamento de projetos open source. Para o estado e os requisitos da transcrição local, consulte SPEECH_TO_TEXT.md.
+Consulte UNIFIED_INTELLIGENCE.md e OPEN_SOURCE_SELECTION.md para a estratégia de aproveitamento de projetos open source. Para o estado e os requisitos da transcrição local, consulte SPEECH_TO_TEXT.md; para a síntese de voz local da Garcia, consulte TEXT_TO_SPEECH.md. O núcleo possui contratos para Chatterbox, mas ainda não contém o runtime Python/PyTorch nem pesos de modelo. A integração foi desenhada para adapters locais, sem chamadas HTTP, APIs externas ou serviços remotos.
 
 ## Próximas etapas
 
