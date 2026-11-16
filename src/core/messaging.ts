@@ -39,6 +39,52 @@ function validId(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.length <= MAX_ID_LENGTH;
 }
 
+/** Normalizes a persisted relay grant into an immutable, validated snapshot. */
+export function validateAppMessageGrant(grant: AppMessageGrant): AppMessageGrant {
+  try {
+    if (!grant || typeof grant !== "object") throw new Error("invalid_app_message_grant");
+    const descriptors = Object.getOwnPropertyDescriptors(grant);
+    const read = (key: string): unknown => {
+      const descriptor = descriptors[key];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+        throw new Error("invalid_app_message_grant");
+      }
+      return descriptor.value;
+    };
+    const ownerId = read("ownerId");
+    const granteeAppId = read("granteeAppId");
+    const sourceAppId = read("sourceAppId");
+    const destinationAppId = read("destinationAppId");
+    const permissions = read("permissions");
+    const scopes = read("scopes");
+    const expiresAt = read("expiresAt");
+
+    if (!validId(ownerId) || !validId(granteeAppId) ||
+        !validId(sourceAppId) || !validId(destinationAppId) ||
+        sourceAppId === destinationAppId ||
+        !Array.isArray(permissions) || permissions.length === 0 ||
+        !permissions.every((item) => item === "send" || item === "receive") ||
+        new Set(permissions).size !== permissions.length ||
+        !Array.isArray(scopes) || scopes.length === 0 ||
+        !scopes.every((item) => item === "task" || item === "context") ||
+        new Set(scopes).size !== scopes.length ||
+        (expiresAt !== undefined && !Number.isSafeInteger(expiresAt))) {
+      throw new Error("invalid_app_message_grant");
+    }
+    return Object.freeze({
+      ownerId,
+      granteeAppId,
+      sourceAppId,
+      destinationAppId,
+      permissions: Object.freeze([...permissions]) as AppMessagePermission[],
+      scopes: Object.freeze([...scopes]) as AppMessageScope[],
+      ...(expiresAt !== undefined ? { expiresAt: expiresAt as number } : {})
+    });
+  } catch {
+    throw new Error("invalid_app_message_grant");
+  }
+}
+
 export function canRelayAppMessage(
   request: AppMessageAccessRequest,
   grants: AppMessageGrant[],
