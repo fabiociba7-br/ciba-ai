@@ -124,6 +124,26 @@ describe("CibaClient", () => {
     await expect(client.prepareMemoryCandidate({ sourceText: "x", key: "k", value: "x" })).rejects.toThrow("invalid_memory_candidate_source");
   });
 
+  it("searches and edits curated memories with optional expiry controls", async () => {
+    const fetcher = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ memories: [], maximum: 200, scope: "app", search: "rock", include_expired: true }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ updated: true, memory_id: "memory-1", scope: "app" }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const listed = await client.listMemory("app", undefined, { search: "rock", includeExpired: true });
+    expect(listed.include_expired).toBe(true);
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/owner/memory?scope=app&q=rock&include_expired=true");
+    const updated = await client.updateMemory({
+      memoryId: "memory-1", scope: "app", key: "music", value: "Gosta de rock clássico.", validHours: 48,
+    });
+    expect(updated.updated).toBe(true);
+    expect(fetcher.mock.calls[1][0]).toBe("https://private.example/v1/owner/memory?scope=app");
+    expect(fetcher.mock.calls[1][1]?.method).toBe("PATCH");
+    expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({
+      memory_id: "memory-1", key: "music", value: "Gosta de rock clássico.", consent: "curated", valid_hours: 48,
+    });
+    await expect(client.updateMemory({ memoryId: "", scope: "app", key: "x", value: "y" })).rejects.toThrow("invalid_memory_id");
+  });
+
   it("retrieves relevant curated memory without an inference call", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
       query: "estilo de resposta",
