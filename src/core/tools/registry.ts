@@ -232,7 +232,7 @@ function validateSchema(value: unknown, schema: unknown, depth = 0): boolean {
     if (Array.isArray(rule.required) &&
         !rule.required.every((key) => typeof key === "string" &&
           Object.prototype.hasOwnProperty.call(object, key))) return false;
-    if (rule.additionalProperties !== false &&
+    if (rule.additionalProperties === false &&
         Object.keys(object).some((key) => !Object.prototype.hasOwnProperty.call(properties, key))) return false;
     if (typeof rule.maxProperties === "number" && Object.keys(object).length > rule.maxProperties) return false;
     return Object.entries(object).every(([key, item]) =>
