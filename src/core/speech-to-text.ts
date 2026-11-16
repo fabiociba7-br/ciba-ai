@@ -144,8 +144,19 @@ export function createWhisperCppRegistry(
       const rawArchitectures = rawRequirements.architectures;
       const rawPlatforms = rawRequirements.platforms;
       const minimumAndroidApiLevel = rawRequirements.minimumAndroidApiLevel;
-      const architectures = rawArchitectures === undefined ? undefined : [...rawArchitectures];
-      const platforms = rawPlatforms === undefined ? undefined : [...rawPlatforms];
+      const copyBoundedList = (value: unknown, maximum: number): unknown[] | undefined => {
+        if (value === undefined) return undefined;
+        if (!Array.isArray(value) || value.length < 1 || value.length > maximum) {
+          throw new Error("invalid_whisper_cpp_adapter");
+        }
+        const copied: unknown[] = [];
+        for (let index = 0; index < value.length; index += 1) {
+          copied.push(value[index]);
+        }
+        return copied;
+      };
+      const architectures = copyBoundedList(rawArchitectures, 5) as DeviceCapabilityRequirements["architectures"];
+      const platforms = copyBoundedList(rawPlatforms, 5) as DeviceCapabilityRequirements["platforms"];
       const requirementsSnapshot: DeviceCapabilityRequirements = {
         runtime: runtimeRequirement,
         minimumRamMb,
