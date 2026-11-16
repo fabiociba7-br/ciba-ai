@@ -3,6 +3,7 @@ export { createCibaToolRegistry } from "./registry";
 export type {
   CibaToolAuthorizationRequest,
   CibaToolInvocationPlan,
+  CibaToolInvocationContext,
   CibaToolRegistryOptions,
   ExecutableCibaToolRegistry
 } from "./registry";
