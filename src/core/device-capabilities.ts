@@ -30,21 +30,73 @@ export interface DeviceCapabilityDecision {
   reasons: string[];
 }
 
+function readOwnDataRecord(
+  value: unknown,
+  allowedKeys: string[],
+  requiredKeys: string[],
+): Record<string, unknown> | null {
+  try {
+    if (value === null || typeof value !== "object" || Array.isArray(value) ||
+        Object.getPrototypeOf(value) !== Object.prototype) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const keys = Reflect.ownKeys(descriptors);
+    if (keys.some((key) => typeof key !== "string" || !allowedKeys.includes(key)) ||
+        requiredKeys.some((key) => !Object.prototype.hasOwnProperty.call(descriptors, key))) return null;
+    const result: Record<string, unknown> = Object.create(null);
+    for (const key of keys as string[]) {
+      const descriptor = descriptors[key];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
+      result[key] = descriptor.value;
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+function snapshotStringArray(value: unknown, allowed: string[]): string[] | null {
+  try {
+    if (!Array.isArray(value) || Object.getPrototypeOf(value) !== Array.prototype ||
+        value.length === 0 || value.length > allowed.length) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Reflect.ownKeys(descriptors).length !== value.length + 1) return null;
+    const result: string[] = [];
+    for (let i = 0; i < value.length; i += 1) {
+      const descriptor = descriptors[String(i)];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable ||
+          typeof descriptor.value !== "string" || !allowed.includes(descriptor.value)) return null;
+      result.push(descriptor.value);
+    }
+    return new Set(result).size === result.length ? result : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Validates a client-reported profile. Values are hints, not trusted attestation. */
 export function validateDeviceCapabilityProfile(profile: DeviceCapabilityProfile): void {
-  const valid = Number.isInteger(profile.totalRamMb) && profile.totalRamMb >= 256 &&
-    Number.isInteger(profile.availableRamMb) && profile.availableRamMb >= 0 &&
-    profile.availableRamMb <= profile.totalRamMb &&
-    Number.isInteger(profile.logicalCpuCores) && profile.logicalCpuCores >= 1 &&
-    profile.logicalCpuCores <= 1024 &&
-    Number.isFinite(profile.collectedAt) && profile.collectedAt > 0 &&
-    profile.source === "client_report" &&
-    ["android", "windows", "macos", "linux", "unknown"].includes(profile.platform) &&
-    ["arm64", "arm32", "x64", "x86", "unknown"].includes(profile.architecture) &&
-    typeof profile.gpuAvailable === "boolean" &&
-    (profile.androidApiLevel === undefined ||
-      (Number.isInteger(profile.androidApiLevel) && profile.androidApiLevel >= 21 && profile.androidApiLevel <= 100));
-  if (!valid || (profile.platform !== "android" && profile.androidApiLevel !== undefined)) {
+  const value = readOwnDataRecord(
+    profile,
+    ["platform", "architecture", "totalRamMb", "availableRamMb", "logicalCpuCores",
+      "gpuAvailable", "androidApiLevel", "collectedAt", "source"],
+    ["platform", "architecture", "totalRamMb", "availableRamMb", "logicalCpuCores",
+      "gpuAvailable", "collectedAt", "source"]
+  );
+  const validPlatforms: DevicePlatform[] = ["android", "windows", "macos", "linux", "unknown"];
+  const validArchitectures: DeviceArchitecture[] = ["arm64", "arm32", "x64", "x86", "unknown"];
+  if (!value || !validPlatforms.includes(value.platform as DevicePlatform) ||
+      !validArchitectures.includes(value.architecture as DeviceArchitecture) ||
+      !Number.isInteger(value.totalRamMb) || (value.totalRamMb as number) < 256 ||
+      !Number.isInteger(value.availableRamMb) || (value.availableRamMb as number) < 0 ||
+      (value.availableRamMb as number) > (value.totalRamMb as number) ||
+      !Number.isInteger(value.logicalCpuCores) || (value.logicalCpuCores as number) < 1 ||
+      (value.logicalCpuCores as number) > 1024 ||
+      !Number.isFinite(value.collectedAt) || (value.collectedAt as number) <= 0 ||
+      value.source !== "client_report" || typeof value.gpuAvailable !== "boolean" ||
+      (value.androidApiLevel !== undefined &&
+        (!Number.isInteger(value.androidApiLevel) || (value.androidApiLevel as number) < 21 ||
+          (value.androidApiLevel as number) > 100)) ||
+      (value.platform !== "android" && value.androidApiLevel !== undefined)) {
     throw new Error("invalid_device_capability_profile");
   }
 }
@@ -53,25 +105,34 @@ export function validateDeviceCapabilityProfile(profile: DeviceCapabilityProfile
 export function validateDeviceCapabilityRequirements(
   requirements: DeviceCapabilityRequirements,
 ): void {
+  const value = readOwnDataRecord(
+    requirements,
+    ["runtime", "minimumRamMb", "minimumAvailableRamMb", "minimumCpuCores",
+      "requiresGpu", "architectures", "platforms", "minimumAndroidApiLevel"],
+    ["runtime", "minimumRamMb"]
+  );
   const validPlatforms: DevicePlatform[] = ["android", "windows", "macos", "linux", "unknown"];
   const validArchitectures: DeviceArchitecture[] = ["arm64", "arm32", "x64", "x86", "unknown"];
-  const valid = ["android_embedded", "desktop_local", "local_service"].includes(requirements.runtime) &&
-    Number.isInteger(requirements.minimumRamMb) && requirements.minimumRamMb >= 256 &&
-    (requirements.minimumAvailableRamMb === undefined ||
-      (Number.isInteger(requirements.minimumAvailableRamMb) && requirements.minimumAvailableRamMb >= 0)) &&
-    (requirements.minimumCpuCores === undefined ||
-      (Number.isInteger(requirements.minimumCpuCores) && requirements.minimumCpuCores >= 1 && requirements.minimumCpuCores <= 1024)) &&
-    (requirements.requiresGpu === undefined || typeof requirements.requiresGpu === "boolean") &&
-    (requirements.architectures === undefined ||
-      (Array.isArray(requirements.architectures) && requirements.architectures.length > 0 &&
-        requirements.architectures.every((value) => validArchitectures.includes(value)))) &&
-    (requirements.platforms === undefined ||
-      (Array.isArray(requirements.platforms) && requirements.platforms.length > 0 &&
-        requirements.platforms.every((value) => validPlatforms.includes(value)))) &&
-    (requirements.minimumAndroidApiLevel === undefined ||
-      (Number.isInteger(requirements.minimumAndroidApiLevel) &&
-        requirements.minimumAndroidApiLevel >= 21 && requirements.minimumAndroidApiLevel <= 100));
-  if (!valid) throw new Error("invalid_device_capability_requirements");
+  const architectures = value?.architectures === undefined ? undefined
+    : snapshotStringArray(value.architectures, validArchitectures);
+  const platforms = value?.platforms === undefined ? undefined
+    : snapshotStringArray(value.platforms, validPlatforms);
+  if (!value || !["android_embedded", "desktop_local", "local_service"].includes(value.runtime as string) ||
+      !Number.isInteger(value.minimumRamMb) || (value.minimumRamMb as number) < 256 ||
+      (value.minimumAvailableRamMb !== undefined &&
+        (!Number.isInteger(value.minimumAvailableRamMb) || (value.minimumAvailableRamMb as number) < 0)) ||
+      (value.minimumCpuCores !== undefined &&
+        (!Number.isInteger(value.minimumCpuCores) || (value.minimumCpuCores as number) < 1 ||
+          (value.minimumCpuCores as number) > 1024)) ||
+      (value.requiresGpu !== undefined && typeof value.requiresGpu !== "boolean") ||
+      (value.architectures !== undefined && !architectures) ||
+      (value.platforms !== undefined && !platforms) ||
+      (value.minimumAndroidApiLevel !== undefined &&
+        (!Number.isInteger(value.minimumAndroidApiLevel) ||
+          (value.minimumAndroidApiLevel as number) < 21 ||
+          (value.minimumAndroidApiLevel as number) > 100))) {
+    throw new Error("invalid_device_capability_requirements");
+  }
 }
 
 /** Conservative compatibility check. It never installs or starts a runtime. */
