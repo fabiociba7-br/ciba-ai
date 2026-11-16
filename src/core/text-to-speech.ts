@@ -1,3 +1,4 @@
+import { validateDeviceCapabilityRequirements } from "./device-capabilities";
 import type { DeviceCapabilityRequirements } from "./device-capabilities";
 
 export type TextToSpeechRuntime = "desktop_local" | "android_embedded";
@@ -92,6 +93,19 @@ function denseArray(value: unknown, max: number): unknown[] | null {
   }
 }
 
+function readSignalAborted(value: unknown): boolean | null {
+  try {
+    if (typeof AbortSignal === "undefined" || value === null || typeof value !== "object" ||
+        Object.getPrototypeOf(value) !== AbortSignal.prototype) return null;
+    const getter = Object.getOwnPropertyDescriptor(AbortSignal.prototype, "aborted")?.get;
+    if (typeof getter !== "function") return null;
+    const result = getter.call(value);
+    return typeof result === "boolean" ? result : null;
+  } catch {
+    return null;
+  }
+}
+
 function copyAudio(value: unknown, maxBytes: number): Uint8Array {
   if (!(value instanceof Uint8Array) || Object.getPrototypeOf(value) !== Uint8Array.prototype ||
       value.byteLength < 1 || value.byteLength > maxBytes) {
@@ -117,7 +131,8 @@ export function validateTextToSpeechRequest(
       consent.source !== "explicit_user_action" ||
       !["pt-br", "pt", "en"].includes(language as string) ||
       (voiceProfileId !== undefined &&
-        (typeof voiceProfileId !== "string" || !/^[a-zA-Z0-9_-]{1,64}$/.test(voiceProfileId)))) {
+        (typeof voiceProfileId !== "string" || !/^[a-zA-Z0-9_-]{1,64}$/.test(voiceProfileId))) ||
+      (fields.signal !== undefined && readSignalAborted(fields.signal) === null)) {
     throw new Error("invalid_text_to_speech_request");
   }
   return Object.freeze({
@@ -185,11 +200,13 @@ export function createChatterboxRegistry(
         (requirements.minimumRamMb as number) > 262144) {
       throw new Error("invalid_chatterbox_adapter");
     }
+    const deviceRequirements = Object.freeze({ ...requirements }) as unknown as DeviceCapabilityRequirements;
+    validateDeviceCapabilityRequirements(deviceRequirements);
     adapterMap.set(adapter.runtime as TextToSpeechRuntime, Object.freeze({
       engine: "chatterbox",
       runtime: adapter.runtime as TextToSpeechRuntime,
       modelId: adapter.modelId,
-      deviceRequirements: Object.freeze({ ...requirements }) as unknown as DeviceCapabilityRequirements,
+      deviceRequirements,
       synthesize: (adapter.synthesize as TextToSpeechAdapter["synthesize"]).bind(candidate),
     }));
   }
@@ -228,7 +245,9 @@ export async function runChatterboxSynthesis(
     throw new Error("invalid_text_to_speech_registry");
   }
   const safeRequest = validateTextToSpeechRequest(request, registryFields.maxTextChars as number);
-  if (safeRequest.signal?.aborted) throw new Error("text_to_speech_aborted");
+  if (safeRequest.signal && readSignalAborted(safeRequest.signal) !== false) {
+    throw new Error("text_to_speech_aborted");
+  }
   const acquire = registryFields.tryAcquireExecution as TextToSpeechRegistry["tryAcquireExecution"];
   const release = acquire();
   if (!release) throw new Error("text_to_speech_busy");
@@ -237,7 +256,9 @@ export async function runChatterboxSynthesis(
     const adapter = getAdapter(runtime);
     if (!adapter) throw new Error("chatterbox_adapter_unavailable");
     const result = await adapter.synthesize(safeRequest);
-    if (safeRequest.signal?.aborted) throw new Error("text_to_speech_aborted");
+    if (safeRequest.signal && readSignalAborted(safeRequest.signal) !== false) {
+      throw new Error("text_to_speech_aborted");
+    }
     const output = ownData(result, [
       "audio", "mimeType", "sampleRateHz", "durationMs", "engine", "modelId", "language",
     ], ["audio", "mimeType", "sampleRateHz", "durationMs", "engine", "modelId", "language"]);
