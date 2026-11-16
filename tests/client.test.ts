@@ -79,6 +79,21 @@ describe("CibaClient", () => {
     });
   });
 
+  it("retrieves a bounded task lifecycle status", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({
+      task_id: "task-1", source_app_id: "com.ciba.source", destination_app_id: "com.ciba.notes",
+      task_type: "summarize", created_at: "now",
+      lifecycle: { status: "processing", acknowledged: true, result_count: 0, completed_results: 0, partial_results: 0, failed_results: 0, expires_at: "later" },
+      automatic_execution: false, note: "Acknowledgement is not execution.",
+    }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const status = await client.getTaskStatus("task-1");
+    expect(status.lifecycle.status).toBe("processing");
+    expect(status.automatic_execution).toBe(false);
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/apps/tasks/status?task_id=task-1");
+    await expect(client.getTaskStatus("")).rejects.toThrow("invalid_task_id");
+  });
+
   it("submits and retrieves correlated task results", async () => {
     const fetcher = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(new Response(JSON.stringify({ submitted: true, duplicate: false }), { status: 201 }))
