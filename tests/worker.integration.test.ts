@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import workerModule, { type Env } from "../src/index";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 const worker = {
   fetch: (request: Request) => workerModule.fetch(
@@ -10,6 +10,20 @@ const worker = {
 };
 const adminToken = "integration-test-admin-token-0123456789abcdef";
 const appId = "com.ciba.integration";
+
+beforeEach(async () => {
+  const db = (env as unknown as { DB: D1Database }).DB;
+  const resources = [
+    "chat", "persistent_memory", "app_messaging", "task_dispatch",
+    "context_sharing", "multi_model_ensemble", "external_tools",
+  ];
+  await db.batch(resources.map((resourceId) => db.prepare(`
+    INSERT INTO cibagenio_controls(resource_id, scope, scope_id, enabled, reason, updated_by, updated_at)
+    VALUES(?, 'global', '', 1, 'Integration test setup', 'test', ?)
+    ON CONFLICT(resource_id, scope, scope_id) DO UPDATE SET
+      enabled = 1, reason = excluded.reason, updated_by = 'test', updated_at = excluded.updated_at
+  `).bind(resourceId, new Date().toISOString())));
+});
 
 const request = (path: string, init: RequestInit = {}) =>
   worker.fetch(new Request(`https://ciba-ai.test${path}`, init));
@@ -142,6 +156,20 @@ describe("Ciba AI Worker integration", () => {
       },
       body: JSON.stringify({ messages: [{ role: "user", content: "Olá" }] }),
     });
+
+    await testDb.prepare(
+      "UPDATE cibagenio_controls SET enabled = 0 WHERE resource_id = 'chat' AND scope = 'global' AND scope_id = ''"
+    ).run();
+    const lockedChat = await chat();
+    expect(lockedChat.status).toBe(403);
+    expect(await lockedChat.json()).toEqual({
+      error: "resource_locked_by_cibagenio",
+      resource_id: "chat",
+      scope: "global",
+    });
+    await testDb.prepare(
+      "UPDATE cibagenio_controls SET enabled = 1 WHERE resource_id = 'chat' AND scope = 'global' AND scope_id = ''"
+    ).run();
 
     const firstChat = await chat();
     expect(firstChat.status).toBe(503);
@@ -1093,6 +1121,11 @@ describe("Ciba AI curated private memory", () => {
 
 describe("CibaGenio administrative resource controls", () => {
   it("requires admin authentication and persists global/app resource switches with an audit trail", async () => {
+    const db = (env as unknown as { DB: D1Database }).DB;
+    await db.batch([
+      db.prepare("DELETE FROM cibagenio_controls"),
+      db.prepare("DELETE FROM cibagenio_audit_events"),
+    ]);
     const unauthorized = await request("/v1/admin/cibagenio");
     expect(unauthorized.status).toBe(401);
 
