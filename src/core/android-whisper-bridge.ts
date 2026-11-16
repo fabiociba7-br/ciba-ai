@@ -94,7 +94,16 @@ export function createAndroidWhisperCppAdapter(
       if (!isValidResult(result, modelId)) {
         throw new Error("invalid_android_whisper_result");
       }
-      return result;
+
+      // Return a detached immutable snapshot. The native bridge or downstream
+      // caller cannot mutate validated text or segment timestamps afterward.
+      const segments = Object.freeze(
+        result.segments.map((segment) => Object.freeze({ ...segment })),
+      );
+      return Object.freeze({
+        ...result,
+        segments,
+      }) as SpeechToTextResult;
     },
   };
   return Object.freeze(adapter);
