@@ -43,8 +43,8 @@ export function classifyMemoryProposal(
     }
   }
   if (!safeExisting) return { classification: "new", existing_memory_id: null, existing_value_snapshot: null };
-  const normalize = (value: string) => value.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
-    .toLocaleLowerCase("pt-BR").replace(/\\s+/g, " ").trim().replace(/[.!?]+$/g, "");
+  const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR").replace(/\s+/g, " ").trim().replace(/[.!?]+$/g, "");
   const same = normalize(proposedValue) === normalize(safeExisting.value);
   return {
     classification: same ? "unchanged" : "possible_conflict",
