@@ -135,6 +135,36 @@ describe("Android Whisper.cpp bridge contract", () => {
     expect(transcribeCalls).toBe(1);
   });
 
+  it("snapshots model, audio limit, and hardware requirements", async () => {
+    const mutableRequirements = {
+      runtime: "android_embedded" as const,
+      minimumRamMb: 1024,
+      architectures: ["arm64" as const],
+      platforms: ["android" as const],
+    };
+    const mutableOptions = {
+      modelId: "ggml-tiny",
+      maxAudioBytes: 3,
+      deviceRequirements: mutableRequirements,
+    };
+    const adapter = createAndroidWhisperCppAdapter(bridge(), mutableOptions);
+
+    mutableOptions.modelId = "replacement-model";
+    mutableOptions.maxAudioBytes = 1;
+    mutableRequirements.minimumRamMb = 8192;
+    mutableRequirements.architectures[0] = "x86";
+    mutableRequirements.platforms[0] = "linux";
+
+    expect(adapter.modelId).toBe("ggml-tiny");
+    expect(adapter.deviceRequirements.minimumRamMb).toBe(1024);
+    expect(adapter.deviceRequirements.architectures).toEqual(["arm64"]);
+    expect(adapter.deviceRequirements.platforms).toEqual(["android"]);
+    expect(Object.isFrozen(adapter.deviceRequirements)).toBe(true);
+    expect(Object.isFrozen(adapter.deviceRequirements.architectures)).toBe(true);
+    expect(Object.isFrozen(adapter.deviceRequirements.platforms)).toBe(true);
+    await expect(adapter.transcribe(request)).resolves.toEqual(result);
+  });
+
   it("returns a valid transcription from a ready native bridge", async () => {
     const adapter = createAndroidWhisperCppAdapter(bridge(), {
       modelId: "ggml-tiny",
