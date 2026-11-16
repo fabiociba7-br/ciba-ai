@@ -112,26 +112,47 @@ export function canAccessMemory(
  * and write and bind the owner identity to the authenticated session.
  */
 export function validateMemoryRecord(record: MemoryRecord): MemoryRecord {
-  if (!record || typeof record !== "object" ||
-      !isNonEmptyString(record.id) || record.id.length > 200 ||
-      !isNonEmptyString(record.ownerId) ||
-      !isNonEmptyString(record.createdByAppId) ||
-      !isValidScope(record.scope) || record.scope.ownerId !== record.ownerId ||
-      !Number.isSafeInteger(record.createdAt) || record.createdAt <= 0 ||
-      (record.expiresAt !== undefined &&
-        (!Number.isSafeInteger(record.expiresAt) || record.expiresAt <= record.createdAt))) {
+  try {
+    if (!record || typeof record !== "object") throw new Error("invalid_memory_record");
+    const id = record.id;
+    const ownerId = record.ownerId;
+    const createdByAppId = record.createdByAppId;
+    const scopeValue = record.scope;
+    const valueInput = record.value;
+    const createdAt = record.createdAt;
+    const expiresAt = record.expiresAt;
+    if (!isNonEmptyString(id) || id.length > 200 ||
+        !isNonEmptyString(ownerId) || !isNonEmptyString(createdByAppId) ||
+        !scopeValue || typeof scopeValue !== "object") {
+      throw new Error("invalid_memory_record");
+    }
+    const scopeType = scopeValue.type;
+    const scopeOwnerId = scopeValue.ownerId;
+    const scopeAppId = scopeType === "app" ? scopeValue.appId : undefined;
+    if (!isNonEmptyString(scopeOwnerId) || scopeOwnerId !== ownerId ||
+        (scopeType !== "owner" && scopeType !== "app") ||
+        (scopeType === "app" && !isNonEmptyString(scopeAppId)) ||
+        !Number.isSafeInteger(createdAt) || createdAt <= 0 ||
+        (expiresAt !== undefined &&
+          (!Number.isSafeInteger(expiresAt) || expiresAt <= createdAt))) {
+      throw new Error("invalid_memory_record");
+    }
+    const value = validateCuratedMemory({ consent: "curated", value: valueInput });
+    const scope: MemoryScope = Object.freeze(scopeType === "owner"
+      ? { type: "owner", ownerId }
+      : { type: "app", ownerId, appId: scopeAppId as string });
+    return Object.freeze({
+      id,
+      ownerId,
+      scope,
+      value,
+      createdAt,
+      ...(expiresAt !== undefined ? { expiresAt } : {}),
+      createdByAppId
+    });
+  } catch {
     throw new Error("invalid_memory_record");
   }
-  const value = validateCuratedMemory({ consent: "curated", value: record.value });
-  return Object.freeze({
-    id: record.id,
-    ownerId: record.ownerId,
-    scope: Object.freeze({ ...record.scope }),
-    value,
-    createdAt: record.createdAt,
-    ...(record.expiresAt !== undefined ? { expiresAt: record.expiresAt } : {}),
-    createdByAppId: record.createdByAppId
-  });
 }
 
 /**
