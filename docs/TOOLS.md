@@ -202,3 +202,14 @@ Before enabling runtime execution, a separate integration stage must adapt the a
 - `cancel(...)` closes an approval through the durable store.
 
 The adapter is an application-layer primitive only. It is not wired into the Worker chat route, public HTTP endpoints, production tool definitions, or any deployed D1 binding. Keep the raw registry private to the trusted application layer; never expose its `execute` method to untrusted clients. The registry's authorization callback must independently enforce authenticated identity, owner/app scopes, device status and application policy; do not configure it to consume the same durable approval a second time, because this flow consumes that approval immediately before calling the registry. A caller must enforce CSRF/session protections before calling this adapter. No migration or deployment is performed by this change.
+
+
+## Authenticated approval inbox API
+
+The Worker exposes owner-scoped approval management endpoints. All routes require a valid device bearer token; the owner identity is derived from the authenticated device record, never from request JSON.
+
+- `GET /v1/owner/tool-approvals`: lists up to 20 unexpired pending or approved requests for the authenticated owner's current app. The response includes the source device, tool ID, risk, exact input, status and expiry so a trusted UI can show the action before a decision.
+- `POST /v1/owner/tool-approvals/{approval_id}/decision`: accepts exactly `{"allow":true}` or `{"allow":false}`. The approver must be a paired, active device belonging to the same owner and app as the originating device. The server loads the original request from D1, verifies its stored SHA-256, and delegates the one-time state transition to the durable store. Replays and expired requests are rejected.
+- `POST /v1/owner/tool-approvals/{approval_id}/cancel`: cancels a pending or approved request only when called by the active originating device.
+
+The API does not execute tools. Approval is not equivalent to execution, and no tool registry, public chat route or production handler is connected. A client must present the full tool name, risk and exact input to the owner before sending a decision; never treat a model-generated preview as a trusted confirmation screen. The API is limited to the same app ID because the durable schema binds both source and approving devices to the same owner/app pair.
