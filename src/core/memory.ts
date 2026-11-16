@@ -106,55 +106,77 @@ export function canAccessMemory(
   });
 }
 
+function readPlainDataObject(value: unknown): Record<string, unknown> | null {
+  try {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return null;
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    const result: Record<string, unknown> = Object.create(null);
+    for (const key of Reflect.ownKeys(descriptors)) {
+      if (typeof key !== "string" || key === "__proto__" ||
+          key === "constructor" || key === "prototype") return null;
+      const descriptor = descriptors[key];
+      if (!("value" in descriptor) || !descriptor.enumerable) return null;
+      result[key] = descriptor.value;
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Validates a persisted memory record before storage or retrieval. This is a
  * structural check; callers must still enforce canAccessMemory on every read
  * and write and bind the owner identity to the authenticated session.
  */
 export function validateMemoryRecord(record: MemoryRecord): MemoryRecord {
+  const source = readPlainDataObject(record);
+  if (!source) throw new Error("invalid_memory_record");
+  const scopeValue = readPlainDataObject(source.scope);
+  if (!scopeValue) throw new Error("invalid_memory_record");
+
+  const id = source.id;
+  const ownerId = source.ownerId;
+  const createdByAppId = source.createdByAppId;
+  const valueInput = source.value;
+  const createdAt = source.createdAt;
+  const expiresAt = source.expiresAt;
+  const scopeType = scopeValue.type;
+  const scopeOwnerId = scopeValue.ownerId;
+  const scopeAppId = scopeValue.appId;
+
+  if (!isNonEmptyString(id) || id.length > 200 ||
+      !isNonEmptyString(ownerId) || !isNonEmptyString(createdByAppId) ||
+      !isNonEmptyString(scopeOwnerId) || scopeOwnerId !== ownerId ||
+      (scopeType !== "owner" && scopeType !== "app") ||
+      (scopeType === "app" && !isNonEmptyString(scopeAppId)) ||
+      (scopeType === "owner" && scopeAppId !== undefined) ||
+      !Number.isSafeInteger(createdAt) || (createdAt as number) <= 0 ||
+      (expiresAt !== undefined &&
+        (!Number.isSafeInteger(expiresAt) || (expiresAt as number) <= (createdAt as number)))) {
+    throw new Error("invalid_memory_record");
+  }
+
+  let value: string;
   try {
-    if (!record || typeof record !== "object") throw new Error("invalid_memory_record");
-    const id = record.id;
-    const ownerId = record.ownerId;
-    const createdByAppId = record.createdByAppId;
-    const scopeValue = record.scope;
-    const valueInput = record.value;
-    const createdAt = record.createdAt;
-    const expiresAt = record.expiresAt;
-    if (!isNonEmptyString(id) || id.length > 200 ||
-        !isNonEmptyString(ownerId) || !isNonEmptyString(createdByAppId) ||
-        !scopeValue || typeof scopeValue !== "object") {
-      throw new Error("invalid_memory_record");
-    }
-    const scopeType = scopeValue.type;
-    const scopeOwnerId = scopeValue.ownerId;
-    const scopeAppId = scopeType === "app"
-      ? (scopeValue as { appId?: unknown }).appId
-      : undefined;
-    if (!isNonEmptyString(scopeOwnerId) || scopeOwnerId !== ownerId ||
-        (scopeType !== "owner" && scopeType !== "app") ||
-        (scopeType === "app" && !isNonEmptyString(scopeAppId)) ||
-        !Number.isSafeInteger(createdAt) || createdAt <= 0 ||
-        (expiresAt !== undefined &&
-          (!Number.isSafeInteger(expiresAt) || expiresAt <= createdAt))) {
-      throw new Error("invalid_memory_record");
-    }
-    const value = validateCuratedMemory({ consent: "curated", value: valueInput });
-    const scope: MemoryScope = Object.freeze(scopeType === "owner"
-      ? { type: "owner", ownerId }
-      : { type: "app", ownerId, appId: scopeAppId as string });
-    return Object.freeze({
-      id,
-      ownerId,
-      scope,
-      value,
-      createdAt,
-      ...(expiresAt !== undefined ? { expiresAt } : {}),
-      createdByAppId
-    });
+    value = validateCuratedMemory({ consent: "curated", value: valueInput as string });
   } catch {
     throw new Error("invalid_memory_record");
   }
+  const scope: MemoryScope = Object.freeze(scopeType === "owner"
+    ? { type: "owner", ownerId }
+    : { type: "app", ownerId, appId: scopeAppId as string });
+  return Object.freeze({
+    id,
+    ownerId,
+    scope,
+    value,
+    createdAt: createdAt as number,
+    ...(expiresAt !== undefined ? { expiresAt: expiresAt as number } : {}),
+    createdByAppId
+  });
 }
 
 /**
