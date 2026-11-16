@@ -75,6 +75,26 @@ const isAppAllowed = async (env: Env, appId: string): Promise<boolean> => {
   return allowedApps(env).has(appId);
 };
 
+const requireCibaGenioAccess = async (
+  env: Env,
+  resourceId: string,
+  appId?: string,
+): Promise<Response | null> => {
+  const control = await env.DB.prepare(`
+    SELECT enabled, scope FROM cibagenio_controls
+    WHERE resource_id = ?
+      AND ((scope = 'app' AND scope_id = ?) OR (scope = 'global' AND scope_id = ''))
+    ORDER BY CASE WHEN scope = 'app' THEN 0 ELSE 1 END
+    LIMIT 1
+  `).bind(resourceId, appId || "").first<{ enabled: number; scope: string }>();
+  if (control?.enabled === 1) return null;
+  return json({
+    error: "resource_locked_by_cibagenio",
+    resource_id: resourceId,
+    scope: control?.scope || "global",
+  }, 403);
+};
+
 const authorizeAdmin = async (request: Request, env: Env): Promise<Response | null> => {
   if (!env.ADMIN_TOKEN || env.ADMIN_TOKEN.length < 32) {
     return json({ error: "admin_auth_not_configured" }, 503);
@@ -811,7 +831,9 @@ const handleOwnerAccessGrants = async (request: Request, env: Env) => {
 
 const handleMemoryRetrieve = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "persistent_memory", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
 
@@ -873,7 +895,9 @@ const handleMemoryRetrieve = async (request: Request, env: Env) => {
 
 const handlePrepareMemoryCandidate = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "persistent_memory", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   const featureSettings = await readOwnerFeatureSettings(env, owner.owner_id);
@@ -936,7 +960,9 @@ const recordMemoryAudit = async (
 
 const handleMemoryReviews = async (request: Request, env: Env, url: URL) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "persistent_memory", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   const settings = await readOwnerFeatureSettings(env, owner.owner_id);
@@ -1035,7 +1061,9 @@ const handleMemoryReviews = async (request: Request, env: Env, url: URL) => {
 
 const handleMemoryHistory = async (request: Request, env: Env, url: URL) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "persistent_memory", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   const settings = await readOwnerFeatureSettings(env, owner.owner_id);
@@ -1068,7 +1096,9 @@ const handleMemoryHistory = async (request: Request, env: Env, url: URL) => {
 
 const handleOwnerProfile = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "persistent_memory", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   const settings = await readOwnerFeatureSettings(env, owner.owner_id);
@@ -1108,7 +1138,9 @@ const handleOwnerProfile = async (request: Request, env: Env) => {
 
 const handleMemoryInsights = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "persistent_memory", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   const settings = await readOwnerFeatureSettings(env, owner.owner_id);
@@ -1149,7 +1181,9 @@ const handleMemoryInsights = async (request: Request, env: Env) => {
 
 const handleOwnerMemory = async (request: Request, env: Env, url: URL) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "persistent_memory", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
 
@@ -1390,7 +1424,9 @@ const handleRevokeDevice = async (request: Request, env: Env) => {
 
 const handleChat = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "chat", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
 
   try {
     await reserveMinuteRateLimit(env, device.device_id);
@@ -1780,7 +1816,9 @@ const hasMessageGrant = async (
 
 const handleTaskDispatch = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "task_dispatch", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   if (!(await isAppAllowed(env, device.app_id))) return json({ error: "source_app_disabled" }, 403);
@@ -1989,7 +2027,9 @@ const handleTaskDispatch = async (request: Request, env: Env) => {
 
 const handleSubmitTaskResult = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "task_dispatch", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   if (!(await isAppAllowed(env, device.app_id))) return json({ error: "source_app_disabled" }, 403);
@@ -2107,7 +2147,9 @@ const handleSubmitTaskResult = async (request: Request, env: Env) => {
 
 const handleTaskStatus = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "task_dispatch", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   if (!(await isAppAllowed(env, device.app_id))) return json({ error: "source_app_disabled" }, 403);
@@ -2196,7 +2238,9 @@ const handleTaskStatus = async (request: Request, env: Env) => {
 
 const handleTaskResults = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "task_dispatch", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   if (!(await readOwnerFeatureSettings(env, owner.owner_id)).app_messaging_enabled) {
@@ -2241,7 +2285,9 @@ const handleTaskResults = async (request: Request, env: Env) => {
 
 const handleTaskSynthesis = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "task_dispatch", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   if (!(await isAppAllowed(env, device.app_id))) return json({ error: "source_app_disabled" }, 403);
@@ -2354,7 +2400,9 @@ const handleTaskSynthesis = async (request: Request, env: Env) => {
 
 const handleShareContextPackage = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "context_sharing", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   if (!(await isAppAllowed(env, device.app_id))) return json({ error: "source_app_disabled" }, 403);
@@ -2451,7 +2499,9 @@ const handleShareContextPackage = async (request: Request, env: Env) => {
 
 const handleSendAppMessage = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "app_messaging", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   if (!(await isAppAllowed(env, device.app_id))) return json({ error: "source_app_disabled" }, 403);
@@ -2554,7 +2604,9 @@ const handleSendAppMessage = async (request: Request, env: Env) => {
 
 const handleAppMessageInbox = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "app_messaging", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   if (!(await isAppAllowed(env, device.app_id))) return json({ error: "destination_app_disabled" }, 403);
@@ -2625,7 +2677,9 @@ const handleAppMessageInbox = async (request: Request, env: Env) => {
 
 const handleAcknowledgeAppMessages = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
-  if (!device) return json({ error: "unauthorized" }, 401);
+  if (!device) return json({ error: "unauthorized" }, 401);  const resourceAccess = await requireCibaGenioAccess(env, "app_messaging", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   if (!(await readOwnerFeatureSettings(env, owner.owner_id)).app_messaging_enabled) {
