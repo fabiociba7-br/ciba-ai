@@ -63,9 +63,90 @@ describe("Garcia native AI capability foundation", () => {
     }])).toThrow("invalid_native_capability_adapter");
   });
 
+  it("reports blockers and never exposes an adapter before availability and license approval", () => {
+    const definition = GARCIA_NATIVE_CAPABILITIES[0]!;
+    const adapter: NativeCapabilityAdapter = {
+      capabilityId: definition.id,
+      runtime: "desktop_local",
+      execute: async () => ({ accepted: true }),
+    };
+    const registry = createNativeCapabilityRegistry([definition], [adapter]);
+    expect(registry.getReadiness(definition.id)).toEqual({
+      capabilityId: definition.id,
+      status: "planned",
+      licenseStatus: "review_required",
+      adapterRegistered: true,
+      adapterRuntime: "desktop_local",
+      executable: false,
+      blockers: ["not_available", "license_review_required"],
+    });
+    expect(registry.getAdapter(definition.id)).toBeUndefined();
+    expect(registry.getReadiness("unknown_capability")).toBeUndefined();
+    expect(registry.getAdapter("unknown_capability")).toBeUndefined();
+  });
+
+  it("exposes an adapter only when capability is available and license-approved", () => {
+    const definition = {
+      ...GARCIA_NATIVE_CAPABILITIES[0]!,
+      status: "available" as const,
+      licenseStatus: "approved" as const,
+    };
+    const adapter: NativeCapabilityAdapter = {
+      capabilityId: definition.id,
+      runtime: "desktop_local",
+      execute: async () => ({ accepted: true }),
+    };
+    const registry = createNativeCapabilityRegistry([definition], [adapter]);
+    expect(registry.getReadiness(definition.id)).toEqual({
+      capabilityId: definition.id,
+      status: "available",
+      licenseStatus: "approved",
+      adapterRegistered: true,
+      adapterRuntime: "desktop_local",
+      executable: true,
+      blockers: [],
+    });
+    expect(registry.getAdapter(definition.id)).toBe(adapter);
+  });
+
+  it("reports a missing adapter as a blocker even when metadata says available", () => {
+    const definition = {
+      ...GARCIA_NATIVE_CAPABILITIES[0]!,
+      status: "available" as const,
+      licenseStatus: "approved" as const,
+    };
+    const registry = createNativeCapabilityRegistry([definition]);
+    expect(registry.getReadiness(definition.id)).toMatchObject({
+      executable: false,
+      adapterRegistered: false,
+      blockers: ["adapter_missing"],
+    });
+    expect(registry.getAdapter(definition.id)).toBeUndefined();
+  });
+
+  it("does not expose adapters for disabled capabilities", () => {
+    const definition = {
+      ...GARCIA_NATIVE_CAPABILITIES[0]!,
+      status: "disabled" as const,
+      licenseStatus: "approved" as const,
+    };
+    const adapter: NativeCapabilityAdapter = {
+      capabilityId: definition.id,
+      runtime: "desktop_local",
+      execute: async () => ({ accepted: true }),
+    };
+    const registry = createNativeCapabilityRegistry([definition], [adapter]);
+    expect(registry.getReadiness(definition.id)?.blockers).toContain("disabled");
+    expect(registry.getAdapter(definition.id)).toBeUndefined();
+  });
+
   it("does not invent adapters for catalog entries", () => {
     const registry = createNativeCapabilityRegistry();
     expect(registry.getAdapter("image_generation")).toBeUndefined();
+    expect(registry.getReadiness("image_generation")).toMatchObject({
+      executable: false,
+      blockers: ["not_available", "license_review_required", "adapter_missing"],
+    });
     expect(registry.get("unknown_capability")).toBeUndefined();
   });
 });
