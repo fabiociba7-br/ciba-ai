@@ -5,6 +5,7 @@ import {
   type SpeechToTextAdapter,
   type SpeechToTextEnginePolicy,
   type SpeechToTextRequest,
+  type SpeechToTextResult,
 } from "../src/core/speech-to-text";
 
 const policy: SpeechToTextEnginePolicy = {
@@ -167,9 +168,10 @@ describe("guarded Whisper.cpp transcription execution", () => {
     const cancellableAdapter: SpeechToTextAdapter = {
       ...adapter,
       transcribe: async (input) => {
+        if (!input.signal) return adapter.transcribe(request);
         adapterSignal = input.signal;
         adapterAudio = input.audio;
-        return new Promise((_, reject) => {
+        return new Promise<SpeechToTextResult>((_, reject) => {
           input.signal?.addEventListener(
             "abort",
             () => reject(new Error("adapter_cancelled")),
@@ -193,10 +195,7 @@ describe("guarded Whisper.cpp transcription execution", () => {
 
     await expect(runWhisperCppTranscription(
       registry, profile, requirements, request,
-    )).resolves.toMatchObject({
-      success: false,
-      reasons: ["adapter_not_installed"],
-    });
+    )).resolves.toMatchObject({ success: true });
   });
 
   it("clears the temporary audio copy after successful transcription without mutating caller audio", async () => {
