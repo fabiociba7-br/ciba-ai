@@ -99,6 +99,42 @@ describe("Android Whisper.cpp bridge contract", () => {
       .rejects.toThrow("invalid_android_whisper_result");
   });
 
+  it("keeps the approved native bridge methods after adapter creation", async () => {
+    let statusCalls = 0;
+    let transcribeCalls = 0;
+    const sourceBridge = bridge({
+      getStatus: async () => {
+        statusCalls += 1;
+        return {
+          nativeLibraryReady: true,
+          modelLoaded: true,
+          modelId: "ggml-tiny",
+          engineVersion: "original",
+        };
+      },
+      transcribe: async () => {
+        transcribeCalls += 1;
+        return result;
+      },
+    });
+    const adapter = createAndroidWhisperCppAdapter(sourceBridge, {
+      modelId: "ggml-tiny",
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+
+    sourceBridge.getStatus = async () => {
+      throw new Error("replacement_status_must_not_run");
+    };
+    sourceBridge.transcribe = async () => {
+      throw new Error("replacement_transcriber_must_not_run");
+    };
+
+    await expect(adapter.transcribe(request)).resolves.toEqual(result);
+    expect(statusCalls).toBe(1);
+    expect(transcribeCalls).toBe(1);
+  });
+
   it("returns a valid transcription from a ready native bridge", async () => {
     const adapter = createAndroidWhisperCppAdapter(bridge(), {
       modelId: "ggml-tiny",
