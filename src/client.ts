@@ -514,7 +514,7 @@ export class CibaClient {
     return this.request("/v1/owner/memory/reviews?scope=" + scope);
   }
 
-  decideMemoryReview(proposalId: string, decision: "approve" | "reject", scope: CibaMemoryScope = "app"): Promise<Record<string, unknown>> {
+  async decideMemoryReview(proposalId: string, decision: "approve" | "reject", scope: CibaMemoryScope = "app"): Promise<Record<string, unknown>> {
     if (!proposalId.trim() || proposalId.length > 100) throw new Error("invalid_memory_proposal_id");
     return this.request("/v1/owner/memory/reviews?scope=" + scope, {
       method: "PATCH",
