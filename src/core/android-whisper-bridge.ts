@@ -1,3 +1,4 @@
+import type { DeviceCapabilityRequirements } from "./device-capabilities";
 import type {
   SpeechToTextAdapter,
   SpeechToTextRequest,
