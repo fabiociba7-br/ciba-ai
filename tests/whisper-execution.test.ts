@@ -198,6 +198,45 @@ describe("guarded Whisper.cpp transcription execution", () => {
     )).resolves.toMatchObject({ success: true });
   });
 
+  it("discards a result when cancellation arrives while an adapter is still working", async () => {
+    const controller = new AbortController();
+    let finish: ((result: SpeechToTextResult) => void) | undefined;
+    let adapterCalls = 0;
+    const nonCooperativeAdapter: SpeechToTextAdapter = {
+      ...adapter,
+      transcribe: async () => {
+        adapterCalls += 1;
+        return new Promise<SpeechToTextResult>((resolve) => { finish = resolve; });
+      },
+    };
+    const registry = createWhisperCppRegistry({
+      ...policy,
+      maxConcurrentTranscriptions: 1,
+    }, [nonCooperativeAdapter]);
+
+    const execution = runWhisperCppTranscription(
+      registry, profile, requirements, { ...request, signal: controller.signal },
+    );
+    await Promise.resolve();
+    controller.abort();
+    finish?.({
+      text: "resultado tardio",
+      language: "pt",
+      segments: [{ startMs: 0, endMs: 500, text: "resultado tardio" }],
+      engine: "whisper.cpp",
+      modelId: "ggml-tiny",
+    });
+
+    await expect(execution).resolves.toEqual({
+      success: false,
+      reasons: ["transcription_cancelled"],
+    });
+    expect(adapterCalls).toBe(1);
+    await expect(runWhisperCppTranscription(
+      registry, profile, requirements, request,
+    )).resolves.toMatchObject({ success: true });
+  });
+
   it("clears the temporary audio copy after successful transcription without mutating caller audio", async () => {
     const original = new Uint8Array([7, 8, 9]);
     let adapterAudio: Uint8Array | undefined;
