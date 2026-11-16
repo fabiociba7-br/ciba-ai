@@ -112,6 +112,33 @@ describe("guarded Whisper.cpp transcription execution", () => {
     expect(calls).toBe(2);
   });
 
+  it("releases the concurrency slot when the adapter fails", async () => {
+    let shouldFail = true;
+    let calls = 0;
+    const recoverableAdapter: SpeechToTextAdapter = {
+      ...adapter,
+      transcribe: async () => {
+        calls += 1;
+        if (shouldFail) throw new Error("temporary_engine_failure");
+        return adapter.transcribe(request);
+      },
+    };
+    const registry = createWhisperCppRegistry({
+      ...policy,
+      maxConcurrentTranscriptions: 1,
+    }, [recoverableAdapter]);
+
+    await expect(runWhisperCppTranscription(
+      registry, profile, requirements, request,
+    )).rejects.toThrow("temporary_engine_failure");
+
+    shouldFail = false;
+    await expect(runWhisperCppTranscription(
+      registry, profile, requirements, request,
+    )).resolves.toMatchObject({ success: true });
+    expect(calls).toBe(2);
+  });
+
   it("clears the temporary audio copy after successful transcription without mutating caller audio", async () => {
     const original = new Uint8Array([7, 8, 9]);
     let adapterAudio: Uint8Array | undefined;
