@@ -174,28 +174,78 @@ const MAX_TRANSCRIPT_CHARS = 100_000;
 const MAX_SEGMENTS = 5_000;
 const MAX_SEGMENT_TEXT_CHARS = 10_000;
 
+/**
+ * Captures untrusted adapter output into a bounded, detached immutable value.
+ * Reads accessor-backed fields once and never invokes a caller-owned iterator.
+ */
+export function snapshotSpeechToTextResult(
+  value: unknown,
+  expectedModelId: string,
+): SpeechToTextResult | null {
+  try {
+    if (value === null || typeof value !== "object" || Array.isArray(value) ||
+        typeof expectedModelId !== "string" || !expectedModelId.trim()) {
+      return null;
+    }
+    const source = value as Record<string, unknown>;
+    const engine = source.engine;
+    const modelId = source.modelId;
+    const text = source.text;
+    const language = source.language;
+    const rawSegments = source.segments;
+    const durationMs = source.durationMs;
+    if (engine !== "whisper.cpp" || modelId !== expectedModelId ||
+        typeof text !== "string" || text.length > MAX_TRANSCRIPT_CHARS ||
+        typeof language !== "string" || !/^[a-z]{2,3}(-[A-Z]{2})?$/.test(language) ||
+        !Array.isArray(rawSegments) ||
+        (durationMs !== undefined &&
+          (typeof durationMs !== "number" || !Number.isFinite(durationMs) || durationMs < 0))) {
+      return null;
+    }
+
+    const segmentCount = rawSegments.length;
+    if (!Number.isInteger(segmentCount) || segmentCount < 0 || segmentCount > MAX_SEGMENTS) {
+      return null;
+    }
+
+    const segments: SpeechSegment[] = [];
+    for (let index = 0; index < segmentCount; index += 1) {
+      const rawSegment: unknown = rawSegments[index];
+      if (rawSegment === null || typeof rawSegment !== "object" || Array.isArray(rawSegment)) {
+        return null;
+      }
+      const segment = rawSegment as Record<string, unknown>;
+      const startMs = segment.startMs;
+      const endMs = segment.endMs;
+      const segmentText = segment.text;
+      if (typeof startMs !== "number" || !Number.isFinite(startMs) || startMs < 0 ||
+          typeof endMs !== "number" || !Number.isFinite(endMs) || endMs < startMs ||
+          typeof segmentText !== "string" || segmentText.length > MAX_SEGMENT_TEXT_CHARS ||
+          (typeof durationMs === "number" && endMs > durationMs)) {
+        return null;
+      }
+      segments.push(Object.freeze({ startMs, endMs, text: segmentText }));
+    }
+
+    return Object.freeze({
+      engine: "whisper.cpp",
+      modelId: expectedModelId,
+      text,
+      language,
+      segments: Object.freeze(segments),
+      ...(durationMs !== undefined ? { durationMs } : {}),
+    }) as SpeechToTextResult;
+  } catch {
+    return null;
+  }
+}
+
 /** Rejects malformed or unbounded output from a local transcription adapter. */
 export function validateSpeechToTextResult(
   result: SpeechToTextResult,
   expectedModelId: string,
 ): void {
-  if (!result || result.engine !== "whisper.cpp" ||
-      result.modelId !== expectedModelId ||
-      typeof result.text !== "string" || result.text.length > MAX_TRANSCRIPT_CHARS ||
-      typeof result.language !== "string" ||
-      !/^[a-z]{2,3}(-[A-Z]{2})?$/.test(result.language) ||
-      !Array.isArray(result.segments) || result.segments.length > MAX_SEGMENTS ||
-      !result.segments.every((segment) =>
-        segment !== null &&
-        Number.isFinite(segment.startMs) &&
-        Number.isFinite(segment.endMs) &&
-        segment.startMs >= 0 &&
-        segment.endMs >= segment.startMs &&
-        typeof segment.text === "string" &&
-        segment.text.length <= MAX_SEGMENT_TEXT_CHARS) ||
-      (result.durationMs !== undefined &&
-        (!Number.isFinite(result.durationMs) || result.durationMs < 0 ||
-          result.segments.some((segment) => segment.endMs > result.durationMs!)))) {
+  if (!snapshotSpeechToTextResult(result, expectedModelId)) {
     throw new Error("invalid_whisper_cpp_result");
   }
 }
@@ -245,8 +295,11 @@ export async function runWhisperCppTranscription(
     if (request.signal?.aborted) {
       return { success: false, reasons: ["transcription_cancelled"] };
     }
-    validateSpeechToTextResult(result, resolution.adapter.modelId);
-    return { success: true, result };
+    const resultSnapshot = snapshotSpeechToTextResult(result, resolution.adapter.modelId);
+    if (!resultSnapshot) {
+      throw new Error("invalid_whisper_cpp_result");
+    }
+    return { success: true, result: resultSnapshot };
   } catch (error) {
     // Normalize adapter-level cancellation into the same public outcome,
     // while preserving genuine engine failures when no cancellation occurred.
