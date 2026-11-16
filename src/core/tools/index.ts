@@ -17,6 +17,8 @@ export type { CibaToolModelProposal } from "./model-proposal";
 export type { CibaToolApprovalFlow, CibaToolApprovalState, CibaToolProposal } from "./approval-flow";
 
 export { createD1ToolApprovalStore } from "./durable-consent";
+export { createDurableCibaToolApprovalFlow } from "./durable-approval-flow";
+export type { DurableCibaToolApprovalFlow, DurableCibaToolProposal, DurableCibaToolApprovalState } from "./durable-approval-flow";
 export type {
   DurableToolApprovalIdentity,
   DurableToolApprovalRequest,
