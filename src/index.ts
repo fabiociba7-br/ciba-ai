@@ -2279,7 +2279,12 @@ const handleTaskResults = async (request: Request, env: Env) => {
     try { payload = JSON.parse(row.payload_json); } catch { payload = null; }
     return { message_id: row.message_id, source_app_id: row.source_app_id, task_id: row.task_id, payload, created_at: row.created_at, expires_at: row.expires_at };
   });
-  const consolidation = consolidateTaskResults(taskId, results as TaskResultRecord[]);
+  const consolidationRecords = results.map(({ source_app_id, task_id, payload }) => ({
+    source_app_id,
+    task_id,
+    payload,
+  }));
+  const consolidation = consolidateTaskResults(taskId, consolidationRecords as TaskResultRecord[]);
   return json({ task_id: taskId, results, count: results.length, maximum: 20, consolidation });
 };
 
