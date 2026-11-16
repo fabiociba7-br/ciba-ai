@@ -50,7 +50,12 @@ describe("Garcia Whisper.cpp integration contract", () => {
       ...policy,
       licenseStatus: "approved",
     }, [adapter]);
-    expect(registry.getAdapter("android_embedded")).toBe(adapter);
+    expect(registry.getAdapter("android_embedded")).toMatchObject({
+      engine: adapter.engine,
+      runtime: adapter.runtime,
+      modelId: adapter.modelId,
+      deviceRequirements: adapter.deviceRequirements,
+    });
     expect(registry.listAvailableRuntimes()).toEqual(["android_embedded"]);
     expect(registry.getAdapter("remote_service" as never)).toBeUndefined();
   });
@@ -102,7 +107,16 @@ describe("Garcia Whisper.cpp integration contract", () => {
       .toEqual({ available: false, reasons: ["adapter_not_installed"] });
     const readyRegistry = createWhisperCppRegistry({ ...policy, licenseStatus: "approved" }, [adapter]);
     expect(resolveWhisperCppRuntime(readyRegistry, profile, requirements))
-      .toMatchObject({ available: true, reasons: [], adapter });
+      .toMatchObject({
+        available: true,
+        reasons: [],
+        adapter: {
+          engine: adapter.engine,
+          runtime: adapter.runtime,
+          modelId: adapter.modelId,
+          deviceRequirements: adapter.deviceRequirements,
+        },
+      });
   });
 
   it("snapshots and freezes adapter hardware requirements at registration", () => {
