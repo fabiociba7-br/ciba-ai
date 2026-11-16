@@ -228,6 +228,12 @@ Além das concessões de tarefa (`send`/`receive`, escopo `task`), o compartilha
 O pacote tem até cinco itens, limites do protocolo compartilhado, proveniência `curated_memory` e não contém histórico de conversa. O fluxo é determinístico, sem inferência adicional, sem escrita de memória e sem migration. O campo `includeContext` é opt-in e permanece falso por padrão.
 
 
+## Acompanhamento do ciclo de vida das tarefas (etapa 37)
+
+O endpoint autenticado `GET /v1/apps/tasks/status?task_id=...` permite ao app de origem acompanhar uma tarefa que ele próprio despachou. A resposta é calculada a partir do pedido existente, da confirmação de recebimento no inbox e dos resultados correlacionados já devolvidos pelo destino. O acesso exige proprietário ativo, mensagens habilitadas e concessões direcionais de tarefa ainda válidas.
+
+Os estados possíveis são `awaiting_delivery`, `processing`, `completed`, `partial`, `failed` e `expired`. A confirmação no inbox apenas demonstra recebimento; não prova que o aplicativo executou o trabalho. O resultado só é considerado quando o destino chama explicitamente o endpoint de envio de resultados. A consulta é somente leitura, não reenvia tarefas nem executa ações, não armazena conversas e não exige migration ou tabela adicional.
+
 ## Recepção e consumo seguro de tarefas (etapa 36)
 
 O SDK oferece `consumeTaskMessage(message)` para validar mensagens recebidas no inbox com escopo `task`. O consumidor verifica protocolo, ID, tipo e instrução da tarefa; valida separadamente o pacote contextual opcional usando as regras do protocolo de contexto. Um pacote inválido é descartado sem invalidar uma tarefa válida, e o resultado informa o motivo.
