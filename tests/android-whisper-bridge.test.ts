@@ -76,6 +76,37 @@ describe("Android Whisper.cpp bridge contract", () => {
     await expect(adapter.transcribe(request)).resolves.toEqual(result);
   });
 
+  it("rejects malformed native bridge status before transcribing", async () => {
+    const malformedStatuses = [
+      null,
+      { nativeLibraryReady: "yes", modelLoaded: true, modelId: "ggml-tiny", modelSha256: MODEL_SHA256 },
+      { nativeLibraryReady: true, modelLoaded: "yes", modelId: "ggml-tiny", modelSha256: MODEL_SHA256 },
+      { nativeLibraryReady: true, modelLoaded: true, modelId: "", modelSha256: MODEL_SHA256 },
+      { nativeLibraryReady: true, modelLoaded: true, modelId: "ggml-tiny", modelSha256: "bad" },
+      { nativeLibraryReady: true, modelLoaded: true, modelId: "ggml-tiny", modelSha256: MODEL_SHA256, engineVersion: "x".repeat(129) },
+      { nativeLibraryReady: false, modelLoaded: true, modelId: "ggml-tiny", modelSha256: MODEL_SHA256 },
+    ];
+
+    for (const malformedStatus of malformedStatuses) {
+      let transcribeCalled = false;
+      const adapter = createAndroidWhisperCppAdapter(bridge({
+        getStatus: async () => malformedStatus as never,
+        transcribe: async () => {
+          transcribeCalled = true;
+          return result;
+        },
+      }), {
+        modelId: "ggml-tiny",
+        modelSha256: MODEL_SHA256,
+        maxAudioBytes: 1024,
+        deviceRequirements,
+      });
+      await expect(adapter.transcribe(request))
+        .rejects.toThrow("android_whisper_invalid_status");
+      expect(transcribeCalled).toBe(false);
+    }
+  });
+
   it("fails closed when the native library is unavailable", async () => {
     const adapter = createAndroidWhisperCppAdapter(bridge({
       getStatus: async () => ({ nativeLibraryReady: false, modelLoaded: false }),
