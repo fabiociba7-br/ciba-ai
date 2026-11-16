@@ -7,21 +7,25 @@ const MAX_OUTPUT_BYTES = 256_000;
 const MAX_DEPTH = 12;
 const DEFAULT_TIMEOUT_MS = 15_000;
 
-export interface CibaToolExecutionContext {
-  approvedToolIds?: string[];
-  allowedScopes?: string[];
+export interface CibaToolAuthorizationRequest {
+  toolId: string;
+  risk: CibaToolRisk;
+  requiresApproval: boolean;
+  input: unknown;
 }
 
 export interface CibaToolRegistryOptions {
   /** Explicit allowlist. An omitted or empty list registers no tools. */
   allowlist?: string[];
+  /** Trusted application callback; it must verify identity, scopes and approval. */
+  authorize: (request: CibaToolAuthorizationRequest) => boolean | Promise<boolean>;
   timeoutMs?: number;
   maxInputBytes?: number;
   maxOutputBytes?: number;
 }
 
 export interface ExecutableCibaToolRegistry extends CibaToolRegistry {
-  execute(toolId: string, input: unknown, context?: CibaToolExecutionContext): Promise<unknown>;
+  execute(toolId: string, input: unknown): Promise<unknown>;
 }
 
 const VALID_RISKS: CibaToolRisk[] = ["read", "write", "external"];
@@ -39,22 +43,26 @@ function jsonBytes(value: unknown): number {
 }
 
 function cloneJson(value: unknown, depth = 0): unknown {
-  if (depth > MAX_DEPTH) throw new Error("tool_schema_too_deep");
+  if (depth > MAX_DEPTH) throw new Error("tool_value_too_deep");
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw new Error("invalid_tool_schema_number");
+    if (!Number.isFinite(value)) throw new Error("invalid_tool_value");
     return value;
   }
-  if (Array.isArray(value)) return value.map((item) => cloneJson(item, depth + 1));
-  if (typeof value !== "object") throw new Error("invalid_tool_schema");
+  if (Array.isArray(value)) {
+    if (Object.getPrototypeOf(value) !== Array.prototype) throw new Error("invalid_tool_value");
+    return value.map((item) => cloneJson(item, depth + 1));
+  }
+  if (typeof value !== "object") throw new Error("invalid_tool_value");
   const prototype = Object.getPrototypeOf(value);
-  if (prototype !== Object.prototype && prototype !== null) throw new Error("invalid_tool_schema");
+  if (prototype !== Object.prototype && prototype !== null) throw new Error("invalid_tool_value");
   const result: Record<string, unknown> = Object.create(null);
-  for (const [key, item] of Object.entries(value)) {
-    if (key === "__proto__" || key === "constructor" || key === "prototype") {
-      throw new Error("invalid_tool_schema_key");
+  for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(value))) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype" ||
+        !("value" in descriptor) || !descriptor.enumerable) {
+      throw new Error("invalid_tool_value");
     }
-    result[key] = cloneJson(item, depth + 1);
+    result[key] = cloneJson(descriptor.value, depth + 1);
   }
   return result;
 }
@@ -72,11 +80,11 @@ function validateSchema(value: unknown, schema: unknown, depth = 0): boolean {
     if (Array.isArray(rule.required) &&
         !rule.required.every((key) => typeof key === "string" &&
           Object.prototype.hasOwnProperty.call(object, key))) return false;
-    if (rule.additionalProperties === false &&
+    if (rule.additionalProperties !== false &&
         Object.keys(object).some((key) => !Object.prototype.hasOwnProperty.call(properties, key))) return false;
     if (typeof rule.maxProperties === "number" && Object.keys(object).length > rule.maxProperties) return false;
     return Object.entries(object).every(([key, item]) =>
-      !Object.prototype.hasOwnProperty.call(properties, key) ||
+      Object.prototype.hasOwnProperty.call(properties, key) &&
       validateSchema(item, properties[key], depth + 1));
   }
 
@@ -84,7 +92,7 @@ function validateSchema(value: unknown, schema: unknown, depth = 0): boolean {
     if (!Array.isArray(value)) return false;
     if (typeof rule.maxItems === "number" && value.length > rule.maxItems) return false;
     if (typeof rule.minItems === "number" && value.length < rule.minItems) return false;
-    return rule.items === undefined || value.every((item) => validateSchema(item, rule.items, depth + 1));
+    return rule.items !== undefined && value.every((item) => validateSchema(item, rule.items, depth + 1));
   }
 
   if (rule.type === "string") {
@@ -108,7 +116,7 @@ function validateSchema(value: unknown, schema: unknown, depth = 0): boolean {
 
   if (rule.type === "boolean") return typeof value === "boolean";
   if (rule.type === "null") return value === null;
-  return rule.type === undefined;
+  return false;
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -122,14 +130,18 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 }
 
 /**
- * Creates an isolated registry. Nothing is executable unless its ID is
- * explicitly allowlisted by the integrating application.
- * Timeout bounds waiting; it cannot forcibly stop an already-running tool.
+ * No tool is executable without both an explicit ID allowlist and a trusted
+ * application authorization callback. Timeout bounds waiting; it cannot
+ * forcibly stop an already-running tool.
  */
 export function createCibaToolRegistry(
   definitions: CibaToolDefinition[],
-  options: CibaToolRegistryOptions = {}
+  options: CibaToolRegistryOptions
 ): ExecutableCibaToolRegistry {
+  if (!options || typeof options.authorize !== "function") {
+    throw new Error("tool_authorizer_required");
+  }
+  const authorize = options.authorize;
   const allowlist = new Set((options.allowlist ?? []).filter(validId));
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxInputBytes = options.maxInputBytes ?? MAX_INPUT_BYTES;
@@ -140,15 +152,14 @@ export function createCibaToolRegistry(
       !Number.isInteger(maxOutputBytes) || maxOutputBytes < 1 || maxOutputBytes > MAX_OUTPUT_BYTES) {
     throw new Error("invalid_tool_registry_limits");
   }
+  if (!Array.isArray(definitions) || definitions.length > MAX_TOOLS) {
+    throw new Error("invalid_tool_definitions");
+  }
 
   const registered = new Map<string, {
     definition: CibaToolDefinition;
     schema: Record<string, unknown>;
   }>();
-
-  if (!Array.isArray(definitions) || definitions.length > MAX_TOOLS) {
-    throw new Error("invalid_tool_definitions");
-  }
 
   for (const definition of definitions) {
     if (!definition || typeof definition !== "object" ||
@@ -173,7 +184,8 @@ export function createCibaToolRegistry(
         (schema.required !== undefined &&
           (!Array.isArray(schema.required) ||
            !schema.required.every((key) => typeof key === "string" &&
-             Object.prototype.hasOwnProperty.call(schema.properties, key))))) continue;
+             Object.prototype.hasOwnProperty.call(schema.properties, key)))) ||
+        schema.additionalProperties !== false) continue;
 
     registered.set(definition.id, {
       definition: Object.freeze({
@@ -197,19 +209,30 @@ export function createCibaToolRegistry(
         requiresApproval: definition.requiresApproval
       }));
     },
-    async execute(toolId: string, input: unknown, context: CibaToolExecutionContext = {}) {
+    async execute(toolId: string, input: unknown) {
       const item = registered.get(toolId);
       if (!item) throw new Error("tool_not_allowlisted");
-      if (item.definition.requiresApproval &&
-          !context.approvedToolIds?.includes(toolId)) throw new Error("tool_approval_required");
-      if (context.allowedScopes && !context.allowedScopes.includes(item.definition.risk)) {
-        throw new Error("tool_scope_denied");
-      }
-      if (jsonBytes(input) > maxInputBytes || !validateSchema(input, item.schema)) {
+
+      let safeInput: unknown;
+      try {
+        if (jsonBytes(input) > maxInputBytes) throw new Error("invalid_tool_input");
+        safeInput = cloneJson(input);
+      } catch {
         throw new Error("invalid_tool_input");
       }
+      if (!validateSchema(safeInput, item.schema)) throw new Error("invalid_tool_input");
 
-      const safeInput = cloneJson(input);
+      const authorized = await withTimeout(
+        Promise.resolve().then(() => authorize({
+          toolId,
+          risk: item.definition.risk,
+          requiresApproval: item.definition.requiresApproval,
+          input: safeInput
+        })),
+        timeoutMs
+      );
+      if (authorized !== true) throw new Error("tool_authorization_denied");
+
       const output = await withTimeout(
         Promise.resolve().then(() => item.definition.execute(safeInput)),
         timeoutMs
