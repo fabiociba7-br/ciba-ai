@@ -65,13 +65,17 @@ export function createGarciaCapabilityTools(
   return createCibaToolRegistry([
     {
       id: "garcia.capabilities.list",
-      description: "Lista capacidades nativas catalogadas pela Garcia, com status, runtime, licença e requisitos.",
+      description: "Lista capacidades nativas da Garcia com status, licença, runtime e prontidão real do adaptador.",
       risk: "read",
       requiresApproval: false,
       inputSchema: LIST_SCHEMA,
       async execute(input) {
         const category = (input as { category?: NativeCapabilityCategory }).category;
-        return category ? catalog.listByCategory(category) : catalog.list();
+        const capabilities = category ? catalog.listByCategory(category) : catalog.list();
+        return capabilities.map((capability) => ({
+          ...capability,
+          readiness: catalog.getReadiness(capability.id),
+        }));
       },
     },
     {
@@ -83,7 +87,9 @@ export function createGarciaCapabilityTools(
       async execute(input) {
         const capabilityId = (input as { capabilityId: string }).capabilityId;
         const capability = catalog.get(capabilityId);
-        return capability ? { found: true, capability } : { found: false };
+        return capability
+          ? { found: true, capability, readiness: catalog.getReadiness(capabilityId) }
+          : { found: false };
       },
     },
   ], {

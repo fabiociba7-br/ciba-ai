@@ -307,3 +307,9 @@ Unpaired devices do not receive the tool catalog in their model context. This ch
 ### Segunda passagem de resposta após consulta de leitura
 
 Quando uma ferramenta de leitura é executada com sucesso em runtime confiável, o orquestrador faz uma única segunda inferência para converter o resultado técnico em resposta natural. Essa passagem recebe somente a pergunta original e o resultado serializado como dado não confiável; não recebe catálogo nem runtime de ferramentas e não pode iniciar outra execução. O resultado é limitado a 12.000 caracteres antes de entrar no contexto. Se a segunda inferência falhar ou tentar emitir uma nova proposta de ferramenta, a resposta usa um fallback seguro e preserva o campo estruturado `tool_execution`. O fluxo fica limitado a uma execução e duas inferências por turno.
+
+## Stage 52 — capability readiness and execution gate
+
+The native capability catalog now reports a computed readiness object for each entry. Readiness distinguishes declared status, license review, adapter registration, adapter runtime, and actual executability. A capability is executable only when its status is `available`, its license is `approved`, and a compatible adapter is registered. A registered adapter is not exposed through `getAdapter` while any of those gates are unmet, including when the capability is planned, adapter-ready, disabled, or awaiting license review.
+
+The Garcia capability list/get read-only tools include this readiness result. Catalog metadata remains descriptive: this stage adds no adapter implementation, does not invoke adapters, install models, download weights, change catalog status, or enable new production tools.

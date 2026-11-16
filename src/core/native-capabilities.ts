@@ -52,10 +52,30 @@ export interface NativeCapabilityAdapter {
   execute(input: unknown): Promise<unknown>;
 }
 
+export type NativeCapabilityReadinessBlocker =
+  | "disabled"
+  | "not_available"
+  | "license_review_required"
+  | "license_restricted"
+  | "license_rejected"
+  | "adapter_missing";
+
+export interface NativeCapabilityReadiness {
+  capabilityId: string;
+  status: NativeCapabilityStatus;
+  licenseStatus: NativeCapabilityLicenseStatus;
+  adapterRegistered: boolean;
+  adapterRuntime: NativeCapabilityRuntime | null;
+  executable: boolean;
+  blockers: NativeCapabilityReadinessBlocker[];
+}
+
 export interface NativeCapabilityRegistry {
   get(capabilityId: string): NativeCapabilityDefinition | undefined;
   list(): NativeCapabilityDefinition[];
   listByCategory(category: NativeCapabilityCategory): NativeCapabilityDefinition[];
+  getReadiness(capabilityId: string): NativeCapabilityReadiness | undefined;
+  /** Returns an adapter only when the capability is explicitly available and license-approved. */
   getAdapter(capabilityId: string): NativeCapabilityAdapter | undefined;
 }
 
@@ -353,6 +373,28 @@ export function createNativeCapabilityRegistry(
     adapterMap.set(adapter.capabilityId, adapter);
   }
 
+  const getReadiness = (capabilityId: string): NativeCapabilityReadiness | undefined => {
+    const definition = definitionMap.get(capabilityId);
+    if (!definition) return undefined;
+    const adapter = adapterMap.get(capabilityId);
+    const blockers: NativeCapabilityReadinessBlocker[] = [];
+    if (definition.status === "disabled") blockers.push("disabled");
+    else if (definition.status !== "available") blockers.push("not_available");
+    if (definition.licenseStatus === "review_required") blockers.push("license_review_required");
+    else if (definition.licenseStatus === "restricted") blockers.push("license_restricted");
+    else if (definition.licenseStatus === "rejected") blockers.push("license_rejected");
+    if (!adapter) blockers.push("adapter_missing");
+    return {
+      capabilityId,
+      status: definition.status,
+      licenseStatus: definition.licenseStatus,
+      adapterRegistered: adapter !== undefined,
+      adapterRuntime: adapter?.runtime ?? null,
+      executable: blockers.length === 0,
+      blockers,
+    };
+  };
+
   return {
     get: (capabilityId) => {
       const definition = definitionMap.get(capabilityId);
@@ -374,6 +416,9 @@ export function createNativeCapabilityRegistry(
         sourceRepositories: [...definition.sourceRepositories],
         supportedRuntimes: [...definition.supportedRuntimes],
       })),
-    getAdapter: (capabilityId) => adapterMap.get(capabilityId),
+    getReadiness,
+    getAdapter: (capabilityId) => getReadiness(capabilityId)?.executable
+      ? adapterMap.get(capabilityId)
+      : undefined,
   };
 }
