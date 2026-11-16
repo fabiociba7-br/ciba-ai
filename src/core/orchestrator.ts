@@ -82,8 +82,28 @@ function snapshotChatMessages(value: unknown): ChatTurn[] {
 
 function snapshotProvider(value: unknown): ModelProvider {
   try {
-    const fields = readPlainRecord(value, ["id", "enabled", "generate"]);
-    const { id, enabled, generate } = fields;
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("invalid_orchestration_request");
+    }
+    const own = Object.getOwnPropertyDescriptors(value);
+    const idDescriptor = own.id;
+    const enabledDescriptor = own.enabled;
+    if (!idDescriptor || !("value" in idDescriptor) || !idDescriptor.enumerable ||
+        !enabledDescriptor || !("value" in enabledDescriptor) || !enabledDescriptor.enumerable) {
+      throw new Error("invalid_orchestration_request");
+    }
+    let generateDescriptor = own.generate;
+    if (!generateDescriptor) {
+      const prototype = Object.getPrototypeOf(value);
+      if (prototype && prototype !== Object.prototype) {
+        generateDescriptor = Object.getOwnPropertyDescriptor(prototype, "generate");
+      }
+    }
+    const id = idDescriptor.value;
+    const enabled = enabledDescriptor.value;
+    const generate = generateDescriptor && "value" in generateDescriptor
+      ? generateDescriptor.value
+      : undefined;
     if (typeof id !== "string" || !id.trim() || id.length > 128 ||
         enabled !== true || typeof generate !== "function") {
       throw new Error("invalid_orchestration_request");
