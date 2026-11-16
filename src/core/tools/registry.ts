@@ -1,4 +1,4 @@
-import type { CibaToolDefinition, CibaToolRegistry, CibaToolRisk } from "./contracts";
+import type { CibaToolDefinition, CibaToolModelDescriptor, CibaToolRegistry, CibaToolRisk } from "./contracts";
 
 const MAX_TOOLS = 64;
 const MAX_SCHEMA_BYTES = 32_000;
@@ -45,6 +45,7 @@ export interface CibaToolInvocationPlan {
 }
 
 export interface ExecutableCibaToolRegistry extends CibaToolRegistry {
+  describe(): CibaToolModelDescriptor[];
   /** Validates and snapshots a proposed call without authorizing or executing it. */
   prepare(toolId: string, input: unknown, context?: CibaToolInvocationContext): CibaToolInvocationPlan;
   execute(toolId: string, input: unknown, context?: CibaToolInvocationContext): Promise<unknown>;
@@ -432,6 +433,13 @@ export function createCibaToolRegistry(
         description: definition.description,
         risk: definition.risk,
         requiresApproval: definition.requiresApproval
+      }));
+    },
+    describe() {
+      return Array.from(registered.values(), ({ definition, schema }) => Object.freeze({
+        id: definition.id, description: definition.description, risk: definition.risk,
+        requiresApproval: definition.requiresApproval,
+        inputSchema: deepFreeze(cloneJson(schema)) as Record<string, unknown>
       }));
     },
     prepare(toolId: string, input: unknown, rawContext?: CibaToolInvocationContext) {

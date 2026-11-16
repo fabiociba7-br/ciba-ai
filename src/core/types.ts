@@ -26,7 +26,10 @@ export interface AgentProfile {
   instructions: string;
 }
 
+import type { CibaToolInvocationPlan } from "./tools/registry";
 export interface OrchestrationResult extends InferenceResult {
+  toolProposal?: CibaToolInvocationPlan;
+  toolProposalError?: "tool_proposal_rejected";
   selectedAgent: CibaRole;
   strategy: "single-pass";
   usedInferenceCalls: 1;
