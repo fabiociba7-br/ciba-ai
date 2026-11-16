@@ -15,6 +15,19 @@ describe("model tool proposal protocol", () => {
   it("does not mistake ordinary text for a proposal", () => { expect(parseCibaToolModelProposal("A resposta é 42.")).toBeNull(); });
   it("rejects malformed and extra-field envelopes", () => { expect(() => parseCibaToolModelProposal(CIBA_TOOL_PROPOSAL_PREFIX + "{")).toThrow("invalid_tool_proposal"); expect(() => parseCibaToolModelProposal(CIBA_TOOL_PROPOSAL_PREFIX + JSON.stringify({ protocol: "ciba.tool.proposal.v1", toolId: "profile.read", input: {}, execute: true }))).toThrow("invalid_tool_proposal"); });
   it("returns a schema-validated preview without executing the tool", async () => { const { registry, execute } = makeRegistry(); const { provider, generate } = makeProvider(CIBA_TOOL_PROPOSAL_PREFIX + JSON.stringify({ protocol: "ciba.tool.proposal.v1", toolId: "profile.read", input: { section: "preferences" } })); const result = await runCibaOrchestrator({ ...base, provider, toolRuntime: { registry, context } }); expect(result.toolProposal).toMatchObject({ toolId: "profile.read", risk: "read", requiresApproval: false, input: { section: "preferences" } }); expect(result.text).toContain("Nenhuma ação foi executada"); expect(execute).not.toHaveBeenCalled(); expect(generate.mock.calls[0][0].messages[0].content).toContain("profile.read"); expect(registry.describe()[0].inputSchema).toEqual(schema); });
+  it("tells the model that only authorized read tools can execute in opt-in mode", async () => {
+    const { registry } = makeRegistry();
+    const { provider, generate } = makeProvider("Resposta normal.");
+    await runCibaOrchestrator({
+      ...base,
+      provider,
+      toolRuntime: { registry, context, executeReadOnlyProposals: true }
+    });
+    const prompt = generate.mock.calls[0][0].messages[0].content;
+    expect(prompt).toContain("O servidor pode executar somente ferramentas marcadas como leitura");
+    expect(prompt).toContain("Operações de escrita ou externas nunca são executadas automaticamente");
+    expect(prompt).not.toContain("nenhuma ferramenta será executada nesta etapa");
+  });
   it("executes a read-only proposal only when trusted runtime explicitly enables it", async () => {
     const execute = vi.fn(async (_input: unknown) => ({ section: "preferences", value: "dark" }));
     const registry = createCibaToolRegistry([{
