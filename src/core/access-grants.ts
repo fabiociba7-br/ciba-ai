@@ -37,6 +37,68 @@ function validId(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0 && value.length <= 200;
 }
 
+/** Returns a normalized immutable grant or rejects malformed persisted data. */
+export function validateAppAccessGrant(grant: AppAccessGrant): AppAccessGrant {
+  try {
+    if (!grant || typeof grant !== "object") throw new Error("invalid_app_access_grant");
+    const descriptors = Object.getOwnPropertyDescriptors(grant);
+    const read = (key: string): unknown => {
+      const descriptor = descriptors[key];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+        throw new Error("invalid_app_access_grant");
+      }
+      return descriptor.value;
+    };
+    const ownerId = read("ownerId");
+    const granteeAppId = read("granteeAppId");
+    const sourceAppId = read("sourceAppId");
+    const destinationAppId = read("destinationAppId");
+    const permission = read("permission");
+    const scope = read("scope");
+    const expiresAt = read("expiresAt");
+    const revokedAt = read("revokedAt");
+
+    if (!validId(ownerId) || !validId(granteeAppId) ||
+        (sourceAppId !== null && !validId(sourceAppId)) ||
+        (destinationAppId !== null && !validId(destinationAppId)) ||
+        !VALID_PERMISSIONS.includes(permission as AppAccessPermission) ||
+        !VALID_SCOPES.includes(scope as AppAccessScope) ||
+        (expiresAt !== undefined && expiresAt !== null && !Number.isSafeInteger(expiresAt)) ||
+        (revokedAt !== undefined && revokedAt !== null && !Number.isSafeInteger(revokedAt))) {
+      throw new Error("invalid_app_access_grant");
+    }
+    if (permission === "send" || permission === "receive") {
+      if (!validId(sourceAppId) || !validId(destinationAppId) ||
+          sourceAppId === destinationAppId || (scope !== "task" && scope !== "context")) {
+        throw new Error("invalid_app_access_grant");
+      }
+    } else if (scope === "app_memory") {
+      if (!validId(sourceAppId) || destinationAppId !== null) {
+        throw new Error("invalid_app_access_grant");
+      }
+    } else if (scope === "owner_memory") {
+      if (sourceAppId !== null || destinationAppId !== null) {
+        throw new Error("invalid_app_access_grant");
+      }
+    } else {
+      throw new Error("invalid_app_access_grant");
+    }
+
+    return Object.freeze({
+      ownerId,
+      granteeAppId,
+      sourceAppId: sourceAppId as string | null,
+      destinationAppId: destinationAppId as string | null,
+      permission: permission as AppAccessPermission,
+      scope: scope as AppAccessScope,
+      ...(expiresAt !== undefined ? { expiresAt: expiresAt as number | null } : {}),
+      ...(revokedAt !== undefined ? { revokedAt: revokedAt as number | null } : {})
+    });
+  } catch {
+    throw new Error("invalid_app_access_grant");
+  }
+}
+
 /**
  * Fail-closed policy for one explicit grant. The caller must derive ownerId
  * and requesterAppId from the authenticated device, not from request JSON.
