@@ -266,3 +266,31 @@ The optional `toolRuntime.executeReadOnlyProposals` flag is a trusted applicatio
 When the flag is absent or false, proposals remain previews. Write and external tools are never auto-executed by this option: they remain on the durable approval path and require an explicit owner decision followed by one-time approval consumption. Invalid flag values reject the runtime before model inference.
 
 Execution output is returned separately as `toolExecution`; failures return a generic `toolExecutionError` without exposing internal exception details. This is still an opt-in orchestration primitive and does not enable any tools in the public Worker. The application must decide whether a given read tool's output is safe to disclose to the current authenticated user.
+
+
+## Composing Garcia's first read-only runtime
+
+For a trusted application that wants the capability catalog available to the orchestrator, use `createGarciaCapabilityToolRuntime`:
+
+```ts
+const toolRuntime = createGarciaCapabilityToolRuntime({
+  context: { conversationId, invocationId },
+  authorize: async (request) => {
+    // Resolve access from the authenticated server-side session.
+    return await canReadGarciaCapabilities(authenticatedSession, request);
+  },
+  executeReadOnlyProposals: true,
+});
+
+const result = await runCibaOrchestrator({
+  messages,
+  model,
+  maxOutputTokens,
+  provider,
+  toolRuntime,
+});
+```
+
+The factory validates and snapshots the invocation context. Read-only proposal execution remains off unless the trusted caller explicitly enables it. The model cannot set this flag: it is part of the server-side runtime object. The authorization callback is still mandatory and is evaluated before each read handler. Do not pass an identity, authorization callback, or runtime flag from untrusted request JSON.
+
+This composition is tested end to end with the real `garcia.capabilities.list` and `garcia.capabilities.get` tools. It remains opt-in and is not connected to the public Worker by default.
