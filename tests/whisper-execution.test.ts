@@ -201,12 +201,17 @@ describe("guarded Whisper.cpp transcription execution", () => {
   it("discards a result when cancellation arrives while an adapter is still working", async () => {
     const controller = new AbortController();
     let finish: ((result: SpeechToTextResult) => void) | undefined;
+    let markStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
     let adapterCalls = 0;
     const nonCooperativeAdapter: SpeechToTextAdapter = {
       ...adapter,
       transcribe: async () => {
         adapterCalls += 1;
-        return new Promise<SpeechToTextResult>((resolve) => { finish = resolve; });
+        return new Promise<SpeechToTextResult>((resolve) => {
+          finish = resolve;
+          markStarted?.();
+        });
       },
     };
     const registry = createWhisperCppRegistry({
@@ -217,7 +222,7 @@ describe("guarded Whisper.cpp transcription execution", () => {
     const execution = runWhisperCppTranscription(
       registry, profile, requirements, { ...request, signal: controller.signal },
     );
-    await Promise.resolve();
+    await started;
     controller.abort();
     finish?.({
       text: "resultado tardio",
