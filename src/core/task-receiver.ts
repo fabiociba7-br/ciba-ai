@@ -30,6 +30,84 @@ export interface TaskRequestConsumption {
 }
 
 const MAX_INSTRUCTION_CHARS = 4_000;
+const MAX_CONTEXT_BYTES = 32_000;
+const MAX_CONTEXT_DEPTH = 8;
+const MAX_CONTEXT_NODES = 2_000;
+const MAX_CONTEXT_STRING_CHARS = 16_000;
+
+interface ContextSnapshotBudget {
+  nodes: number;
+  stringChars: number;
+}
+
+/** Copies bounded JSON context without invoking getters or custom serializers. */
+function snapshotTaskContext(
+  value: unknown,
+  depth = 0,
+  budget: ContextSnapshotBudget = { nodes: 0, stringChars: 0 }
+): unknown {
+  if (depth > MAX_CONTEXT_DEPTH) throw new Error("invalid_task_context");
+  budget.nodes += 1;
+  if (budget.nodes > MAX_CONTEXT_NODES) throw new Error("invalid_task_context");
+
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    budget.stringChars += value.length;
+    if (budget.stringChars > MAX_CONTEXT_STRING_CHARS) throw new Error("invalid_task_context");
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("invalid_task_context");
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (Object.getPrototypeOf(value) !== Array.prototype || value.length > MAX_CONTEXT_NODES) {
+      throw new Error("invalid_task_context");
+    }
+    const descriptors = Object.getOwnPropertyDescriptors(value);
+    if (Reflect.ownKeys(descriptors).length !== value.length + 1) {
+      throw new Error("invalid_task_context");
+    }
+    const result: unknown[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+      const descriptor = descriptors[String(index)];
+      if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+        throw new Error("invalid_task_context");
+      }
+      result.push(snapshotTaskContext(descriptor.value, depth + 1, budget));
+    }
+    return Object.freeze(result);
+  }
+  if (typeof value !== "object") throw new Error("invalid_task_context");
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) throw new Error("invalid_task_context");
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const result: Record<string, unknown> = Object.create(null);
+  for (const key of Reflect.ownKeys(descriptors)) {
+    if (typeof key !== "string" || key === "__proto__" ||
+        key === "constructor" || key === "prototype") {
+      throw new Error("invalid_task_context");
+    }
+    const descriptor = descriptors[key];
+    if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) {
+      throw new Error("invalid_task_context");
+    }
+    budget.stringChars += key.length;
+    if (budget.stringChars > MAX_CONTEXT_STRING_CHARS) throw new Error("invalid_task_context");
+    result[key] = snapshotTaskContext(descriptor.value, depth + 1, budget);
+  }
+  return Object.freeze(result);
+}
+
+function readTaskContext(value: unknown): unknown {
+  const snapshot = snapshotTaskContext(value);
+  const serialized = JSON.stringify(snapshot);
+  if (serialized === undefined ||
+      new TextEncoder().encode(serialized).byteLength > MAX_CONTEXT_BYTES) {
+    throw new Error("invalid_task_context");
+  }
+  return snapshot;
+}
 
 function snapshotTaskEnvelope(value: unknown): Record<string, unknown> | null {
   try {
@@ -90,7 +168,17 @@ export function consumeTaskRequest(input: unknown): TaskRequestConsumption {
 
   const valid = errors.length === 0;
   let contextPackage: ContextPackage | undefined;
-  let contextWarning = "context_not_provided";
+  let taskContext: unknown;
+  let contextWarning = raw.context === undefined ? "context_not_provided" : ""; 
+
+  if (raw.context !== undefined) {
+    try {
+      taskContext = readTaskContext(raw.context);
+    } catch {
+      contextWarning = "invalid_task_context";
+      errors.push("context_rejected:invalid_task_context");
+    }
+  }
 
   if (raw.context_package !== undefined) {
     try {
@@ -117,7 +205,7 @@ export function consumeTaskRequest(input: unknown): TaskRequestConsumption {
     task_id: raw.task_id as string,
     task_type: raw.task_type as GarciaTaskType,
     instruction: raw.instruction as string,
-    ...(raw.context === undefined ? {} : { context: raw.context }),
+    ...(raw.context === undefined || taskContext === undefined ? {} : { context: taskContext }),
     ...(contextPackage ? { context_package: contextPackage } : {}),
   } : null;
 
