@@ -43,6 +43,45 @@ describe("model tool proposal protocol", () => {
     expect(result.toolExecutionError).toBeUndefined();
     expect(execute).toHaveBeenCalledOnce();
   });
+  it("executes a read-only proposal through the durable registry without consuming an approval", async () => {
+    const identity = { ownerId: "owner-1", appId: "com.ciba.test", deviceId: "device-1" };
+    const execute = vi.fn(async (_input: unknown) => ({ count: 3 }));
+    const request = vi.fn(async () => ({ approvalId: "unused", status: "approval_required" as const }));
+    const answer = vi.fn(async () => true);
+    const consume = vi.fn(async () => true);
+    const cancel = vi.fn(async () => true);
+    const approvals: DurableToolApprovalStore = { request, answer, consume, cancel };
+    const registry = createDurableCibaToolRegistry([{
+      id: "profile.read",
+      description: "Read a profile section",
+      risk: "read",
+      requiresApproval: false,
+      inputSchema: schema,
+      execute,
+    }], { allowlist: ["profile.read"], approvals, authorize: async () => true });
+    const flow = createDurableCibaToolApprovalFlow(registry, approvals);
+    const proposalText = CIBA_TOOL_PROPOSAL_PREFIX + JSON.stringify({
+      protocol: "ciba.tool.proposal.v1",
+      toolId: "profile.read",
+      input: { section: "preferences" }
+    });
+    const { provider } = makeProvider(proposalText);
+    const result = await runCibaOrchestrator({
+      ...base,
+      provider,
+      toolRuntime: {
+        registry,
+        context,
+        durableApproval: { flow, identity },
+        executeReadOnlyProposals: true
+      }
+    });
+    expect(result.toolApproval).toEqual({ status: "not_required" });
+    expect(result.toolExecution).toEqual({ toolId: "profile.read", output: { count: 3 } });
+    expect(request).not.toHaveBeenCalled();
+    expect(consume).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledOnce();
+  });
   it("never auto-executes write proposals, even when read-only execution is enabled", async () => {
     const execute = vi.fn(async (_input: unknown) => ({ changed: true }));
     const writeSchema = { type: "object", properties: { section: { type: "string" } }, required: ["section"], additionalProperties: false };
