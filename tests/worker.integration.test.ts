@@ -148,17 +148,20 @@ describe("Ciba AI Worker integration", () => {
       "INSERT INTO runtime_settings(setting_key, setting_value, updated_at) VALUES(?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = excluded.updated_at"
     ).bind("ai_model", "not-an-allowed-model", new Date().toISOString()).run();
 
-    let chatRequestSequence = 0;
-    const chat = () => request("/v1/ai/chat", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${secondDevice.access_token}`,
-        "content-type": "application/json",
-        // Keep each precedence assertion isolated from the per-IP rate limiter.
-        "cf-connecting-ip": `192.0.2.${++chatRequestSequence}`,
-      },
-      body: JSON.stringify({ messages: [{ role: "user", content: "Olá" }] }),
-    });
+    const chat = async () => {
+      // This test targets daily quota and CibaGenio precedence, not the
+      // independent per-device minute limiter. Reset only its test bucket.
+      await testDb.prepare("DELETE FROM minute_usage WHERE device_id = ?")
+        .bind(secondDevice.device_id).run();
+      return request("/v1/ai/chat", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${secondDevice.access_token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ messages: [{ role: "user", content: "Olá" }] }),
+      });
+    };
 
     await testDb.prepare(
       "UPDATE cibagenio_controls SET enabled = 0 WHERE resource_id = 'chat' AND scope = 'global' AND scope_id = ''"
