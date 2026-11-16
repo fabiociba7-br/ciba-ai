@@ -188,8 +188,16 @@ export function createD1ToolApprovalStore(
           input_json, input_sha256, status, expires_at
         FROM tool_approvals
         WHERE owner_id = ? AND app_id = ? AND device_id = ? AND invocation_id = ?
+          AND EXISTS (
+            SELECT 1 FROM devices d JOIN owners o ON o.owner_id = d.owner_id
+            WHERE d.device_id = ? AND d.owner_id = ? AND d.app_id = ?
+              AND d.revoked_at IS NULL AND o.status = 'active' AND o.revoked_at IS NULL
+          )
         LIMIT 1
-      `).bind(identity.ownerId, identity.appId, identity.deviceId, request.invocationId)
+      `).bind(
+        identity.ownerId, identity.appId, identity.deviceId, request.invocationId,
+        identity.deviceId, identity.ownerId, identity.appId
+      )
         .first<{
           approval_id: string; conversation_id: string; invocation_id: string;
           tool_id: string; risk: string; input_json: string; input_sha256: string;
@@ -234,16 +242,24 @@ export function createD1ToolApprovalStore(
           AND conversation_id = ? AND invocation_id = ? AND tool_id = ? AND risk = ?
           AND input_json = ? AND input_sha256 = ? AND status = 'pending' AND expires_at > ?
           AND EXISTS (
-            SELECT 1 FROM devices d JOIN owners o ON o.owner_id = d.owner_id
-            WHERE d.device_id = ? AND d.owner_id = ? AND d.app_id = ?
-              AND d.revoked_at IS NULL AND o.status = 'active' AND o.revoked_at IS NULL
+            SELECT 1 FROM devices source
+            JOIN owners owner ON owner.owner_id = source.owner_id
+            WHERE source.device_id = ? AND source.owner_id = ? AND source.app_id = ?
+              AND source.revoked_at IS NULL AND owner.status = 'active' AND owner.revoked_at IS NULL
+          )
+          AND EXISTS (
+            SELECT 1 FROM devices approver
+            JOIN owners owner ON owner.owner_id = approver.owner_id
+            WHERE approver.device_id = ? AND approver.owner_id = ? AND approver.app_id = ?
+              AND approver.revoked_at IS NULL AND owner.status = 'active' AND owner.revoked_at IS NULL
           )
       `).bind(
         status, timestamp, approverDeviceId, status, timestamp,
         approvalId, identity.ownerId, identity.appId, identity.deviceId,
         request.conversationId, request.invocationId, request.toolId, request.risk,
-        inputJson, inputSha256, timestamp, approverDeviceId,
-        identity.ownerId, identity.appId
+        inputJson, inputSha256, timestamp,
+        identity.deviceId, identity.ownerId, identity.appId,
+        approverDeviceId, identity.ownerId, identity.appId
       ).run();
       if ((result.meta?.changes ?? 0) === 1) return true;
 
@@ -296,7 +312,15 @@ export function createD1ToolApprovalStore(
         UPDATE tool_approvals SET status = 'cancelled', closed_at = ?
         WHERE approval_id = ? AND owner_id = ? AND app_id = ? AND device_id = ?
           AND status IN ('pending', 'approved') AND expires_at > ?
-      `).bind(timestamp, approvalId, identity.ownerId, identity.appId, identity.deviceId, timestamp).run();
+          AND EXISTS (
+            SELECT 1 FROM devices d JOIN owners o ON o.owner_id = d.owner_id
+            WHERE d.device_id = ? AND d.owner_id = ? AND d.app_id = ?
+              AND d.revoked_at IS NULL AND o.status = 'active' AND o.revoked_at IS NULL
+          )
+      `).bind(
+        timestamp, approvalId, identity.ownerId, identity.appId, identity.deviceId, timestamp,
+        identity.deviceId, identity.ownerId, identity.appId
+      ).run();
       return (result.meta?.changes ?? 0) === 1;
     }
   });
