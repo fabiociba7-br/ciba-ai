@@ -52,9 +52,11 @@ function snapshotMemoryRecord(value: unknown): MemorySearchRecord | null {
         typeof copy.value !== "string" || copy.value.length > 8_000 ||
         typeof copy.created_by_app_id !== "string" || !copy.created_by_app_id || copy.created_by_app_id.length > 128 ||
         typeof copy.updated_at !== "string" || !copy.updated_at || copy.updated_at.length > 64 ||
-        !(copy.expires_at === null || (typeof copy.expires_at === "string" && copy.expires_at.length <= 64)) ||
+        !(copy.expires_at === null || (typeof copy.expires_at === "string" &&
+          copy.expires_at.length > 0 && copy.expires_at.length <= 64)) ||
         (copy.duplicate_count !== undefined &&
-          (!Number.isSafeInteger(copy.duplicate_count) || (copy.duplicate_count as number) < 1))) {
+          (!Number.isSafeInteger(copy.duplicate_count) || (copy.duplicate_count as number) < 1 ||
+            (copy.duplicate_count as number) > MAX_MEMORY_RECORDS))) {
       return null;
     }
     let duplicateSources: string[] | undefined;
@@ -68,7 +70,7 @@ function snapshotMemoryRecord(value: unknown): MemorySearchRecord | null {
       for (let index = 0; index < sourceValue.length; index += 1) {
         const descriptor = sourceDescriptors[String(index)];
         if (!descriptor || !("value" in descriptor) || !descriptor.enumerable ||
-            typeof descriptor.value !== "string" || descriptor.value.length > 128) return null;
+            typeof descriptor.value !== "string" || descriptor.value.length < 1 || descriptor.value.length > 128) return null;
         duplicateSources.push(descriptor.value);
       }
     }
