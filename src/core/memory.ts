@@ -52,10 +52,9 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function isValidScope(scope: unknown): scope is MemoryScope {
-  if (!scope || typeof scope !== "object") return false;
-  const candidate = scope as Record<string, unknown>;
-  if (!isNonEmptyString(candidate.ownerId)) return false;
-  if (candidate.type === "owner") return true;
+  const candidate = snapshotMemoryRecord(scope, ["type", "ownerId", "appId"]);
+  if (!candidate || !isNonEmptyString(candidate.ownerId)) return false;
+  if (candidate.type === "owner") return candidate.appId === undefined;
   return candidate.type === "app" && isNonEmptyString(candidate.appId);
 }
 
@@ -64,46 +63,59 @@ export function canAccessMemory(
   grants: MemoryGrant[],
   now = Date.now()
 ): boolean {
-  if (!request || !isNonEmptyString(request.ownerId) ||
-      !isNonEmptyString(request.requesterAppId) ||
-      (request.permission !== "read" && request.permission !== "write") ||
-      !isValidScope(request.target) ||
-      request.target.ownerId !== request.ownerId ||
-      !Array.isArray(grants) || !Number.isFinite(now)) {
+  try {
+    const safeRequest = snapshotMemoryRecord(request, [
+      "ownerId", "requesterAppId", "permission", "target"
+    ]);
+    const target = safeRequest ? snapshotMemoryRecord(safeRequest.target, [
+      "type", "ownerId", "appId"
+    ]) : null;
+    const safeGrants = snapshotMemoryArray(grants);
+    if (!safeRequest || !target || !safeGrants ||
+        !isNonEmptyString(safeRequest.ownerId) ||
+        !isNonEmptyString(safeRequest.requesterAppId) ||
+        (safeRequest.permission !== "read" && safeRequest.permission !== "write") ||
+        !isNonEmptyString(target.ownerId) ||
+        target.ownerId !== safeRequest.ownerId ||
+        !Number.isFinite(now)) return false;
+
+    const targetType = target.type;
+    const targetAppId = target.appId;
+    if (targetType === "owner") {
+      if (targetAppId !== undefined) return false;
+    } else if (targetType !== "app" || !isNonEmptyString(targetAppId)) {
+      return false;
+    }
+
+    if (targetType === "app" && targetAppId === safeRequest.requesterAppId) return true;
+
+    return safeGrants.some((rawGrant) => {
+      const grant = snapshotMemoryRecord(rawGrant, [
+        "ownerId", "granteeAppId", "scope", "sourceAppId", "permissions", "expiresAt"
+      ]);
+      if (!grant) return false;
+      const permissions = snapshotMemoryArray(grant.permissions, 8);
+      if (!isNonEmptyString(grant.ownerId) ||
+          !isNonEmptyString(grant.granteeAppId) ||
+          (grant.scope !== "owner" && grant.scope !== "app") ||
+          !permissions || permissions.length === 0 ||
+          !permissions.every((permission) => permission === "read" || permission === "write") ||
+          new Set(permissions).size !== permissions.length ||
+          (grant.expiresAt !== undefined && !Number.isSafeInteger(grant.expiresAt)) ||
+          (grant.scope === "app" && !isNonEmptyString(grant.sourceAppId)) ||
+          (grant.scope === "owner" && grant.sourceAppId !== undefined)) return false;
+
+      if (grant.ownerId !== safeRequest.ownerId ||
+          grant.granteeAppId !== safeRequest.requesterAppId ||
+          !permissions.includes(safeRequest.permission as MemoryPermission) ||
+          (grant.expiresAt !== undefined && (grant.expiresAt as number) <= now)) return false;
+
+      if (targetType === "owner") return grant.scope === "owner";
+      return grant.scope === "app" && grant.sourceAppId === targetAppId;
+    });
+  } catch {
     return false;
   }
-
-  if (request.target.type === "app" && request.target.appId === request.requesterAppId) {
-    return true;
-  }
-
-  return grants.some((grant) => {
-    if (!grant || typeof grant !== "object" ||
-        !isNonEmptyString(grant.ownerId) ||
-        !isNonEmptyString(grant.granteeAppId) ||
-        (grant.scope !== "owner" && grant.scope !== "app") ||
-        !Array.isArray(grant.permissions) ||
-        !grant.permissions.every((permission) => permission === "read" || permission === "write") ||
-        (grant.expiresAt !== undefined && !Number.isFinite(grant.expiresAt)) ||
-        (grant.scope === "app" && !isNonEmptyString(grant.sourceAppId))) {
-      return false;
-    }
-
-    if (
-      grant.ownerId !== request.ownerId ||
-      grant.granteeAppId !== request.requesterAppId ||
-      !grant.permissions.includes(request.permission) ||
-      (grant.expiresAt !== undefined && grant.expiresAt <= now)
-    ) {
-      return false;
-    }
-
-    if (request.target.type === "owner") {
-      return grant.scope === "owner";
-    }
-
-    return grant.scope === "app" && grant.sourceAppId === request.target.appId;
-  });
 }
 
 function readPlainDataObject(value: unknown): Record<string, unknown> | null {
