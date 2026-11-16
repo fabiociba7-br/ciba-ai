@@ -19,7 +19,7 @@ export type DurableCibaToolRegistryOptions = Omit<CibaToolRegistryOptions, "auth
   authorize: CibaToolRegistryOptions["authorize"];
 };
 
-const durableRegistries = new WeakSet<object>();
+const durableRegistries = new WeakMap<object, DurableToolApprovalStore>();
 
 /**
  * Creates a registry whose protected execution path consumes the exact durable
@@ -59,7 +59,7 @@ export function createDurableCibaToolRegistry(
       return authorize(request);
     },
   });
-  durableRegistries.add(registry);
+  durableRegistries.set(registry, approvals);
   return registry;
 }
 
@@ -180,7 +180,7 @@ export function createDurableCibaToolApprovalFlow(
   approvals: DurableToolApprovalStore
 ): DurableCibaToolApprovalFlow {
   if (!registry || typeof registry.prepare !== "function" || typeof registry.execute !== "function" ||
-      !durableRegistries.has(registry as object) ||
+      durableRegistries.get(registry as object) !== approvals ||
       !approvals || typeof approvals.request !== "function" || typeof approvals.answer !== "function" ||
       typeof approvals.consume !== "function" || typeof approvals.cancel !== "function") {
     throw new Error("invalid_durable_tool_approval_dependencies");
