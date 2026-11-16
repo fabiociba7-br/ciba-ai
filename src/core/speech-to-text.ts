@@ -122,6 +122,35 @@ function readUint8ArrayByteLength(value: unknown): number | null {
   }
 }
 
+interface SafeSpeechToTextRegistry {
+  maxAudioBytes: number;
+  getAdapter: SpeechToTextRegistry["getAdapter"];
+  tryAcquireExecution: SpeechToTextRegistry["tryAcquireExecution"];
+}
+
+function snapshotSpeechToTextRegistry(value: unknown): SafeSpeechToTextRegistry | null {
+  try {
+    const fields = readOwnDataRecord(
+      value,
+      ["maxAudioBytes", "getAdapter", "listAvailableRuntimes", "tryAcquireExecution"],
+      ["maxAudioBytes", "getAdapter", "listAvailableRuntimes", "tryAcquireExecution"]
+    );
+    if (!fields || !Number.isInteger(fields.maxAudioBytes) ||
+        (fields.maxAudioBytes as number) < 1 ||
+        (fields.maxAudioBytes as number) > 25 * 1024 * 1024 ||
+        typeof fields.getAdapter !== "function" ||
+        typeof fields.listAvailableRuntimes !== "function" ||
+        typeof fields.tryAcquireExecution !== "function") return null;
+    return {
+      maxAudioBytes: fields.maxAudioBytes as number,
+      getAdapter: fields.getAdapter as SpeechToTextRegistry["getAdapter"],
+      tryAcquireExecution: fields.tryAcquireExecution as SpeechToTextRegistry["tryAcquireExecution"],
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Creates a fail-closed registry for the first planned transcription engine.
  * It does not install whisper.cpp, download model weights, or enable remote
@@ -345,10 +374,12 @@ export function resolveWhisperCppRuntime(
   profile: DeviceCapabilityProfile,
   requirements: DeviceCapabilityRequirements,
 ): SpeechToTextRuntimeResolution {
+  const safeRegistry = snapshotSpeechToTextRegistry(registry);
+  if (!safeRegistry) return { available: false, reasons: ["invalid_speech_to_text_registry"] };
   const decision = assessDeviceCompatibility(profile, requirements);
   if (!decision.compatible) return { available: false, reasons: decision.reasons };
   const runtime = requirements.runtime as SpeechToTextRuntime;
-  const adapter = registry.getAdapter(runtime);
+  const adapter = safeRegistry.getAdapter(runtime);
   if (!adapter) return { available: false, reasons: ["adapter_not_installed"] };
   const modelDecision = assessDeviceCompatibility(profile, adapter.deviceRequirements);
   if (!modelDecision.compatible) {
@@ -460,13 +491,15 @@ export async function runWhisperCppTranscription(
   request: SpeechToTextRequest,
   maxAudioBytes?: number,
 ): Promise<SpeechToTextExecution> {
-  const effectiveAudioLimit = maxAudioBytes ?? registry.maxAudioBytes;
+  const safeRegistry = snapshotSpeechToTextRegistry(registry);
+  if (!safeRegistry) throw new Error("invalid_speech_to_text_registry");
+  const effectiveAudioLimit = maxAudioBytes ?? safeRegistry.maxAudioBytes;
   if (!Number.isInteger(effectiveAudioLimit) || effectiveAudioLimit < 1) {
     throw new Error("invalid_speech_to_text_request");
   }
   const safeRequest = snapshotSpeechToTextRequest(
     request,
-    Math.min(effectiveAudioLimit, registry.maxAudioBytes)
+    Math.min(effectiveAudioLimit, safeRegistry.maxAudioBytes)
   );
   if (!safeRequest) throw new Error("invalid_speech_to_text_request");
   const audioBuffer = safeRequest.audio;
@@ -480,7 +513,7 @@ export async function runWhisperCppTranscription(
       return { success: false, reasons: resolution.reasons };
     }
 
-    releaseExecution = registry.tryAcquireExecution();
+    releaseExecution = safeRegistry.tryAcquireExecution();
     if (!releaseExecution) {
       return { success: false, reasons: ["transcription_capacity_reached"] };
     }
