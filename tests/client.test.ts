@@ -144,6 +144,20 @@ describe("CibaClient", () => {
     await expect(client.updateMemory({ memoryId: "", scope: "app", key: "x", value: "y" })).rejects.toThrow("invalid_memory_id");
   });
 
+  it("retrieves metadata-only private memory history", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(JSON.stringify({
+      events: [{ event_id: "event-1", memory_id: "memory-1", proposal_id: null, scope: "app",
+        source_app_id: "com.example.app", memory_key: "preference", action: "updated",
+        actor_app_id: "com.example.app", occurred_at: "2026-11-16T00:00:00.000Z" }],
+      count: 1, limit: 50, scope: "app", source_app_id: "com.example.app", values_stored: false,
+    }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const result = await client.getMemoryHistory({ scope: "app", limit: 50 });
+    expect(result.events[0].action).toBe("updated");
+    expect(result.values_stored).toBe(false);
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/owner/memory/history?scope=app&limit=50");
+  });
+
   it("retrieves deterministic memory relationship insights", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(JSON.stringify({
       possible_conflicts: [], related: [], outdated: [], analyzed_records: 2,
