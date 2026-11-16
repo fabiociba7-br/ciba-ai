@@ -230,15 +230,25 @@ export function validateCuratedMemory(input: {
   value: string;
   maxCharacters?: number;
 }): string {
-  if (!input || input.consent !== "curated") {
+  const source = snapshotMemoryRecord(input, ["consent", "value", "maxCharacters"]);
+  if (!source || !Object.prototype.hasOwnProperty.call(source, "consent") ||
+      !Object.prototype.hasOwnProperty.call(source, "value")) {
+    throw new Error("invalid_memory_value");
+  }
+  if (source.consent !== "curated") {
     throw new Error("memory_consent_required");
   }
-  if (typeof input.value !== "string") {
+  if (typeof source.value !== "string") {
+    throw new Error("invalid_memory_value");
+  }
+  if (source.maxCharacters !== undefined &&
+      (!Number.isSafeInteger(source.maxCharacters) ||
+        (source.maxCharacters as number) < 1 || (source.maxCharacters as number) > 500)) {
     throw new Error("invalid_memory_value");
   }
 
-  const value = input.value.trim();
-  const maxCharacters = input.maxCharacters ?? 500;
+  const value = source.value.trim();
+  const maxCharacters = source.maxCharacters === undefined ? 500 : source.maxCharacters as number;
 
   if (!Number.isInteger(maxCharacters) || maxCharacters < 1 ||
       maxCharacters > 500 || !value || value.length > maxCharacters) {
