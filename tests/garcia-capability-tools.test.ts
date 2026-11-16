@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { createGarciaCapabilityTools } from "../src/core/tools/garcia-capability-tools";
+import { createGarciaCapabilityTools, createGarciaCapabilityToolRuntime } from "../src/core/tools/garcia-capability-tools";
+import { runCibaOrchestrator } from "../src/core/orchestrator";
+import { CIBA_TOOL_PROPOSAL_PREFIX } from "../src/core/tools/model-proposal";
+import type { InferenceRequest, InferenceResult, ModelProvider } from "../src/core/types";
 
 describe("Garcia read-only capability catalog tools", () => {
   it("lists only catalog metadata and can filter by category", async () => {
@@ -69,6 +72,88 @@ describe("Garcia read-only capability catalog tools", () => {
     const registry = createGarciaCapabilityTools({ authorize: async () => false });
     await expect(registry.execute("garcia.capabilities.list", {}))
       .rejects.toThrow("tool_authorization_denied");
+  });
+
+  it("builds a trusted runtime that can execute the first real Garcia read-only tool", async () => {
+    const authorize = vi.fn(async () => true);
+    const runtime = createGarciaCapabilityToolRuntime({
+      authorize,
+      context: { conversationId: "conversation-1", invocationId: "invocation-1" },
+      executeReadOnlyProposals: true,
+    });
+    const proposal = CIBA_TOOL_PROPOSAL_PREFIX + JSON.stringify({
+      protocol: "ciba.tool.proposal.v1",
+      toolId: "garcia.capabilities.list",
+      input: { category: "coding" },
+    });
+    const generate = vi.fn(async (_request: InferenceRequest): Promise<InferenceResult> => ({
+      text: proposal,
+      raw: null,
+      provider: "test-provider",
+      model: "test-model",
+    }));
+    const provider: ModelProvider = {
+      id: "test-provider",
+      enabled: true,
+      generate,
+    };
+    const result = await runCibaOrchestrator({
+      messages: [{ role: "user", content: "Quais capacidades de programação estão catalogadas?" }],
+      model: "test-model",
+      maxOutputTokens: 128,
+      provider,
+      toolRuntime: runtime,
+    });
+
+    expect(result.toolExecution?.toolId).toBe("garcia.capabilities.list");
+    expect(result.toolExecution?.output).toEqual([
+      expect.objectContaining({ id: "coding_agent", status: "planned" }),
+    ]);
+    expect(result.toolExecutionError).toBeUndefined();
+    expect(authorize).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the Garcia capability runtime in preview mode by default", async () => {
+    const runtime = createGarciaCapabilityToolRuntime({
+      authorize: async () => true,
+      context: { conversationId: "conversation-1", invocationId: "invocation-2" },
+    });
+    const proposal = CIBA_TOOL_PROPOSAL_PREFIX + JSON.stringify({
+      protocol: "ciba.tool.proposal.v1",
+      toolId: "garcia.capabilities.get",
+      input: { capabilityId: "image_generation" },
+    });
+    const provider: ModelProvider = {
+      id: "test-provider",
+      enabled: true,
+      generate: async (_request: InferenceRequest): Promise<InferenceResult> => ({
+        text: proposal,
+        raw: null,
+        provider: "test-provider",
+        model: "test-model",
+      }),
+    };
+    const result = await runCibaOrchestrator({
+      messages: [{ role: "user", content: "Consulte geração de imagens." }],
+      model: "test-model",
+      maxOutputTokens: 128,
+      provider,
+      toolRuntime: runtime,
+    });
+    expect(result.toolProposal?.toolId).toBe("garcia.capabilities.get");
+    expect(result.toolExecution).toBeUndefined();
+  });
+
+  it("rejects malformed context and runtime execution flags", () => {
+    expect(() => createGarciaCapabilityToolRuntime({
+      authorize: async () => true,
+      context: { conversationId: "c", invocationId: "" },
+    })).toThrow("invalid_garcia_capability_runtime");
+    expect(() => createGarciaCapabilityToolRuntime({
+      authorize: async () => true,
+      context: { conversationId: "c", invocationId: "i" },
+      executeReadOnlyProposals: "yes" as never,
+    })).toThrow("invalid_garcia_capability_runtime");
   });
 
   it("requires a trusted authorizer and does not expose write or external tools", () => {
