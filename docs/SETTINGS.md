@@ -208,3 +208,10 @@ O painel exibe também os tipos de tarefa declarados por cada aplicativo. Essa l
 ## Encaminhamento de tarefas entre aplicativos
 
 O endpoint `POST /v1/apps/tasks/dispatch` usa o perfil de tarefas e as concessões vigentes para escolher um app de destino. Só roteia para apps habilitados, com dispositivo ativo no mesmo proprietário, com o tipo de tarefa declarado e com permissões de envio e recebimento concedidas. Em caso de múltiplos destinos, exige escolha explícita. O encaminhamento usa a fila de mensagens existente e continua bloqueado quando `app_messaging_enabled` está desligado.
+
+
+## Gerenciamento de memórias curadas
+
+O painel privado Garcia possui a seção **Gerenciar memórias**. Ela permite escolher entre a memória do aplicativo autenticado e a memória central do proprietário (quando houver concessão de acesso), pesquisar por chave/conteúdo, incluir registros expirados, editar chave e valor, renovar validade ou remover a expiração, e excluir registros. A exclusão é lógica: o item deixa imediatamente de ser usado, e a limpeza programada remove registros excluídos após o período de retenção definido.
+
+A API também aceita filtro `q` e `include_expired=true` em `GET /v1/owner/memory`, e edição por `PATCH /v1/owner/memory`. Para validade, omitir `valid_hours` mantém a data existente, `null` remove a expiração, e um número inteiro de 1 a 8760 define a nova validade. Os escopos continuam isolados e sujeitos às concessões de leitura/escrita.
