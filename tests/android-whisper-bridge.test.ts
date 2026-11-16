@@ -119,6 +119,76 @@ describe("Android Whisper.cpp bridge contract", () => {
     });
   });
 
+  it("snapshots each Android transcription request field exactly once", async () => {
+    const reads: Record<string, number> = {};
+    const consent = Object.defineProperties({}, {
+      granted: { enumerable: true, get() { reads.granted = (reads.granted ?? 0) + 1; return true; } },
+      purpose: { enumerable: true, get() { reads.purpose = (reads.purpose ?? 0) + 1; return "transcription"; } },
+      source: { enumerable: true, get() { reads.source = (reads.source ?? 0) + 1; return "explicit_user_action"; } },
+    });
+    const requestWithGetters = Object.defineProperties({}, {
+      audio: { enumerable: true, get() { reads.audio = (reads.audio ?? 0) + 1; return request.audio; } },
+      consent: { enumerable: true, get() { reads.consent = (reads.consent ?? 0) + 1; return consent; } },
+      mimeType: { enumerable: true, get() { reads.mimeType = (reads.mimeType ?? 0) + 1; return "audio/wav"; } },
+      language: { enumerable: true, get() { reads.language = (reads.language ?? 0) + 1; return "pt-BR"; } },
+      timestamps: { enumerable: true, get() { reads.timestamps = (reads.timestamps ?? 0) + 1; return true; } },
+    });
+    const adapter = createAndroidWhisperCppAdapter(bridge({
+      transcribe: async (nativeRequest) => {
+        expect(nativeRequest.audio).not.toBe(request.audio);
+        expect(nativeRequest.mimeType).toBe("audio/wav");
+        expect(nativeRequest.language).toBe("pt-BR");
+        expect(nativeRequest.timestamps).toBe(true);
+        return result;
+      },
+    }), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+
+    await expect(adapter.transcribe(requestWithGetters as SpeechToTextRequest)).resolves.toEqual(result);
+    expect(reads).toEqual({
+      audio: 1, consent: 1, mimeType: 1, language: 1, timestamps: 1,
+      granted: 1, purpose: 1, source: 1,
+    });
+  });
+
+  it("rejects malformed Android requests before reading native status", async () => {
+    let statusCalled = false;
+    const adapter = createAndroidWhisperCppAdapter(bridge({
+      getStatus: async () => {
+        statusCalled = true;
+        return {
+          nativeLibraryReady: true, modelLoaded: true, modelId: "ggml-tiny",
+          modelSha256: MODEL_SHA256,
+        };
+      },
+    }), {
+      modelId: "ggml-tiny",
+      modelSha256: MODEL_SHA256,
+      maxAudioBytes: 1024,
+      deviceRequirements,
+    });
+    const malformedRequests = [
+      null,
+      undefined,
+      Object.defineProperty({}, "audio", {
+        get() { throw new Error("request_audio_getter_failed"); },
+      }),
+      { ...request, mimeType: "application/octet-stream" },
+      { ...request, consent: { granted: false, purpose: "transcription", source: "explicit_user_action" } },
+      { ...request, language: "INVALID" },
+    ];
+
+    for (const malformed of malformedRequests) {
+      await expect(adapter.transcribe(malformed as SpeechToTextRequest))
+        .rejects.toThrow("invalid_speech_to_text_request");
+    }
+    expect(statusCalled).toBe(false);
+  });
+
   it("rejects malformed native bridge status before transcribing", async () => {
     const malformedStatuses = [
       null,
