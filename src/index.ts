@@ -21,7 +21,7 @@ import { prepareMemoryCandidate } from "./core/memory-candidates";
 import { classifyMemoryProposal } from "./core/memory-learning";
 import { analyzeMemoryRelationships, type MemoryInsightRecord } from "./core/memory-insights";
 import { buildOwnerProfile } from "./core/owner-profile";
-import { rankRelevantMemories, buildChatMemoryContext, type MemorySearchRecord } from "./core/memory-retrieval";
+import { buildProfileAwareChatMemoryContext, type MemorySearchRecord } from "./core/memory-retrieval";
 import { validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./core/apps/registry";
 import { isAppTaskType, selectTaskRoute } from "./core/task-coordinator";
 import { consolidateTaskResults, type TaskResultRecord } from "./core/task-results";
@@ -1474,7 +1474,7 @@ const handleChat = async (request: Request, env: Env) => {
           owner.owner_id, timestamp, device.app_id, device.app_id, timestamp,
           device.app_id, timestamp
         ).all<MemorySearchRecord>();
-        memoryContext = buildChatMemoryContext(rankRelevantMemories(query, visibleRows.results || [], 5));
+        memoryContext = buildProfileAwareChatMemoryContext(query, visibleRows.results || [], 5);
       }
     }
   }
@@ -1498,7 +1498,7 @@ const handleChat = async (request: Request, env: Env) => {
       strategy: orchestration.strategy,
       provider: orchestration.provider,
       inference_calls: orchestration.usedInferenceCalls,
-      memory_context: { enabled: memoryContext.entriesUsed > 0, entries_used: memoryContext.entriesUsed, characters: memoryContext.characters },
+      memory_context: { enabled: memoryContext.entriesUsed > 0, entries_used: memoryContext.entriesUsed, characters: memoryContext.characters, profile_signals_used: memoryContext.profileSignalsUsed },
     },
   });
 };
