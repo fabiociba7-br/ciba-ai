@@ -3,11 +3,16 @@
 -- connected by this change; runtime adoption requires async CAS operations.
 PRAGMA foreign_keys = ON;
 
+-- Composite parent key lets SQLite enforce that the initiating and approving
+-- devices belong to the same owner and app recorded by the approval.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_approval_identity
+  ON devices(device_id, owner_id, app_id);
+
 CREATE TABLE IF NOT EXISTS tool_approvals (
   approval_id TEXT PRIMARY KEY,
   owner_id TEXT NOT NULL REFERENCES owners(owner_id),
   app_id TEXT NOT NULL,
-  device_id TEXT NOT NULL REFERENCES devices(device_id),
+  device_id TEXT NOT NULL,
   conversation_id TEXT NOT NULL,
   invocation_id TEXT NOT NULL,
   tool_id TEXT NOT NULL,
@@ -20,10 +25,14 @@ CREATE TABLE IF NOT EXISTS tool_approvals (
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
   decided_at TEXT,
-  approved_by_device_id TEXT REFERENCES devices(device_id),
+  approved_by_device_id TEXT,
   consumed_at TEXT,
   closed_at TEXT,
   UNIQUE (owner_id, device_id, invocation_id),
+  FOREIGN KEY (device_id, owner_id, app_id)
+    REFERENCES devices(device_id, owner_id, app_id),
+  FOREIGN KEY (approved_by_device_id, owner_id, app_id)
+    REFERENCES devices(device_id, owner_id, app_id),
   CHECK (length(approval_id) BETWEEN 16 AND 128),
   CHECK (length(owner_id) BETWEEN 1 AND 128),
   CHECK (length(app_id) BETWEEN 3 AND 150),
