@@ -162,25 +162,6 @@ export function canAccessMemory(
   }
 }
 
-function readPlainDataObject(value: unknown): Record<string, unknown> | null {
-  try {
-    if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
-    const prototype = Object.getPrototypeOf(value);
-    if (prototype !== Object.prototype && prototype !== null) return null;
-    const descriptors = Object.getOwnPropertyDescriptors(value);
-    const result: Record<string, unknown> = Object.create(null);
-    for (const key of Reflect.ownKeys(descriptors)) {
-      if (typeof key !== "string" || key === "__proto__" ||
-          key === "constructor" || key === "prototype") return null;
-      const descriptor = descriptors[key];
-      if (!("value" in descriptor) || !descriptor.enumerable) return null;
-      result[key] = descriptor.value;
-    }
-    return result;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Validates a persisted memory record before storage or retrieval. This is a
