@@ -95,3 +95,5 @@ O registry limita a concorrência de transcrições a uma execução por padrão
 O limite de bytes definido em `SpeechToTextEnginePolicy.maxAudioBytes` é exposto pelo registry e aplicado automaticamente por `runWhisperCppTranscription` antes de reservar capacidade ou chamar o adapter. Uma chamada pode fornecer um limite ainda menor, mas não precisa repetir a configuração do registry.
 
 As requisições de transcrição aceitam um `AbortSignal` opcional. Se já estiver cancelado, a execução é recusada antes de reservar capacidade. Durante o processamento, o sinal é encaminhado ao adapter, que deve cooperar com o cancelamento. A vaga e a cópia temporária do áudio só são liberadas quando a promessa do adapter termina; adapters que ignoram o sinal continuam ocupando a vaga até terminar, evitando concorrência acima do limite.
+
+Se um adapter não conseguir interromper o trabalho e retornar depois do cancelamento, o núcleo descarta o resultado tardio e responde `transcription_cancelled`. A vaga continua ocupada e o buffer temporário permanece sob limpeza até a promessa do adapter terminar.
