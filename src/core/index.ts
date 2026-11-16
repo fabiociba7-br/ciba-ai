@@ -34,3 +34,6 @@ export type { SpeechToTextAdapter, SpeechToTextEnginePolicy, SpeechToTextRegistr
 
 export { assessDeviceCompatibility, validateDeviceCapabilityProfile } from "./device-capabilities";
 export type { DeviceArchitecture, DeviceCapabilityDecision, DeviceCapabilityProfile, DeviceCapabilityRequirements, DevicePlatform, DeviceRuntime } from "./device-capabilities";
+
+export { createAndroidWhisperCppAdapter } from "./android-whisper-bridge";
+export type { AndroidWhisperCppAdapterOptions, AndroidWhisperCppBridge, AndroidWhisperCppBridgeStatus } from "./android-whisper-bridge";
