@@ -218,6 +218,13 @@ export async function runWhisperCppTranscription(
     }
     validateSpeechToTextResult(result, resolution.adapter.modelId);
     return { success: true, result };
+  } catch (error) {
+    // Normalize adapter-level cancellation into the same public outcome,
+    // while preserving genuine engine failures when no cancellation occurred.
+    if (request.signal?.aborted) {
+      return { success: false, reasons: ["transcription_cancelled"] };
+    }
+    throw error;
   } finally {
     audioBuffer.fill(0);
     releaseExecution();
