@@ -4,6 +4,7 @@ import {
   runWhisperCppTranscription,
   type SpeechToTextAdapter,
   type SpeechToTextEnginePolicy,
+  type SpeechToTextRequest,
 } from "../src/core/speech-to-text";
 
 const policy: SpeechToTextEnginePolicy = {
@@ -32,7 +33,7 @@ const requirements = {
   minimumAndroidApiLevel: 26,
 };
 
-const request = {
+const request: SpeechToTextRequest = {
   audio: new Uint8Array([1, 2, 3]),
   consent: { granted: true, purpose: "transcription", source: "explicit_user_action" },
   mimeType: "audio/wav" as const,
