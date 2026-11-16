@@ -18,7 +18,7 @@ export type { MemoryAccessRequest, MemoryConsent, MemoryGrant, MemoryPermission,
 export { canRelayAppMessage, validateAppMessageEnvelope, validateAppMessageGrant } from "./messaging";
 export type { AppMessageAccessRequest, AppMessageEnvelope, AppMessageGrant, AppMessagePermission, AppMessageScope } from "./messaging";
 
-export { canDeviceActForOwner, canPairDevice, canUseOwnerPairingInvitation } from "./owner";
+export { canDeviceActForOwner, canPairDevice, canUseOwnerPairingInvitation, validateOwnerPairingInvitation } from "./owner";
 export type { OwnerBoundDevice, OwnerIdentity, OwnerPairingInvitation, OwnerStatus } from "./owner";
 
 export { canUseAppAccessGrant, validateAppAccessGrant } from "./access-grants";
