@@ -29,6 +29,7 @@ import { buildTaskSynthesisRequest, MAX_TASK_SYNTHESIS_OUTPUT_TOKENS } from "./c
 import { buildContextPackage, MAX_CONTEXT_PACKAGE_CHARS, type ContextPackageItem } from "./core/context-package";
 import { buildTaskContextPackage } from "./core/task-context";
 import { deriveTaskLifecycle } from "./core/task-lifecycle";
+import { CIBAGENIO_RESOURCES, parseCibaGenioCommand } from "./core/cibagenio";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -1506,6 +1507,69 @@ const handleChat = async (request: Request, env: Env) => {
   });
 };
 
+const handleAdminCibaGenio = async (request: Request, env: Env) => {
+  const authError = await authorizeAdmin(request, env);
+  if (authError) return authError;
+
+  if (request.method === "GET") {
+    const rows = await env.DB.prepare(
+      "SELECT resource_id, scope, scope_id, enabled, reason, updated_by, updated_at FROM cibagenio_controls ORDER BY resource_id, scope, scope_id"
+    ).all<{
+      resource_id: string; scope: "global" | "app"; scope_id: string;
+      enabled: number; reason: string | null; updated_by: string; updated_at: string;
+    }>();
+    const audit = await env.DB.prepare(
+      "SELECT resource_id, scope, scope_id, enabled, reason, actor, occurred_at FROM cibagenio_audit_events ORDER BY occurred_at DESC LIMIT 50"
+    ).all();
+    return json({
+      command: "CibaGenio",
+      default_state: "locked",
+      resources: CIBAGENIO_RESOURCES,
+      controls: (rows.results || []).map((row) => ({
+        ...row,
+        enabled: row.enabled === 1,
+        app_id: row.scope === "app" ? row.scope_id : null,
+      })),
+      recent_changes: audit.results || [],
+      enforcement_note: "Os controles estão registrados no servidor; cada recurso deve consultar o CibaGenio antes de ser utilizado.",
+    });
+  }
+
+  const body = await readJson(request, 8_000);
+  const parsed = parseCibaGenioCommand(body, isValidAppId);
+  if (!parsed.valid) return json({ error: parsed.error }, 400);
+
+  const command = parsed.command;
+  const scopeId = command.scope === "app" ? command.app_id || "" : "";
+  const timestamp = nowIso();
+  const eventId = randomToken(18);
+  await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO cibagenio_controls(resource_id, scope, scope_id, enabled, reason, updated_by, updated_at)
+      VALUES(?, ?, ?, ?, ?, 'admin', ?)
+      ON CONFLICT(resource_id, scope, scope_id) DO UPDATE SET
+        enabled = excluded.enabled,
+        reason = excluded.reason,
+        updated_by = excluded.updated_by,
+        updated_at = excluded.updated_at
+    `).bind(command.resource_id, command.scope, scopeId, command.enabled ? 1 : 0, command.reason || null, timestamp),
+    env.DB.prepare(
+      "INSERT INTO cibagenio_audit_events(event_id, resource_id, scope, scope_id, enabled, reason, actor, occurred_at) VALUES(?, ?, ?, ?, ?, ?, 'admin', ?)"
+    ).bind(eventId, command.resource_id, command.scope, scopeId, command.enabled ? 1 : 0, command.reason || null, timestamp),
+  ]);
+
+  return json({
+    command: "CibaGenio",
+    saved: true,
+    resource_id: command.resource_id,
+    enabled: command.enabled,
+    state: command.enabled ? "unlocked" : "locked",
+    scope: command.scope,
+    app_id: command.app_id || null,
+    updated_at: timestamp,
+  });
+};
+
 const handleAdminDevices = async (request: Request, env: Env) => {
   const authError = await authorizeAdmin(request, env);
   if (authError) return authError;
@@ -2597,6 +2661,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
         "permissions-policy": "camera=(), microphone=(), geolocation=()",
       },
     });
+  }
+  if (url.pathname === "/v1/admin/cibagenio" && (request.method === "GET" || request.method === "POST")) {
+    return handleAdminCibaGenio(request, env);
   }
   if (url.pathname === "/v1/admin/devices" && request.method === "GET") {
     return handleAdminDevices(request, env);
