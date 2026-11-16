@@ -167,6 +167,34 @@ describe("Ciba AI Worker integration", () => {
       resource_id: "chat",
       scope: "global",
     });
+    // An app-level unlock overrides a global lock only for this app.
+    await testDb.prepare(`
+      INSERT INTO cibagenio_controls(resource_id, scope, scope_id, enabled, reason, updated_by, updated_at)
+      VALUES('chat', 'app', ?, 1, 'App override test', 'test', ?)
+      ON CONFLICT(resource_id, scope, scope_id) DO UPDATE SET
+        enabled = 1, reason = excluded.reason, updated_by = 'test', updated_at = excluded.updated_at
+    `).bind(appId, new Date().toISOString()).run();
+    const appOverrideChat = await chat();
+    expect(appOverrideChat.status).toBe(503);
+    expect(await appOverrideChat.json()).toEqual({ error: "ai_model_not_available" });
+
+    // An app-level lock also overrides a global unlock.
+    await testDb.prepare(
+      "UPDATE cibagenio_controls SET enabled = 1 WHERE resource_id = 'chat' AND scope = 'global' AND scope_id = ''"
+    ).run();
+    await testDb.prepare(
+      "UPDATE cibagenio_controls SET enabled = 0 WHERE resource_id = 'chat' AND scope = 'app' AND scope_id = ?"
+    ).bind(appId).run();
+    const appLockedChat = await chat();
+    expect(appLockedChat.status).toBe(403);
+    expect(await appLockedChat.json()).toEqual({
+      error: "resource_locked_by_cibagenio",
+      resource_id: "chat",
+      scope: "app",
+    });
+    await testDb.prepare(
+      "DELETE FROM cibagenio_controls WHERE resource_id = 'chat' AND scope = 'app' AND scope_id = ?"
+    ).bind(appId).run();
     await testDb.prepare(
       "UPDATE cibagenio_controls SET enabled = 1 WHERE resource_id = 'chat' AND scope = 'global' AND scope_id = ''"
     ).run();
