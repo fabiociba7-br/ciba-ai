@@ -286,3 +286,14 @@ const batch = await client.processTaskInbox({
 }, 10);
 // Consulte batch.outcomes para ver tarefas concluídas, falhas, ignoradas e erros de entrega.
 ```
+
+
+## Aprovações duráveis de ferramentas
+
+O SDK disponibiliza o fluxo autenticado de consentimento do proprietário:
+
+- `listToolApprovals()` lista solicitações pendentes e aprovações ainda válidas para o app autenticado, incluindo os parâmetros exatos.
+- `decideToolApproval(approvalId, true)` aprova explicitamente uma solicitação; use `false` para rejeitar.
+- `cancelToolApproval(approvalId)` cancela uma solicitação elegível.
+
+A aprovação registra consentimento de uso único; **não executa a ferramenta**. A execução só poderá ocorrer quando um runtime futuro consumir a autorização vinculada à identidade, invocação e entrada originais. O SDK não interpreta nem executa os parâmetros recebidos. Exiba os parâmetros sem alterações e peça confirmação explícita ao proprietário antes de chamar `decideToolApproval`. O token continua sendo fornecido sob demanda por `getAccessToken` e deve permanecer no armazenamento seguro da plataforma.
