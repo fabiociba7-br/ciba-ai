@@ -40,6 +40,11 @@ export function createAndroidWhisperCppAdapter(
     throw new Error("invalid_android_whisper_options");
   }
 
+  // Capture the approved native bridge methods at adapter creation.
+  // Later mutations to the caller-owned bridge cannot replace these functions.
+  const getStatus = bridge.getStatus.bind(bridge);
+  const transcribe = bridge.transcribe.bind(bridge);
+
   return {
     engine: "whisper.cpp",
     runtime: "android_embedded",
@@ -52,7 +57,7 @@ export function createAndroidWhisperCppAdapter(
         throw new Error("invalid_speech_to_text_request");
       }
 
-      const status = await bridge.getStatus();
+      const status = await getStatus();
       if (!status.nativeLibraryReady) {
         throw new Error("android_whisper_native_library_unavailable");
       }
@@ -60,7 +65,7 @@ export function createAndroidWhisperCppAdapter(
         throw new Error("android_whisper_model_unavailable");
       }
 
-      const result = await bridge.transcribe(request);
+      const result = await transcribe(request);
       if (!isValidResult(result, options.modelId)) {
         throw new Error("invalid_android_whisper_result");
       }
