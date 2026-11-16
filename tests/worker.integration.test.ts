@@ -637,7 +637,7 @@ describe("Ciba AI private app-to-app message relay", () => {
     });
     const contextInbox = await inbox();
     const contextBody = await contextInbox.json() as {
-      messages: Array<{ scope: string; payload: { protocol: string; items: Array<{ key: string }> } }>;
+      messages: Array<{ message_id: string; scope: string; payload: { protocol: string; items: Array<{ key: string }> } }>;
     };
     expect(contextBody.messages).toHaveLength(1);
     expect(contextBody.messages[0]).toMatchObject({
