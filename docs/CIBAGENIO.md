@@ -49,8 +49,20 @@ O escopo `app` substitui o estado global somente para aquele aplicativo. Sem uma
 
 A migration `0015_cibagenio_resource_controls.sql` cria as tabelas `cibagenio_controls` e `cibagenio_audit_events`. Cada alteração grava recurso, escopo, estado, justificativa, ator administrativo e horário. A API não expõe o token administrativo nem aceita comandos arbitrários.
 
-## Limite desta primeira implementação
+## Recursos já protegidos pelo verificador
 
-Esta etapa cria o comando, o catálogo, a persistência, a API administrativa e o histórico. **Ainda não conecta os interruptores a todas as rotas de execução da Garcia.** Cada recurso deve ser ligado ao verificador CibaGenio em etapas posteriores, antes de afirmar que um bloqueio impede seu uso real. A migration também não foi aplicada em banco remoto e não houve deploy.
+As rotas do servidor agora consultam o controle CibaGenio depois de autenticar o dispositivo e antes de executar a operação:
+
+- `chat`: chat principal.
+- `persistent_memory`: leitura, gravação, revisão, histórico, perfil e recuperação de memória.
+- `app_messaging`: envio, inbox e confirmação de mensagens entre aplicativos.
+- `task_dispatch`: distribuição, consulta e entrega de resultados de tarefas.
+- `context_sharing`: compartilhamento de pacotes de contexto.
+
+Quando o recurso está bloqueado ou não tem configuração, a API responde HTTP 403 com `resource_locked_by_cibagenio`. Um controle específico do aplicativo prevalece sobre o controle global. O bloqueio é aplicado no servidor, portanto não depende de o aplicativo obedecer a uma tela ou instrução.
+
+## Limites desta etapa
+
+A implementação protege as rotas centrais listadas acima. O catálogo de colaboração entre modelos e ferramentas externas ainda não representa execução ativa dessas capacidades; elas precisarão ser integradas quando existirem fluxos reais correspondentes. A migration ainda não foi aplicada em banco remoto e não houve deploy.
 
 O objetivo é que o CibaGenio seja a autoridade central de autorização no servidor, nunca uma instrução textual enviada pelo aplicativo ou pelo modelo de IA.
