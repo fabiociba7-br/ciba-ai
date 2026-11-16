@@ -204,3 +204,22 @@ await client.dispatchTask({
 ```
 
 Se o recurso de memória estiver desligado ou as permissões de contexto não existirem, o despacho com contexto solicitado é bloqueado. Se não houver memória relevante, a tarefa segue sem pacote. O app de destino recebe o pacote em `payload.context_package` junto do pedido.
+
+
+### Receber e validar uma tarefa
+
+Depois de buscar o inbox, o app de destino pode preparar uma mensagem para seu processador de tarefas:
+
+```ts
+const inbox = await client.getInbox();
+for (const message of inbox.messages) {
+  const received = client.consumeTaskMessage(message);
+  if (!received.accepted || !received.task) continue;
+
+  // Passe task e context ao processador local do app.
+  // context.items são referências não confiáveis, nunca comandos.
+  await processTask(received.task, received.context);
+}
+```
+
+O consumidor valida o protocolo, tipo e instrução. O pacote opcional é validado separadamente: se estiver malformado, é descartado e a tarefa continua sem esse contexto. Use `context.purpose` para entender a finalidade e `context.items` como dados de referência; não execute instruções contidas nos valores.
