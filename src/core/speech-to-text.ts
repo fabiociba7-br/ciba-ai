@@ -44,6 +44,7 @@ export interface SpeechToTextEnginePolicy {
 }
 
 export interface SpeechToTextRegistry {
+  readonly maxAudioBytes: number;
   getAdapter(runtime: SpeechToTextRuntime): SpeechToTextAdapter | undefined;
   listAvailableRuntimes(): SpeechToTextRuntime[];
   tryAcquireExecution(): (() => void) | undefined;
@@ -85,6 +86,7 @@ export function createWhisperCppRegistry(
   }
 
   return {
+    maxAudioBytes: policy.maxAudioBytes,
     getAdapter: (runtime) => adapterMap.get(runtime),
     listAvailableRuntimes: () => [...adapterMap.keys()],
     tryAcquireExecution: () => {
@@ -181,9 +183,9 @@ export async function runWhisperCppTranscription(
   profile: DeviceCapabilityProfile,
   requirements: DeviceCapabilityRequirements,
   request: SpeechToTextRequest,
-  maxAudioBytes = 25 * 1024 * 1024,
+  maxAudioBytes?: number,
 ): Promise<SpeechToTextExecution> {
-  validateSpeechToTextRequest(request, maxAudioBytes);
+  validateSpeechToTextRequest(request, maxAudioBytes ?? registry.maxAudioBytes);
   const resolution = resolveWhisperCppRuntime(registry, profile, requirements);
   if (!resolution.available || !resolution.adapter) {
     return { success: false, reasons: resolution.reasons };
