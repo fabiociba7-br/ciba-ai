@@ -845,6 +845,31 @@ describe("Ciba AI curated private memory", () => {
     const permanentList = await ownerRequest("/v1/owner/memory?scope=app");
     expect((await permanentList.json() as { memories: Array<{ expires_at: string | null }> }).memories[0].expires_at).toBeNull();
 
+    const proposalResponse = await ownerRequest("/v1/owner/memory/reviews?scope=app", "POST", {
+      source_role: "user",
+      source_text: "Prefiro respostas concisas e claras.",
+      key: "response_style",
+      value: "Prefiro respostas concisas e claras.",
+      valid_hours: 120,
+    });
+    expect(proposalResponse.status).toBe(201);
+    const proposal = await proposalResponse.json() as { proposal_id: string; classification: string; stored_as_memory: boolean };
+    expect(proposal.classification).toBe("possible_conflict");
+    expect(proposal.stored_as_memory).toBe(false);
+    const pendingReviews = await ownerRequest("/v1/owner/memory/reviews?scope=app");
+    expect((await pendingReviews.json() as { proposals: unknown[] }).proposals).toHaveLength(1);
+    const memoryBeforeApproval = await ownerRequest("/v1/owner/memory?scope=app");
+    expect((await memoryBeforeApproval.json() as { memories: Array<{ value: string }> }).memories[0].value)
+      .toBe("Prefere respostas objetivas e claras.");
+    const approvedReview = await ownerRequest("/v1/owner/memory/reviews?scope=app", "PATCH", {
+      proposal_id: proposal.proposal_id, decision: "approve",
+    });
+    expect(approvedReview.status).toBe(200);
+    expect(await approvedReview.json()).toMatchObject({ decided: true, decision: "approved", updated_memory: true });
+    const memoryAfterApproval = await ownerRequest("/v1/owner/memory?scope=app");
+    expect((await memoryAfterApproval.json() as { memories: Array<{ value: string }> }).memories[0].value)
+      .toBe("Prefiro respostas concisas e claras.");
+
     const ownSearch = await ownerRequest("/v1/owner/memory/retrieve", "POST", {
       query: "estilo de resposta", limit: 5,
     });
