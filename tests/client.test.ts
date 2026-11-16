@@ -158,6 +158,21 @@ describe("CibaClient", () => {
     expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/owner/memory/history?scope=app&limit=50");
   });
 
+  it("retrieves the structured owner context profile", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(JSON.stringify({
+      profile: { preferences: [], communication: [], work: [], interests: [], routines: [], personal_context: [], other: [] },
+      recurring_preferences: [{ term: "diretas", occurrences: 2, memory_ids: ["a", "b"], memory_keys: ["response_style", "work_style"] }],
+      review_suggestions: [], analyzed_records: 2, inference_calls: 0, automatic_changes: false,
+      cross_app_memory_requires_explicit_grant: true, profile_is_inferred: false,
+    }), { status: 200 }));
+    const client = new CibaClient({ baseUrl: "https://private.example", getAccessToken: () => "device-token", fetcher });
+    const result = await client.getOwnerProfile();
+    expect(result.recurring_preferences[0].term).toBe("diretas");
+    expect(result.inference_calls).toBe(0);
+    expect(result.automatic_changes).toBe(false);
+    expect(fetcher.mock.calls[0][0]).toBe("https://private.example/v1/owner/profile");
+  });
+
   it("retrieves deterministic memory relationship insights", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValueOnce(new Response(JSON.stringify({
       possible_conflicts: [], related: [], outdated: [], analyzed_records: 2,
