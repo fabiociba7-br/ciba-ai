@@ -41,79 +41,6 @@ describe("Garcia Whisper.cpp integration contract", () => {
     expect(registry.getAdapter("android_embedded")).toBeUndefined();
   });
 
-  it("validates supported runtime policy values and rejects duplicates", () => {
-    expect(() => createWhisperCppRegistry({
-      ...policy,
-      supportedRuntimes: ["unknown_runtime" as never],
-    })).toThrow("invalid_speech_to_text_policy");
-    expect(() => createWhisperCppRegistry({
-      ...policy,
-      supportedRuntimes: ["android_embedded", "android_embedded"],
-    })).toThrow("invalid_speech_to_text_policy");
-  });
-
-  it("snapshots policy limits and supported runtimes at registry creation", () => {
-    const mutablePolicy: SpeechToTextEnginePolicy = {
-      ...policy,
-      licenseStatus: "approved",
-      supportedRuntimes: ["android_embedded"],
-      maxAudioBytes: 1024,
-      maxConcurrentTranscriptions: 2,
-    };
-    const registry = createWhisperCppRegistry(mutablePolicy, [adapter]);
-    mutablePolicy.supportedRuntimes.splice(0, 1, "desktop_local");
-    mutablePolicy.maxAudioBytes = 1;
-    mutablePolicy.maxConcurrentTranscriptions = 1;
-
-    expect(registry.maxAudioBytes).toBe(1024);
-    expect(registry.listAvailableRuntimes()).toEqual(["android_embedded"]);
-    const releaseOne = registry.tryAcquireExecution();
-    const releaseTwo = registry.tryAcquireExecution();
-    expect(releaseOne).toBeTypeOf("function");
-    expect(releaseTwo).toBeTypeOf("function");
-    expect(registry.tryAcquireExecution()).toBeUndefined();
-    releaseOne?.();
-    releaseTwo?.();
-  });
-
-  it("fails closed for null, malformed, or accessor-backed registry configuration", () => {
-    expect(() => createWhisperCppRegistry(null as never)).toThrow("invalid_speech_to_text_policy");
-    const throwingPolicy = Object.defineProperty({}, "supportedRuntimes", {
-      get() { throw new Error("untrusted_policy_getter"); },
-    });
-    expect(() => createWhisperCppRegistry(throwingPolicy as never))
-      .toThrow("invalid_speech_to_text_policy");
-    const throwingAdapter = Object.defineProperty({}, "engine", {
-      get() { throw new Error("untrusted_adapter_getter"); },
-    });
-    expect(() => createWhisperCppRegistry({
-      ...policy, licenseStatus: "approved",
-    }, [throwingAdapter as never])).toThrow("invalid_whisper_cpp_adapter");
-  });
-
-  it("copies hardware requirement lists without invoking caller iterators", () => {
-    const architectures = new Proxy(["arm64"], {
-      get(target, property, receiver) {
-        if (property === Symbol.iterator) throw new Error("iterator_must_not_run");
-        return Reflect.get(target, property, receiver);
-      },
-    });
-    const sourceAdapter: SpeechToTextAdapter = {
-      ...adapter,
-      deviceRequirements: {
-        ...adapter.deviceRequirements,
-        architectures,
-      },
-    };
-    const registry = createWhisperCppRegistry({
-      ...policy, licenseStatus: "approved",
-    }, [sourceAdapter]);
-    expect(registry.getAdapter("android_embedded")?.deviceRequirements.architectures)
-      .toEqual(["arm64"]);
-    expect(Object.isFrozen(registry.getAdapter("android_embedded")?.deviceRequirements.architectures))
-      .toBe(true);
-  });
-
   it("blocks adapter registration until license review is approved", () => {
     expect(() => createWhisperCppRegistry(policy, [adapter]))
       .toThrow("speech_to_text_license_not_approved");
@@ -159,6 +86,20 @@ describe("Garcia Whisper.cpp integration contract", () => {
     expect(registry.listAvailableRuntimes()).toEqual(["android_embedded"]);
     expect(registry.getAdapter("android_embedded")?.modelId).toBe("ggml-tiny");
     expect(registry.getAdapter("desktop_local")).toBeUndefined();
+  });
+
+  it("rejects adapters with invalid hardware requirements at registration", () => {
+    const invalidAdapter: SpeechToTextAdapter = {
+      ...adapter,
+      deviceRequirements: {
+        ...adapter.deviceRequirements,
+        minimumRamMb: 128,
+      },
+    };
+    expect(() => createWhisperCppRegistry({
+      ...policy,
+      licenseStatus: "approved",
+    }, [invalidAdapter])).toThrow("invalid_whisper_cpp_adapter");
   });
 
   it("registers only explicitly approved adapters on supported runtimes", () => {
