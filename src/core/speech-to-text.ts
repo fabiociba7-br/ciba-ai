@@ -272,11 +272,14 @@ export function snapshotSpeechToTextResult(
   expectedModelId: string,
 ): SpeechToTextResult | null {
   try {
-    if (value === null || typeof value !== "object" || Array.isArray(value) ||
-        typeof expectedModelId !== "string" || !expectedModelId.trim()) {
-      return null;
-    }
-    const source = value as Record<string, unknown>;
+    if (typeof expectedModelId !== "string" || !expectedModelId.trim() ||
+        expectedModelId.length > 200) return null;
+    const source = readOwnDataRecord(
+      value,
+      ["engine", "modelId", "text", "language", "segments", "durationMs"],
+      ["engine", "modelId", "text", "language", "segments"]
+    );
+    if (!source) return null;
     const engine = source.engine;
     const modelId = source.modelId;
     const text = source.text;
@@ -292,18 +295,22 @@ export function snapshotSpeechToTextResult(
       return null;
     }
 
+    if (Object.getPrototypeOf(rawSegments) !== Array.prototype) return null;
+    const segmentDescriptors = Object.getOwnPropertyDescriptors(rawSegments);
     const segmentCount = rawSegments.length;
-    if (!Number.isInteger(segmentCount) || segmentCount < 0 || segmentCount > MAX_SEGMENTS) {
-      return null;
-    }
+    if (!Number.isInteger(segmentCount) || segmentCount < 0 || segmentCount > MAX_SEGMENTS ||
+        Reflect.ownKeys(segmentDescriptors).length !== segmentCount + 1) return null;
 
     const segments: SpeechSegment[] = [];
     for (let index = 0; index < segmentCount; index += 1) {
-      const rawSegment: unknown = rawSegments[index];
-      if (rawSegment === null || typeof rawSegment !== "object" || Array.isArray(rawSegment)) {
-        return null;
-      }
-      const segment = rawSegment as Record<string, unknown>;
+      const entry = segmentDescriptors[String(index)];
+      if (!entry || !("value" in entry) || !entry.enumerable) return null;
+      const segment = readOwnDataRecord(
+        entry.value,
+        ["startMs", "endMs", "text"],
+        ["startMs", "endMs", "text"]
+      );
+      if (!segment) return null;
       const startMs = segment.startMs;
       const endMs = segment.endMs;
       const segmentText = segment.text;
