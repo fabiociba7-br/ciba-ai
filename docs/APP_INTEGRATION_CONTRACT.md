@@ -198,3 +198,12 @@ Garcia transporta e correlaciona os resultados, mas a interpretação e a redaç
 Depois de consultar os resultados e verificar que chegaram respostas suficientes, o app de origem pode chamar `POST /v1/apps/tasks/synthesize` com `{ "task_id": "..." }` ou usar `synthesizeTaskResults(taskId)` no SDK. A resposta contém um texto consolidado, fontes identificadas, modelo e metadados de uma única chamada de inferência.
 
 A rota exige dispositivo autenticado e pareado a proprietário ativo, app habilitado, comunicação entre apps ligada e resultados ainda disponíveis com as concessões direcionais vigentes. Usa apenas o modelo resolvido pela política de custo zero; entrada máxima de 12.000 caracteres, até 20 fontes e saída máxima de 384 tokens. A chamada conta nos limites de uso. Resultados de apps são dados não confiáveis: instruções contidas neles não são seguidas. A síntese não executa ações, não ativa ensemble e não altera o chat normal. Preserve a lista de fontes e apresente incertezas ou contradições sem tratá-las como fatos verificados.
+
+
+## 15. Tipos de tarefa realmente implementados pelo aplicativo
+
+A lista `task_types` do cadastro administrativo é metadado usado para descoberta e roteamento, não uma prova técnica de que existe código capaz de executar cada tipo. Cada app integrado deve manter um registro local de callbacks com o SDK (`CibaTaskProcessorRegistry`) e obter a lista efetiva por `getRegisteredTaskTypes()`. Use somente essa lista para preencher `task_types` no cadastro central.
+
+O destino deve processar mensagens com `executeRegisteredTaskMessage(message, processors)`. Se o tipo recebido não possuir callback local, o SDK falha fechado antes de chamar qualquer API, não envia resultado e não confirma a mensagem. Isso evita declarar ou executar capacidades inexistentes por engano. O desenvolvedor deve tratar a tarefa não suportada explicitamente e manter o cadastro administrativo sincronizado após cada atualização do app.
+
+A verificação local não substitui concessões, autenticação, validação de entrada nem confirmação humana para operações sensíveis. Garcia continua sendo o coordenador/transporte; o processador e as permissões de recursos continuam pertencendo ao aplicativo destinatário.
