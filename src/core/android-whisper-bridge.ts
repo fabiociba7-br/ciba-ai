@@ -90,7 +90,19 @@ export function createAndroidWhisperCppAdapter(
         throw new Error("android_whisper_model_unavailable");
       }
 
-      const result = await transcribe(request);
+      // Give JNI its own audio buffer and clear it after the native promise
+      // settles, including rejected calls. The caller's buffer stays untouched.
+      const nativeAudio = request.audio.slice();
+      let result: SpeechToTextResult;
+      try {
+        result = await transcribe({
+          ...request,
+          audio: nativeAudio,
+        });
+      } finally {
+        nativeAudio.fill(0);
+      }
+
       if (!isValidResult(result, modelId)) {
         throw new Error("invalid_android_whisper_result");
       }
