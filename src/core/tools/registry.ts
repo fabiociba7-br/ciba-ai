@@ -15,6 +15,11 @@ export interface CibaToolInvocationContext {
   invocationId: string;
 }
 
+export interface CibaToolExecutionAuthorization {
+  approvalId: string;
+  identity: { ownerId: string; appId: string; deviceId: string };
+}
+
 export interface CibaToolAuthorizationRequest {
   conversationId?: string;
   invocationId?: string;
@@ -22,6 +27,8 @@ export interface CibaToolAuthorizationRequest {
   risk: CibaToolRisk;
   requiresApproval: boolean;
   input: unknown;
+  approvalId?: string;
+  approvalIdentity?: { ownerId: string; appId: string; deviceId: string };
 }
 
 export interface CibaToolRegistryOptions {
@@ -48,7 +55,12 @@ export interface ExecutableCibaToolRegistry extends CibaToolRegistry {
   describe(): CibaToolModelDescriptor[];
   /** Validates and snapshots a proposed call without authorizing or executing it. */
   prepare(toolId: string, input: unknown, context?: CibaToolInvocationContext): CibaToolInvocationPlan;
-  execute(toolId: string, input: unknown, context?: CibaToolInvocationContext): Promise<unknown>;
+  execute(
+    toolId: string,
+    input: unknown,
+    context?: CibaToolInvocationContext,
+    authorization?: CibaToolExecutionAuthorization
+  ): Promise<unknown>;
 }
 
 const VALID_RISKS: CibaToolRisk[] = ["read", "write", "external"];
@@ -85,6 +97,36 @@ function snapshotInvocationContext(value: unknown): CibaToolInvocationContext {
   return Object.freeze({
     conversationId: fields.conversationId,
     invocationId: fields.invocationId
+  });
+}
+
+function snapshotExecutionAuthorization(value: unknown): CibaToolExecutionAuthorization {
+  if (value === null || typeof value !== "object" || Array.isArray(value) ||
+      Object.getPrototypeOf(value) !== Object.prototype) throw new Error("tool_approval_required");
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  if (Reflect.ownKeys(descriptors).length !== 2 ||
+      !descriptors.approvalId || !("value" in descriptors.approvalId) || !descriptors.approvalId.enumerable ||
+      !descriptors.identity || !("value" in descriptors.identity) || !descriptors.identity.enumerable) {
+    throw new Error("tool_approval_required");
+  }
+  const approvalId = descriptors.approvalId.value;
+  const identity = descriptors.identity.value;
+  if (typeof approvalId !== "string" || !approvalId.trim() || approvalId.length > 128 ||
+      identity === null || typeof identity !== "object" || Array.isArray(identity) ||
+      Object.getPrototypeOf(identity) !== Object.prototype) throw new Error("tool_approval_required");
+  const fields = Object.getOwnPropertyDescriptors(identity);
+  const keys = ["ownerId", "appId", "deviceId"];
+  if (Reflect.ownKeys(fields).length !== keys.length || keys.some((key) =>
+      !fields[key] || !("value" in fields[key]!) || !fields[key]!.enumerable ||
+      typeof fields[key]!.value !== "string" || !(fields[key]!.value as string).trim() ||
+      (fields[key]!.value as string).length > 150)) throw new Error("tool_approval_required");
+  return Object.freeze({
+    approvalId,
+    identity: Object.freeze({
+      ownerId: fields.ownerId!.value as string,
+      appId: fields.appId!.value as string,
+      deviceId: fields.deviceId!.value as string
+    })
   });
 }
 
@@ -464,12 +506,20 @@ export function createCibaToolRegistry(
         input: deepFreeze(safeInput)
       });
     },
-    async execute(toolId: string, input: unknown, rawContext?: CibaToolInvocationContext) {
+    async execute(
+      toolId: string,
+      input: unknown,
+      rawContext?: CibaToolInvocationContext,
+      rawAuthorization?: CibaToolExecutionAuthorization
+    ) {
       const item = registered.get(toolId);
       if (!item) throw new Error("tool_not_allowlisted");
       const context = item.definition.requiresApproval
         ? snapshotInvocationContext(rawContext)
         : rawContext === undefined ? undefined : snapshotInvocationContext(rawContext);
+      const authorization = item.definition.requiresApproval
+        ? snapshotExecutionAuthorization(rawAuthorization)
+        : rawAuthorization === undefined ? undefined : (() => { throw new Error("unexpected_tool_approval"); })();
 
       let safeInput: unknown;
       try {
@@ -492,6 +542,10 @@ export function createCibaToolRegistry(
           risk: item.definition.risk,
           requiresApproval: item.definition.requiresApproval,
           ...(context ?? {}),
+          ...(authorization ? {
+            approvalId: authorization.approvalId,
+            approvalIdentity: authorization.identity
+          } : {}),
           input: authorizationInput
         });
         if (authorized !== true) throw new Error("tool_authorization_denied");
