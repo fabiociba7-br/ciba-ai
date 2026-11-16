@@ -124,7 +124,9 @@ function snapshotRecord(value: unknown, taskId: string): TaskResultRecord | null
         Object.getPrototypeOf(fields.payload) !== Object.prototype) return null;
 
     const payloadDescriptors = Object.getOwnPropertyDescriptors(fields.payload);
-    const payloadAllowed = new Set(["protocol", "status", "result"]);
+    const payloadAllowed = new Set([
+      "protocol", "status", "result", "contract", "contract_version", "task_id",
+    ]);
     const payloadKeys = Reflect.ownKeys(payloadDescriptors);
     if (payloadKeys.some((key) => typeof key !== "string" || !payloadAllowed.has(key))) return null;
     const payload: Record<string, unknown> = Object.create(null);
@@ -134,6 +136,9 @@ function snapshotRecord(value: unknown, taskId: string): TaskResultRecord | null
       payload[key] = descriptor.value;
     }
     if (payload.protocol !== "garcia.task.result" ||
+        (payload.contract !== undefined && payload.contract !== "garcia-app") ||
+        (payload.contract_version !== undefined && payload.contract_version !== "1.0.0") ||
+        (payload.task_id !== undefined && payload.task_id !== taskId) ||
         !["completed", "partial", "failed"].includes(payload.status as string)) return null;
 
     const safeResult = payload.result === undefined

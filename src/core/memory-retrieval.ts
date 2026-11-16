@@ -357,7 +357,7 @@ export function buildProfileAwareChatMemoryContext(
   const profile = buildOwnerProfile(toInsightRecords(uniqueRecords));
   const entryLimit = Math.min(Math.max(Math.floor(maxEntries), 0), MAX_CHAT_MEMORY_ENTRIES);
   const communicationEntries = profile.profile.communication.slice(0, Math.min(2, entryLimit));
-  const selected: RankedMemory[] = communicationEntries.map((entry) => ({
+  const selected: RankedMemory[] = communicationEntries.map(({ category: _category, ...entry }) => ({
     ...entry,
     created_by_app_id: entry.source_app_id || "owner",
     relevance: 100,
