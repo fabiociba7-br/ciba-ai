@@ -154,3 +154,8 @@ A classificação `new`, `unchanged` ou `possible_conflict` é determinística e
 ## Análise de relações entre memórias
 
 `getMemoryInsights()` consulta `GET /v1/owner/memory/insights` e retorna possíveis conflitos, conteúdos lexicalmente relacionados e registros expirados/antigos. A API inclui somente memórias próprias e escopos de outros apps/centrais com concessão ativa de leitura. A análise é determinística, limitada a 200 registros e não modifica dados nem chama IA.
+
+
+## Histórico de memória
+
+`getMemoryHistory({ scope, sourceAppId, memoryId, limit })` consulta `GET /v1/owner/memory/history`. Retorna metadados de criação, edição, exclusão e decisões de revisão, sem valores armazenados ou conteúdo de conversas. O limite é de 1 a 100 eventos; por padrão, 50. O acesso segue as concessões de leitura da memória.
