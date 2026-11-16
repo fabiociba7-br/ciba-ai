@@ -60,6 +60,8 @@ describe("Ciba AI Worker integration", () => {
     expect(html).toContain("/v1/owner/memory/insights");
     expect(html).toContain("Histórico de alterações da memória");
     expect(html).toContain("/v1/owner/memory/history");
+    expect(html).toContain("Perfil contextual do proprietário");
+    expect(html).toContain("/v1/owner/profile");
     expect(html).not.toContain("sessionStorage");
     expect(html).not.toContain("localStorage");
   });
@@ -770,6 +772,8 @@ describe("Ciba AI curated private memory", () => {
     expect(blockedMemory.status).toBe(403);
     const blockedInsights = await ownerRequest("/v1/owner/memory/insights");
     expect(blockedInsights.status).toBe(403);
+    const blockedProfile = await ownerRequest("/v1/owner/profile");
+    expect(blockedProfile.status).toBe(403);
     const blockedHistory = await ownerRequest("/v1/owner/memory/history?scope=app");
     expect(blockedHistory.status).toBe(403);
     const blockedCandidate = await ownerRequest("/v1/owner/memory/candidates", "POST", {
@@ -933,6 +937,22 @@ describe("Ciba AI curated private memory", () => {
     expect(insights.inference_calls).toBe(0);
     expect(insights.cross_app_memory_requires_explicit_grant).toBe(true);
     expect(insights.automatic_changes).toBe(false);
+
+    const profileResponse = await ownerRequest("/v1/owner/profile");
+    expect(profileResponse.status).toBe(200);
+    const profile = await profileResponse.json() as {
+      profile: Record<string, Array<{ memory_key: string }>>;
+      recurring_preferences: Array<{ term: string; memory_ids: string[] }>;
+      review_suggestions: Array<{ requires_owner_confirmation: boolean }>;
+      inference_calls: number;
+      automatic_changes: boolean;
+      cross_app_memory_requires_explicit_grant: boolean;
+    };
+    expect(profile.profile.preferences.length + profile.profile.communication.length + profile.profile.other.length).toBeGreaterThan(0);
+    expect(profile.inference_calls).toBe(0);
+    expect(profile.automatic_changes).toBe(false);
+    expect(profile.cross_app_memory_requires_explicit_grant).toBe(true);
+    expect(profile.review_suggestions.every((item) => item.requires_owner_confirmation)).toBe(true);
 
     const sharedSearch = await ownerRequest("/v1/owner/memory/retrieve", "POST", {
       query: "memória central explícita", limit: 10,
