@@ -103,9 +103,12 @@ describe("guarded Whisper.cpp transcription execution", () => {
     expect(calls).toBe(1);
     finish?.();
     await expect(first).resolves.toMatchObject({ success: true });
-    await expect(runWhisperCppTranscription(
+    const second = runWhisperCppTranscription(
       registry, profile, requirements, request,
-    )).resolves.toMatchObject({ success: true });
+    );
+    await Promise.resolve();
+    finish?.();
+    await expect(second).resolves.toMatchObject({ success: true });
     expect(calls).toBe(2);
   });
 
