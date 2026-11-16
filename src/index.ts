@@ -980,6 +980,13 @@ const handleMemoryReviews = async (request: Request, env: Env, url: URL) => {
         .bind(value, timestamp, proposal.valid_hours === null ? null : new Date(Date.now() + Number(proposal.valid_hours) * 3600000).toISOString(), proposal.existing_memory_id, owner.owner_id, scope, sourceAppId).run();
       if (updated.meta.changes !== 1) return json({ error: "memory_proposal_stale", proposal_id: proposalId }, 409);
     } else {
+      const collision = scope === "owner"
+        ? await env.DB.prepare("SELECT memory_id FROM memory_records WHERE owner_id = ? AND scope = 'owner' AND memory_key = ? AND deleted_at IS NULL").bind(owner.owner_id, key).first<{ memory_id: string }>()
+        : await env.DB.prepare("SELECT memory_id FROM memory_records WHERE owner_id = ? AND scope = 'app' AND source_app_id = ? AND memory_key = ? AND deleted_at IS NULL").bind(owner.owner_id, device.app_id, key).first<{ memory_id: string }>();
+      if (collision) {
+        await env.DB.prepare("UPDATE memory_review_proposals SET status = 'stale', decided_at = ? WHERE proposal_id = ? AND status = 'pending'").bind(timestamp, proposalId).run();
+        return json({ error: "memory_proposal_stale", proposal_id: proposalId }, 409);
+      }
       const count = await env.DB.prepare("SELECT COUNT(*) AS total FROM memory_records WHERE owner_id = ? AND scope = ? AND source_app_id IS ? AND deleted_at IS NULL").bind(owner.owner_id, scope, sourceAppId).first<{ total: number }>();
       if ((count?.total || 0) >= 200) return json({ error: "memory_limit_reached", maximum: 200 }, 409);
       const memoryId = crypto.randomUUID();
