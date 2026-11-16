@@ -134,7 +134,14 @@ export interface CibaInboxMessage<T = unknown> {
 
 export type CibaMemoryScope = "app" | "owner";
 
-export interface CibaMemoryCandidateInput {\n  sourceText: string;\n  key: string;\n  value: string;\n  scope?: CibaMemoryScope;\n}\n\nexport interface CibaMemoryInput {
+export interface CibaMemoryCandidateInput {
+  sourceText: string;
+  key: string;
+  value: string;
+  scope?: CibaMemoryScope;
+}
+
+export interface CibaMemoryInput {
   scope: CibaMemoryScope;
   key: string;
   value: string;
