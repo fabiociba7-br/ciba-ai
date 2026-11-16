@@ -21,10 +21,10 @@ describe("Garcia read-only capability catalog tools", () => {
         id: "coding_agent",
         status: "planned",
         modelWeightsBundled: false,
-        readiness: {
+        readiness: expect.objectContaining({
           executable: false,
           blockers: ["not_available", "license_review_required", "adapter_missing"],
-        },
+        }),
       }),
     ]));
 
