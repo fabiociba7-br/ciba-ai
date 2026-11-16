@@ -227,6 +227,29 @@ describe("Android Whisper.cpp bridge contract", () => {
     await expect(adapter.transcribe(request)).resolves.toEqual(result);
   });
 
+  it("rejects oversized or inconsistent native transcription results", async () => {
+    const invalidResults: SpeechToTextResult[] = [
+      { ...result, text: "x".repeat(100_001) },
+      { ...result, language: "PT-br" },
+      { ...result, segments: Array.from({ length: 5_001 }, () => ({ startMs: 0, endMs: 1, text: "x" })) },
+      { ...result, segments: [{ startMs: 0, endMs: 1, text: "x".repeat(10_001) }] },
+      { ...result, durationMs: 100, segments: [{ startMs: 0, endMs: 101, text: "late" }] },
+    ];
+
+    for (const invalidResult of invalidResults) {
+      const adapter = createAndroidWhisperCppAdapter(bridge({
+        transcribe: async () => invalidResult,
+      }), {
+        modelId: "ggml-tiny",
+        modelSha256: MODEL_SHA256,
+        maxAudioBytes: 1024,
+        deviceRequirements,
+      });
+      await expect(adapter.transcribe(request))
+        .rejects.toThrow("invalid_android_whisper_result");
+    }
+  });
+
   it("returns a valid transcription from a ready native bridge", async () => {
     const adapter = createAndroidWhisperCppAdapter(bridge(), {
       modelId: "ggml-tiny",
