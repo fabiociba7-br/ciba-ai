@@ -979,8 +979,10 @@ const handleMemoryReviews = async (request: Request, env: Env, url: URL) => {
       .bind(proposalId, owner.owner_id, scope, sourceAppId).first<Record<string, unknown>>();
     if (!proposal) return json({ error: "memory_proposal_not_found" }, 404);
     const timestamp = nowIso();
+    let auditedMemoryId = typeof proposal.existing_memory_id === "string" ? proposal.existing_memory_id : null;
     if (decision === "reject") {
       await env.DB.prepare("UPDATE memory_review_proposals SET status = 'rejected', decided_at = ? WHERE proposal_id = ? AND status = 'pending'").bind(timestamp, proposalId).run();
+      await recordMemoryAudit(env, { ownerId: owner.owner_id, proposalId, scope, sourceAppId, key: String(proposal.memory_key), action: "review_rejected", actorAppId: device.app_id, occurredAt: timestamp });
       return json({ decided: true, decision: "rejected", proposal_id: proposalId });
     }
     const key = String(proposal.memory_key);
@@ -992,6 +994,7 @@ const handleMemoryReviews = async (request: Request, env: Env, url: URL) => {
         return json({ error: "memory_proposal_stale", proposal_id: proposalId }, 409);
       }
       await env.DB.prepare("UPDATE memory_review_proposals SET status = 'approved', decided_at = ? WHERE proposal_id = ? AND status = 'pending'").bind(timestamp, proposalId).run();
+      await recordMemoryAudit(env, { ownerId: owner.owner_id, memoryId: String(proposal.existing_memory_id), proposalId, scope, sourceAppId, key, action: "review_approved", actorAppId: device.app_id, occurredAt: timestamp });
       return json({ decided: true, decision: "approved", unchanged: true, proposal_id: proposalId });
     }
     if (proposal.classification === "possible_conflict") {
@@ -1014,10 +1017,12 @@ const handleMemoryReviews = async (request: Request, env: Env, url: URL) => {
       const count = await env.DB.prepare("SELECT COUNT(*) AS total FROM memory_records WHERE owner_id = ? AND scope = ? AND source_app_id IS ? AND deleted_at IS NULL").bind(owner.owner_id, scope, sourceAppId).first<{ total: number }>();
       if ((count?.total || 0) >= 200) return json({ error: "memory_limit_reached", maximum: 200 }, 409);
       const memoryId = crypto.randomUUID();
+      auditedMemoryId = memoryId;
       await env.DB.prepare("INSERT INTO memory_records(memory_id, owner_id, scope, source_app_id, memory_key, value, consent, created_by_app_id, created_at, updated_at, expires_at) VALUES(?, ?, ?, ?, ?, ?, 'curated', ?, ?, ?, ?)")
         .bind(memoryId, owner.owner_id, scope, sourceAppId, key, value, device.app_id, timestamp, timestamp, proposal.valid_hours === null ? null : new Date(Date.now() + Number(proposal.valid_hours) * 3600000).toISOString()).run();
     }
     await env.DB.prepare("UPDATE memory_review_proposals SET status = 'approved', decided_at = ? WHERE proposal_id = ? AND status = 'pending'").bind(timestamp, proposalId).run();
+    await recordMemoryAudit(env, { ownerId: owner.owner_id, memoryId: auditedMemoryId, proposalId, scope, sourceAppId, key, action: "review_approved", actorAppId: device.app_id, occurredAt: timestamp });
     return json({ decided: true, decision: "approved", proposal_id: proposalId, updated_memory: proposal.classification === "possible_conflict" });
   }
   return json({ error: "method_not_allowed" }, 405);
@@ -2454,6 +2459,7 @@ export default {
       env.DB.prepare("DELETE FROM owner_pairing_invitations WHERE expires_at < ? AND consumed_at IS NULL").bind(invitationCutoff),
       env.DB.prepare("DELETE FROM app_messages WHERE expires_at < ? OR (acknowledged_at IS NOT NULL AND acknowledged_at < ?)").bind(nowIso(), new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
       env.DB.prepare("DELETE FROM memory_records WHERE (expires_at IS NOT NULL AND expires_at < ?) OR (deleted_at IS NOT NULL AND deleted_at < ?)").bind(nowIso(), new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
+      env.DB.prepare("DELETE FROM memory_audit_events WHERE occurred_at < ?").bind(new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString()),
     ]);
   },
   async fetch(request: Request, env: Env): Promise<Response> {
