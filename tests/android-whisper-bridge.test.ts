@@ -153,8 +153,8 @@ describe("Android Whisper.cpp bridge contract", () => {
     mutableOptions.modelId = "replacement-model";
     mutableOptions.maxAudioBytes = 1;
     mutableRequirements.minimumRamMb = 8192;
-    mutableRequirements.architectures[0] = "x86";
-    mutableRequirements.platforms[0] = "linux";
+    mutableRequirements.architectures![0] = "x86";
+    mutableRequirements.platforms![0] = "linux";
 
     expect(adapter.modelId).toBe("ggml-tiny");
     expect(adapter.deviceRequirements.minimumRamMb).toBe(1024);
