@@ -45,7 +45,7 @@ function snapshotMemoryRecord(value: unknown): MemorySearchRecord | null {
       if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
       copy[key] = descriptor.value;
     }
-    if (typeof copy.memory_id !== "string" || !copy.memory_id || copy.memory_id.length > 200 ||
+    if (typeof copy.memory_id !== "string" || !copy.memory_id.trim() || copy.memory_id.length > 200 ||
         (copy.scope !== "app" && copy.scope !== "owner") ||
         !(copy.source_app_id === null || (typeof copy.source_app_id === "string" && copy.source_app_id.length > 0 && copy.source_app_id.length <= 128)) ||
         typeof copy.memory_key !== "string" || !copy.memory_key || copy.memory_key.length > 200 ||
@@ -98,11 +98,13 @@ function snapshotMemoryRecords(value: unknown): MemorySearchRecord[] | null {
     const descriptors = Object.getOwnPropertyDescriptors(value);
     if (Reflect.ownKeys(descriptors).length !== value.length + 1) return null;
     const result: MemorySearchRecord[] = [];
+    const seenIds = new Set<string>();
     for (let index = 0; index < value.length; index += 1) {
       const descriptor = descriptors[String(index)];
       if (!descriptor || !("value" in descriptor) || !descriptor.enumerable) return null;
       const record = snapshotMemoryRecord(descriptor.value);
-      if (!record) return null;
+      if (!record || seenIds.has(record.memory_id)) return null;
+      seenIds.add(record.memory_id);
       result.push(record);
     }
     return result;
