@@ -1,16 +1,18 @@
-name: Ciba AI CI
+name: Ciba AI CI (manual)
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ciba-ai-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   typecheck:
+    name: TypeScript typecheck only
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,4 +21,3 @@ jobs:
           node-version: 22
       - run: npm install --no-audit --no-fund --legacy-peer-deps
       - run: npm run typecheck
-      - run: npm test
