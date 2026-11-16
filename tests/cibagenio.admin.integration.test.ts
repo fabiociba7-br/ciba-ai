@@ -42,6 +42,27 @@ describe("CibaGenio administrative API", () => {
     expect(await write.json()).toEqual({ error: "unauthorized" });
   });
 
+  it("does not accept credentials from query parameters or request bodies", async () => {
+    const queryCredential = await worker.fetch(new Request(
+      "https://ciba-ai.test/v1/admin/cibagenio?token=not-a-valid-token",
+      { method: "GET" },
+    ));
+    expect(queryCredential.status).toBe(401);
+
+    const bodyCredential = await request("POST", {
+      resource_id: "external_tools",
+      enabled: true,
+      admin_token: "not-a-valid-token",
+    });
+    expect(bodyCredential.status).toBe(401);
+
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const row = await db.prepare(
+      "SELECT resource_id FROM cibagenio_controls WHERE resource_id = 'external_tools' LIMIT 1"
+    ).first();
+    expect(row).toBeNull();
+  });
+
   it("persists global and app-scoped commands and records audit events", async () => {
     const globalWrite = await request("POST", {
       resource_id: "external_tools",
