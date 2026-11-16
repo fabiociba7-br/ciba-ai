@@ -172,11 +172,9 @@ export function createCibaToolConsentStore(): CibaToolConsentStore {
   }
 
   function closeInvocation(invocationId: string, now: number): void {
-    if (!closed.has(invocationId) && closed.size >= MAX_TRACKED_INVOCATIONS) {
-      const oldest = closed.keys().next().value as string | undefined;
-      if (oldest !== undefined) closed.delete(oldest);
-    }
-    closed.set(invocationId, now + CONSENT_TTL_MS);
+    // Never evict an unexpired replay marker. request() reserves capacity for
+    // active and closed IDs together, so a live invocation always has a slot.
+    if (!closed.has(invocationId)) closed.set(invocationId, now + CONSENT_TTL_MS);
   }
 
   function prune(now: number): void {
@@ -205,7 +203,7 @@ export function createCibaToolConsentStore(): CibaToolConsentStore {
         if (!matches(existing, request)) throw new Error("tool_consent_invocation_conflict");
         return approved.has(request.invocationId) ? "approved" : "approval_required";
       }
-      if (pending.size + approved.size >= MAX_TRACKED_INVOCATIONS) {
+      if (pending.size + approved.size + closed.size >= MAX_TRACKED_INVOCATIONS) {
         throw new Error("tool_consent_capacity_reached");
       }
       pending.set(request.invocationId, request);
