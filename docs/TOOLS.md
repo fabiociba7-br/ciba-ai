@@ -177,7 +177,7 @@ This helper is an application integration primitive, not a UI component. It is n
 
 ## Durable approval storage foundation (migration 0016)
 
-Migration `0016_durable_tool_approvals.sql` adds a D1 table for future persistent approvals. Each record is scoped to an owner, app, originating device, conversation, invocation, tool, risk class, and exact serialized input (with a SHA-256 digest). The schema includes explicit lifecycle states, expiry, the device that recorded the decision, and indexes for owner/status and expiry lookups.
+Migration `0016_durable_tool_approvals.sql` adds a D1 table for future persistent approvals. The migration also adds a composite device identity key and composite foreign keys, so SQLite enforces that both the originating device and the approving device belong to the same recorded owner and app. Each record is scoped to an owner, app, originating device, conversation, invocation, tool, risk class, and exact serialized input (with a SHA-256 digest). The schema includes explicit lifecycle states, expiry, the device that recorded the decision, and indexes for owner/status and expiry lookups.
 
 This migration is storage-only. The current `CibaToolConsentStore` and `CibaToolApprovalFlow` remain synchronous and in-memory; they do not read or write this table. The public Worker does not expose approval or tool-execution routes, and no migration is applied to the remote D1 database by this change.
 
