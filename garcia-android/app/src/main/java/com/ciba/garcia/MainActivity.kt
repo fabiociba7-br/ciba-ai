@@ -58,6 +58,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var status by remember { mutableStateOf("Verificando conexão…") }
     var error by remember { mutableStateOf("") }
     var activation by remember { mutableStateOf("") }
+    var pairingCode by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
     var usage by remember { mutableStateOf("") }
     var connected by remember { mutableStateOf(store.get("device_token") != null) }
@@ -72,10 +73,11 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         busy = true; error = ""
         scope.launch {
             try {
-                withContext(Dispatchers.IO) { client.activate(activation.trim()) }
+                withContext(Dispatchers.IO) { client.activate(activation.trim(), pairingCode.trim()) }
                 connected = true
                 status = "Conectada ao Ciba AI"
                 activation = ""
+                pairingCode = ""
             } catch (e: Exception) { error = e.message ?: "Não foi possível ativar." }
             finally { busy = false }
         }
@@ -142,16 +144,19 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.Center) {
                     Text("Sua inteligência pessoal.", fontSize = 30.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
-                    Text("A Garcia funciona de forma independente. Para vincular este único dispositivo, informe o código privado de ativação emitido pelo administrador.", color = Muted)
+                    Text("A Garcia funciona de forma independente. Para vincular este único dispositivo, informe os dois códigos privados de provisionamento emitidos para este aparelho.", color = Muted)
                     Spacer(Modifier.height(22.dp))
                     OutlinedTextField(activation, { activation = it }, Modifier.fillMaxWidth(),
-                        label = { Text("Código de ativação") }, singleLine = true)
+                        label = { Text("Código privado de registro") }, singleLine = true)
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(pairingCode, { pairingCode = it }, Modifier.fillMaxWidth(),
+                        label = { Text("Código de vínculo do proprietário") }, singleLine = true)
                     Spacer(Modifier.height(12.dp))
-                    Button(onClick = { activate() }, enabled = !busy && activation.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
+                    Button(onClick = { activate() }, enabled = !busy && activation.isNotBlank() && pairingCode.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
                         Text(if (busy) "Conectando…" else "Ativar Garcia")
                     }
                     if (error.isNotBlank()) Text(error, color = Color(0xFFFF8B8B), modifier = Modifier.padding(top = 12.dp))
-                    Text("Não existe cadastro de usuário ou senha. A ativação é feita uma única vez neste aparelho.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 18.dp))
+                    Text("Não existe cadastro de usuário ou senha. O vínculo é feito uma única vez neste aparelho e associa a Garcia ao seu proprietário.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 18.dp))
                 }
             } else if (history.isEmpty()) {
                 Column(Modifier.fillMaxSize().padding(padding).padding(26.dp), verticalArrangement = Arrangement.Center) {
