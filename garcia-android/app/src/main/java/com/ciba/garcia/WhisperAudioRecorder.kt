@@ -42,6 +42,7 @@ internal class WhisperAudioRecorder {
         samples = ShortArray(SAMPLE_RATE * MAX_SECONDS)
         sampleCount = 0
         stopReason = null
+        activityDetector.reset()
         startedAtMillis = SystemClock.elapsedRealtime()
         recorder = audioRecord
         try {
