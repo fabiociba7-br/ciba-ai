@@ -63,14 +63,14 @@ O workflow é manual para impedir deploy ou alteração do banco em cada commit.
 8. Cadastrar os apps em `POST /v1/admin/apps`, emitir convites individuais e testar cadastro de dispositivo e uma chamada de IA.
 9. Conferir consumo de Neurons, métricas D1, erros e limites antes de liberar qualquer APK.
 
-## 4. Controles de interrupção
+## 5. Controles de interrupção
 
 - Para pausar inferência sem novo deploy, configurar `ai_enabled=false` ou `maintenance_mode=true` pela API administrativa.
 - Se Workers AI retornar limite excedido, não migrar automaticamente para plano pago nem trocar para outro provedor.
 - Se D1 atingir o limite gratuito, interromper novas tentativas automáticas e aguardar a renovação da franquia ou decidir conscientemente uma mudança de plano.
 - Se o modelo sair da lista gratuita ou for descontinuado, manter a IA desabilitada até revisão técnica e de custos.
 
-## 5. Estado atual
+## 6. Estado atual
 
 - Código e migrations estão no repositório.
 - D1 remoto `ciba-ai-db` criado; ID real configurado em `wrangler.toml`.
@@ -78,7 +78,9 @@ O workflow é manual para impedir deploy ou alteração do banco em cada commit.
 - `ADMIN_TOKEN` ainda não foi configurado.
 - IDs Android permitidos ainda não foram confirmados.
 - Worker ainda não foi publicado.
-- O workflow atual do GitHub Actions falha antes de iniciar o runner (job sem runner atribuído); ainda não há resultado válido de typecheck/testes nem deploy automático.
+- A execução principal #737, no commit anterior às alterações recentes de deploy/documentação, concluiu typecheck e testes com sucesso.
+- As execuções #741, #742 e #743 falharam sem iniciar etapas e sem disponibilizar logs; isso indica ausência de runner nessas tentativas, mas não identifica a causa administrativa. A integração disponível não expõe a configuração de runners do repositório.
+- O workflow manual de deploy foi adicionado, mas ainda não foi executado: faltam os três secrets GitHub listados na seção 3 e a validação de uma execução com credenciais reais.
 - Nenhuma inferência real foi executada pela conta Cloudflare.
 
 Portanto, o Ciba AI está preparado em código e tem o D1 provisionado, mas ainda não está online nem pronto para receber usuários.
