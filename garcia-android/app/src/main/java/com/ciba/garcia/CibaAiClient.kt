@@ -78,5 +78,12 @@ class CibaAiClient(private val store: SecureStore) {
         return response.optString("response").ifBlank { "A Garcia recebeu uma resposta vazia do serviço." }
     }
 
+    fun facebookStatus(): JSONObject = request("/v1/owner/facebook", "GET", authenticated = true)
+
+    fun linkFacebook(accessToken: String): JSONObject = request(
+        "/v1/owner/facebook/link", "POST",
+        JSONObject().put("access_token", accessToken), authenticated = true
+    )
+
     fun usage(): JSONObject = request("/v1/usage", "GET", authenticated = true)
 }
