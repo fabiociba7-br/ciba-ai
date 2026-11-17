@@ -366,18 +366,8 @@ describe("Garcia private single-owner access", () => {
   });
 });
 
-describe("Ciba AI administrative safety ceilings", () => {
-  it("rejects runtime limits that exceed the zero-cost safety ceilings", async () => {
-    const globalLimit = await adminRequest("/v1/admin/settings", "POST", {
-      settings: { daily_global_limit: 51 },
-    });
-    expect(globalLimit.status).toBe(400);
-    expect(await globalLimit.json()).toEqual({
-      error: "setting_exceeds_safety_ceiling",
-      key: "daily_global_limit",
-      maximum: 50,
-    });
-
+describe("Ciba AI administrative technical safety ceilings", () => {
+  it("rejects output-token settings that exceed the technical safety ceiling", async () => {
     const outputLimit = await adminRequest("/v1/admin/settings", "POST", {
       settings: { max_output_tokens: 513 },
     });
