@@ -9,7 +9,7 @@ import android.os.Looper
 internal data class GarciaVoiceOption(val id: String, val name: String, val language: String, val offline: Boolean, val quality: Int)
 
 /** Android TTS voice selector. Preview never changes the saved voice. */
-internal class LocalSpeechOutput(context: Context, private val onAvailabilityChanged: (Boolean, String) -> Unit, private val onUtteranceDone: () -> Unit = {}) {
+internal class LocalSpeechOutput(context: Context, private val onAvailabilityChanged: (Boolean, String) -> Unit, private val onUtteranceDone: () -> Unit = {}, private val onUtteranceStarted: () -> Unit = {}) {
     private val appContext = context.applicationContext
     private val preferences = appContext.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
     private var engine: TextToSpeech? = null
@@ -32,9 +32,9 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
             selectedVoiceId = chosen.name
             preferences.edit().putString("voice_id", chosen.name).apply()
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) = Unit
+                override fun onStart(utteranceId: String?) { Handler(Looper.getMainLooper()).post { if (!closed && utteranceId != null && activeUtteranceId == utteranceId) onUtteranceStarted() } }
                 override fun onDone(utteranceId: String?) { Handler(Looper.getMainLooper()).post { if (!closed && utteranceId != null && activeUtteranceId == utteranceId) { activeUtteranceId = null; previewRestoreVoiceId?.let { restore -> previewRestoreVoiceId = null; setVoiceInternal(restore) }; onUtteranceDone() } } }
-                override fun onError(utteranceId: String?) { Handler(Looper.getMainLooper()).post { if (!closed && utteranceId != null && activeUtteranceId == utteranceId) { activeUtteranceId = null; previewRestoreVoiceId = null; onAvailabilityChanged(false, "Falha na reprodução da resposta por voz.") } } }
+                override fun onError(utteranceId: String?) { Handler(Looper.getMainLooper()).post { if (!closed && utteranceId != null && activeUtteranceId == utteranceId) { activeUtteranceId = null; previewRestoreVoiceId = null; onUtteranceDone(); onAvailabilityChanged(false, "Falha na reprodução da resposta por voz.") } } }
             })
             ready = true
             onAvailabilityChanged(true, statusLabel(chosen))
@@ -83,7 +83,7 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
         return result == TextToSpeech.SUCCESS
     }
     fun speak(text: String): Boolean { previewRestoreVoiceId = null; return speakInternal(text) }
-    fun stop() { activeUtteranceId = null; previewRestoreVoiceId = null; engine?.stop(); selectedVoiceId?.let(::setVoiceInternal) }
+    fun stop() { activeUtteranceId = null; previewRestoreVoiceId = null; onUtteranceDone(); engine?.stop(); selectedVoiceId?.let(::setVoiceInternal) }
     fun shutdown() { closed = true; ready = false; activeUtteranceId = null; engine?.stop(); engine?.shutdown(); engine = null }
     private fun statusLabel(voice: android.speech.tts.Voice) = "Resposta por voz pronta · ${voice.name.replace('_', ' ')}" + if (voice.isNetworkConnectionRequired) " · requer internet" else " · offline"
     companion object { private const val MAX_SPOKEN_CHARS = 8_000 }
