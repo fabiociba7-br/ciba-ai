@@ -90,7 +90,7 @@ describe("Ciba AI Worker integration", () => {
     expect(html).not.toContain("localStorage");
   });
 
-  it("registers devices, consumes invitations once, revokes access and enforces daily quota", async () => {
+  it("registers devices, consumes invitations once, revokes access and preserves technical input protections", async () => {
     const appResponse = await adminRequest("/v1/admin/apps", "POST", {
       app_id: appId,
       display_name: "Ciba Integration Test",
@@ -118,10 +118,10 @@ describe("Ciba AI Worker integration", () => {
     });
     expect(revokedUsage.status).toBe(401);
 
-    const settingsResponse = await adminRequest("/v1/admin/settings", "POST", {
-      settings: { daily_device_limit: 1 },
-    });
-    expect(settingsResponse.status).toBe(200);
+    const publicConfig = await request("/v1/config");
+    expect(publicConfig.status).toBe(200);
+    expect((await publicConfig.json() as { limits: { daily_requests: number | null; requests_per_minute: number | null } }).limits)
+      .toMatchObject({ daily_requests: null, requests_per_minute: null });
 
     const secondDevice = await registerDevice(await createInvitation());
     const oversizedMessage = await request("/v1/ai/chat", {
@@ -158,12 +158,6 @@ describe("Ciba AI Worker integration", () => {
       "INSERT INTO runtime_settings(setting_key, setting_value, updated_at) VALUES(?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = excluded.updated_at"
     ).bind("ai_model", "not-an-allowed-model", new Date().toISOString()).run();
 
-    await testDb.prepare(
-      "UPDATE runtime_settings SET setting_value = '3', updated_at = ? WHERE setting_key = 'daily_device_limit'"
-    ).bind(new Date().toISOString()).run();
-    // Keep this regression case independent from the per-device minute limiter.
-    await testDb.prepare("DELETE FROM minute_usage WHERE device_id = ?")
-      .bind(secondDevice.device_id).run();
     const assistantHistory = await request("/v1/ai/chat", {
       method: "POST",
       headers: {
@@ -179,10 +173,6 @@ describe("Ciba AI Worker integration", () => {
     expect(await assistantHistory.json()).toEqual({ error: "ai_model_not_available" });
 
     const chat = async () => {
-      // This test targets daily quota and CibaGenio precedence, not the
-      // independent per-device minute limiter. Reset only its test bucket.
-      await testDb.prepare("DELETE FROM minute_usage WHERE device_id = ?")
-        .bind(secondDevice.device_id).run();
       return request("/v1/ai/chat", {
         method: "POST",
         headers: {
@@ -235,23 +225,16 @@ describe("Ciba AI Worker integration", () => {
       "UPDATE cibagenio_controls SET enabled = 1 WHERE resource_id = 'chat' AND scope = 'global' AND scope_id = ''"
     ).run();
 
-    // The earlier app-level unlock reaches quota reservation before the
-    // deliberately invalid model is rejected. Allow that request plus this
-    // assertion, then verify the next request is over quota.
-    await testDb.prepare(
-      "UPDATE runtime_settings SET setting_value = '3', updated_at = ? WHERE setting_key = 'daily_device_limit'"
-    ).bind(new Date().toISOString()).run();
-
+    // Repeated requests must not be rejected by removed daily or per-minute
+    // application quotas. The deliberately invalid model remains the expected
+    // independent reason for these requests to return 503.
     const firstChat = await chat();
     expect(firstChat.status).toBe(503);
     expect(await firstChat.json()).toEqual({ error: "ai_model_not_available" });
 
-    const overQuotaChat = await chat();
-    expect(overQuotaChat.status).toBe(429);
-    const quotaBody = await overQuotaChat.json() as { error: string; retry_after_seconds: number };
-    expect(quotaBody.error).toBe("daily_quota_exceeded");
-    expect(quotaBody.retry_after_seconds).toBeGreaterThan(0);
-    expect(overQuotaChat.headers.get("retry-after")).toBe(String(quotaBody.retry_after_seconds));
+    const repeatedChat = await chat();
+    expect(repeatedChat.status).toBe(503);
+    expect(await repeatedChat.json()).toEqual({ error: "ai_model_not_available" });
 
     const status = await request("/v1/status");
     expect(status.status).toBe(200);
