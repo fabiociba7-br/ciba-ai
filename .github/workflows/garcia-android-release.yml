@@ -1,30 +1,31 @@
 name: Garcia Android Release
 
 on:
-  push:
-    branches:
-      - feature/garcia-chat-experience
-    paths:
-      - "garcia-android/**"
-      - ".github/workflows/garcia-android-release.yml"
   workflow_dispatch:
     inputs:
       version_name:
-        description: 'Versão pública (ex.: 1.0.1)'
+        description: "Versão pública do aplicativo"
         required: false
         type: string
-        default: '1.0.3'
+        default: "1.0.3"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "garcia-android/**"
+      - ".github/workflows/garcia-android-release.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: garcia-android-release
+  group: garcia-android-release-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
   signed-release:
-    name: Build signed Garcia APK
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    name: Build and verify signed Garcia APK
     runs-on: ubuntu-latest
     env:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -38,7 +39,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Validate signing secrets
         shell: bash
@@ -55,17 +56,17 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.13'
+          gradle-version: "8.13"
 
       - name: Restore private signing key
         shell: bash
@@ -82,29 +83,37 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo "::error::Invalid version name"; exit 1; }
-          VERSION_CODE="$((GITHUB_RUN_NUMBER + 1000))"
-          test "$VERSION_CODE" -gt 1000
+          VERSION_CODE="$((2000 + GITHUB_RUN_NUMBER))"
+          test "$VERSION_CODE" -gt 1003
           echo "Building applicationId=com.ciba.garcia versionCode=$VERSION_CODE versionName=$VERSION_NAME"
           gradle --no-daemon :app:assembleRelease \
             "-PVERSION_CODE=$VERSION_CODE" \
             "-PVERSION_NAME=$VERSION_NAME"
 
-      - name: Verify APK signature
+      - name: Verify package, version and APK signature
         shell: bash
         run: |
           set -euo pipefail
-          APK=$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)
-          test -n "$APK"
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK" || { echo "::error::Release APK was not generated"; exit 1; }
           AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
-          PACKAGE="$("$AAPT" dump badging "$APK" | sed -n "s/^package: name=\x27\([^\x27]*\)\x27.*/\1/p")"
-          test "$PACKAGE" = "com.ciba.garcia" || { echo "::error::Unexpected applicationId: $PACKAGE"; exit 1; }
-          echo "Verified applicationId=$PACKAGE"
+          BADGING="$("$AAPT" dump badging "$APK")"
+          PACKAGE="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$BADGING")"
+          APK_VERSION_CODE="$(sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p" <<< "$BADGING")"
+          APK_VERSION_NAME="$(sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p" <<< "$BADGING")"
+          test "$PACKAGE" = "com.ciba.garcia" || { echo "::error::Wrong package: $PACKAGE"; exit 1; }
+          test "$APK_VERSION_CODE" -gt 1003 || { echo "::error::Version code is not upgrade-safe: $APK_VERSION_CODE"; exit 1; }
+          test "$APK_VERSION_NAME" = "$VERSION_NAME" || { echo "::error::Wrong version name: $APK_VERSION_NAME"; exit 1; }
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          sha256sum "$APK" | tee "$RUNNER_TEMP/garcia-apk-sha256.txt"
+          echo "Verified package=$PACKAGE versionCode=$APK_VERSION_CODE versionName=$APK_VERSION_NAME"
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: Garcia-${{ env.VERSION_NAME }}-build-${{ github.run_number }}
-          path: garcia-android/app/build/outputs/apk/release/*.apk
+          name: Garcia-${{ env.VERSION_NAME }}-run-${{ github.run_number }}
+          path: |
+            garcia-android/app/build/outputs/apk/release/*.apk
+            ${{ runner.temp }}/garcia-apk-sha256.txt
           if-no-files-found: error
           retention-days: 30
