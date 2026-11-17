@@ -82,7 +82,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var showSettings by remember { mutableStateOf(false) }
     var showLogs by remember { mutableStateOf(false) }
     var logs by remember { mutableStateOf("") }
-    var speakReplies by remember { mutableStateOf(true) }
+    var speakReplies by remember { mutableStateOf(false) }
     var usage by remember { mutableStateOf("") }
     var connected by remember { mutableStateOf(store.get("device_token") != null) }
 
@@ -234,7 +234,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     Text(if (connected) "Dispositivo ativado e token protegido pelo Android Keystore." else "Dispositivo ainda não ativado.")
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = speakReplies, onCheckedChange = { speakReplies = it })
-                        Text("Ler as respostas em voz alta")
+                        Text("Leitura automática das respostas")
                     }
                     if (usage.isNotBlank()) Text(usage, color = Muted)
                 }
