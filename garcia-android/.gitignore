@@ -1,0 +1,12 @@
+# Android / Gradle
+.gradle/
+**/build/
+local.properties
+
+# Private Android signing material — NEVER commit
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.base64
+*.b64
