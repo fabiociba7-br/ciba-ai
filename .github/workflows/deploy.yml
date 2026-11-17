@@ -1,6 +1,12 @@
 name: Ciba AI Deploy
 
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'garcia-android/**'
+      - '**/*.md'
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:
