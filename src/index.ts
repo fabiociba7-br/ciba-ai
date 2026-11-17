@@ -1634,6 +1634,7 @@ const handleChat = async (request: Request, env: Env) => {
   }
   const messages: ChatMessage[] = [];
   let totalChars = 0;
+  let totalImageChars = 0;
   for (const item of body.messages) {
     if (!item || typeof item !== "object") return json({ error: "invalid_message" }, 400);
     const message = item as Record<string, unknown>;
@@ -1655,11 +1656,15 @@ const handleChat = async (request: Request, env: Env) => {
         if (!["image/jpeg", "image/png", "image/webp"].includes(String(image.mime_type)) ||
             typeof image.data !== "string" || image.data.length < 100 || image.data.length > 2_000_000 ||
             !/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)) return json({ error: "invalid_image" }, 400);
+        totalImageChars += image.data.length;
+        if (totalImageChars > 4_000_000) return json({ error: "images_too_large" }, 413);
         images.push({ mime_type: image.mime_type as ChatImage["mime_type"], data: image.data });
       }
     }
     messages.push({ role: message.role, content: message.content, ...(images ? { images } : {}) });
   }
+  const imageMessages = messages.filter((message) => message.images && message.images.length > 0);
+  if (imageMessages.length > 1) return json({ error: "images_must_be_attached_to_one_message" }, 400);
   if (totalChars > MAX_TOTAL_INPUT_CHARS) return json({ error: "prompt_too_large", max_input_chars: MAX_TOTAL_INPUT_CHARS }, 413);
 
   try {
@@ -1738,8 +1743,6 @@ const handleChat = async (request: Request, env: Env) => {
       })
     : undefined;
 
-  const imageMessages = messages.filter((message) => message.images && message.images.length > 0);
-  if (imageMessages.length > 1) return json({ error: "images_must_be_attached_to_one_message" }, 400);
   if (imageMessages.length === 1) {
     const imageMessage = imageMessages[0];
     const contentParts: Array<Record<string, unknown>> = [
@@ -1765,7 +1768,16 @@ const handleChat = async (request: Request, env: Env) => {
       if (typeof result.response === "string") visualDescription = result.response;
       else if (Array.isArray(result.choices) && result.choices.length > 0) {
         const choice = result.choices[0] as { message?: { content?: unknown } };
-        if (typeof choice?.message?.content === "string") visualDescription = choice.message.content;
+        const responseContent = choice?.message?.content;
+        if (typeof responseContent === "string") visualDescription = responseContent;
+        else if (Array.isArray(responseContent)) {
+          visualDescription = responseContent
+            .filter((part): part is { type: string; text: string } =>
+              Boolean(part) && typeof part === "object" && (part as { type?: unknown }).type === "text" &&
+              typeof (part as { text?: unknown }).text === "string")
+            .map((part) => part.text)
+            .join("\\n");
+        }
       }
     }
     if (!visualDescription.trim()) throw new Error("image_analysis_failed");
