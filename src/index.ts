@@ -3116,8 +3116,18 @@ export default {
       if (reason === "invalid_json") {
         return applyResponseHeaders(json({ error: "invalid_json" }, 400), cors);
       }
-      console.error("Ciba AI request failed", error instanceof Error ? error.name : "unknown");
-      return applyResponseHeaders(json({ error: "internal_error" }, 500), cors);
+      const diagnosticId = crypto.randomUUID();
+      const errorName = error instanceof Error ? error.name : "unknown";
+      const safeMessage = (error instanceof Error ? error.message : "unknown")
+        .replace(/Bearer\\s+\\S+/gi, "Bearer [redacted]")
+        .replace(/[A-Za-z0-9_-]{28,}/g, "[redacted]")
+        .slice(0, 240);
+      console.error("Ciba AI request failed", JSON.stringify({
+        diagnostic_id: diagnosticId,
+        error_name: errorName,
+        message: safeMessage,
+      }));
+      return applyResponseHeaders(json({ error: "internal_error", diagnostic_id: diagnosticId }, 500), cors);
     }
   }
 };

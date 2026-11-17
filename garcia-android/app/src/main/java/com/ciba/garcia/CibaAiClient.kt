@@ -31,7 +31,11 @@ class CibaAiClient(private val store: SecureStore) {
         http.newCall(builder.build()).execute().use { response ->
             val body = response.body?.string().orEmpty()
             val json = runCatching { JSONObject(body) }.getOrElse { JSONObject().put("error", "Resposta inválida do servidor") }
-            if (!response.isSuccessful) error(json.optString("error", "Falha HTTP ${response.code}"))
+            if (!response.isSuccessful) {
+                val serverError = json.optString("error", "Falha HTTP ${response.code}")
+                val diagnosticId = json.optString("diagnostic_id")
+                error("HTTP ${response.code}: " + serverError + if (diagnosticId.isNotBlank()) " · diagnóstico " + diagnosticId else "")
+            }
             return json
         }
     }
