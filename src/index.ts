@@ -5,6 +5,7 @@ export interface Env {
     run(model: string, input: Record<string, unknown>): Promise<unknown>;
   };
   ADMIN_TOKEN: string;
+  FACEBOOK_APP_SECRET?: string;
   AI_MODEL?: string;
   ALLOWED_APP_IDS?: string;
   DAILY_GLOBAL_LIMIT?: string;
@@ -525,6 +526,84 @@ const handlePairOwner = async (request: Request, env: Env) => {
   ).bind(device.device_id).first<{ owner_id: string | null }>();
   if (!paired?.owner_id) return json({ error: "owner_pairing_failed" }, 500);
   return json({ paired: true, owner_id: paired.owner_id, app_id: device.app_id });
+};
+
+
+const handleOwnerFacebookStatus = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const link = await env.DB.prepare(
+    "SELECT facebook_user_id, linked_at FROM owner_facebook_links WHERE owner_id = ?"
+  ).bind(owner.owner_id).first<{ facebook_user_id: string; linked_at: string }>();
+  return json({ linked: Boolean(link), linked_at: link?.linked_at || null });
+};
+
+const handleOwnerFacebookLink = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  if (device.app_id !== "com.ciba.garcia") return json({ error: "garcia_app_required" }, 403);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  if (!env.FACEBOOK_APP_SECRET) return json({ error: "facebook_server_not_configured" }, 503);
+
+  const body = await readJson(request, 8_000);
+  const accessToken = typeof body.access_token === "string" ? body.access_token.trim() : "";
+  if (accessToken.length < 20 || accessToken.length > 4_000) {
+    return json({ error: "invalid_facebook_access_token" }, 400);
+  }
+
+  const existingOwnerLink = await env.DB.prepare(
+    "SELECT facebook_user_id FROM owner_facebook_links WHERE owner_id = ?"
+  ).bind(owner.owner_id).first<{ facebook_user_id: string }>();
+  if (existingOwnerLink) return json({ error: "facebook_already_linked" }, 409);
+
+  const appAccessToken = "1395601549081486|" + env.FACEBOOK_APP_SECRET;
+  const debugUrl = new URL("https://graph.facebook.com/debug_token");
+  debugUrl.searchParams.set("input_token", accessToken);
+  debugUrl.searchParams.set("access_token", appAccessToken);
+
+  let verification: { data?: { app_id?: string; type?: string; application?: string; is_valid?: boolean; user_id?: string; expires_at?: number; data_access_expires_at?: number } };
+  try {
+    const response = await fetch(debugUrl.toString(), {
+      method: "GET",
+      headers: { "accept": "application/json" },
+    });
+    if (!response.ok) return json({ error: "facebook_token_verification_failed" }, 401);
+    verification = await response.json() as typeof verification;
+  } catch {
+    return json({ error: "facebook_verification_unavailable" }, 502);
+  }
+
+  const tokenData = verification.data;
+  const expiresAt = Number(tokenData?.expires_at || 0);
+  if (
+    tokenData?.is_valid !== true ||
+    tokenData.app_id !== "1395601549081486" ||
+    typeof tokenData.user_id !== "string" ||
+    !/^\\d{5,32}$/.test(tokenData.user_id) ||
+    (expiresAt > 0 && expiresAt <= Math.floor(Date.now() / 1000))
+  ) {
+    return json({ error: "invalid_facebook_access_token" }, 401);
+  }
+
+  const alreadyLinked = await env.DB.prepare(
+    "SELECT owner_id FROM owner_facebook_links WHERE facebook_user_id = ?"
+  ).bind(tokenData.user_id).first<{ owner_id: string }>();
+  if (alreadyLinked && alreadyLinked.owner_id !== owner.owner_id) {
+    return json({ error: "facebook_account_already_linked" }, 409);
+  }
+
+  const linkedAt = nowIso();
+  try {
+    await env.DB.prepare(
+      "INSERT INTO owner_facebook_links(owner_id, facebook_user_id, linked_at) VALUES(?, ?, ?)"
+    ).bind(owner.owner_id, tokenData.user_id, linkedAt).run();
+  } catch {
+    return json({ error: "facebook_link_conflict" }, 409);
+  }
+  return json({ linked: true, linked_at: linkedAt });
 };
 
 const getActiveOwnerForDevice = async (env: Env, ownerId: string | null) => {
@@ -3094,6 +3173,12 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/owner/pair" && request.method === "POST") {
     return handlePairOwner(request, env);
+  }
+  if (url.pathname === "/v1/owner/facebook" && request.method === "GET") {
+    return handleOwnerFacebookStatus(request, env);
+  }
+  if (url.pathname === "/v1/owner/facebook/link" && request.method === "POST") {
+    return handleOwnerFacebookLink(request, env);
   }
   if (url.pathname === "/v1/owner/available-apps" && request.method === "GET") {
     return handleOwnerAvailableApps(request, env);
