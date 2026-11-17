@@ -169,7 +169,10 @@ export function createGarciaCapabilityToolRuntime(
     throw new Error("invalid_garcia_capability_runtime");
   }
   return Object.freeze({
-    registry: createGarciaCapabilityTools({ authorize: options.authorize }),
+    registry: createGarciaCapabilityTools({
+      authorize: options.authorize,
+      getFacebookConnectionStatus: options.getFacebookConnectionStatus,
+    }),
     context: Object.freeze({
       conversationId: descriptors.conversationId.value,
       invocationId: descriptors.invocationId.value,
