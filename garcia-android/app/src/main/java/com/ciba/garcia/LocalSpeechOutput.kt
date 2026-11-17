@@ -3,6 +3,8 @@ package com.ciba.garcia
 import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.os.Handler
+import android.os.Looper
 import java.util.Locale
 
 /**
@@ -47,7 +49,7 @@ internal class LocalSpeechOutput(
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) = Unit
                 override fun onDone(utteranceId: String?) {
-                    if (!closed) onUtteranceDone()
+                    Handler(Looper.getMainLooper()).post { if (!closed) onUtteranceDone() }
                 }
                 override fun onError(utteranceId: String?) {
                     onAvailabilityChanged(false, "Falha na reprodução da resposta por voz.")
