@@ -46,4 +46,6 @@ class SecureStore(private val context: android.content.Context) {
     fun remove(name: String) { prefs.edit().remove(name).apply() }
     fun saveHistory(history: JSONArray) = put("history", history.toString())
     fun loadHistory(): JSONArray = runCatching { JSONArray(get("history") ?: "[]") }.getOrDefault(JSONArray())
+    fun saveChats(chats: JSONArray) = put("chats", chats.toString())
+    fun loadChats(): JSONArray = runCatching { JSONArray(get("chats") ?: "[]") }.getOrDefault(JSONArray())
 }
