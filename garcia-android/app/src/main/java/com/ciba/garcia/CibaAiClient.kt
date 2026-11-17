@@ -34,7 +34,25 @@ class CibaAiClient(private val store: SecureStore) {
             if (!response.isSuccessful) {
                 val serverError = json.optString("error", "Falha HTTP ${response.code}")
                 val diagnosticId = json.optString("diagnostic_id")
-                error("HTTP ${response.code}: " + serverError + if (diagnosticId.isNotBlank()) " · diagnóstico " + diagnosticId else "")
+                val graphError = json.optJSONObject("facebook_graph_error")
+                val graphDetails = graphError?.let {
+                    buildList {
+                        val status = it.optInt("http_status", 0)
+                        val code = it.opt("code")?.takeIf { value -> value !is org.json.JSONObject && value != JSONObject.NULL }
+                        val subcode = it.opt("subcode")?.takeIf { value -> value !is org.json.JSONObject && value != JSONObject.NULL }
+                        val type = it.optString("type").takeIf(String::isNotBlank)
+                        if (status > 0) add("Meta HTTP $status")
+                        if (code != null) add("código $code")
+                        if (subcode != null) add("subcódigo $subcode")
+                        if (type != null) add("tipo $type")
+                    }.joinToString(" · ")
+                }.orEmpty()
+                error(
+                    "HTTP ${response.code}: " + serverError +
+                        if (graphDetails.isNotBlank()) " · $graphDetails"
+                        else if (diagnosticId.isNotBlank()) " · diagnóstico $diagnosticId"
+                        else ""
+                )
             }
             return json
         }
