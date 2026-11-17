@@ -481,6 +481,13 @@ const handlePairOwner = async (request: Request, env: Env) => {
 };
 
 
+const facebookCapabilities = (permissions: string[]) => ({
+  profile: permissions.includes("public_profile"),
+  pages: permissions.includes("pages_show_list"),
+  page_posts: permissions.includes("pages_read_engagement"),
+  page_inbox: permissions.includes("pages_messaging"),
+});
+
 const handleOwnerFacebookStatus = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
@@ -502,6 +509,7 @@ const handleOwnerFacebookStatus = async (request: Request, env: Env) => {
     token_stored: Boolean(link?.token_ciphertext),
     token_expires_at: link?.token_expires_at || null,
     permissions,
+    capabilities: facebookCapabilities(permissions),
     profile,
     requires_reconnect: Boolean(link && !link.token_ciphertext),
   });
@@ -636,7 +644,7 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
   return json({
     linked: true, linked_at: linkedAt, token_stored: true,
     token_expires_at: expiresAt ? new Date(expiresAt * 1000).toISOString() : null,
-    profile, permissions,
+    profile, permissions, capabilities: facebookCapabilities(permissions),
   });
 };
 
