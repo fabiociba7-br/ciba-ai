@@ -356,23 +356,44 @@ export function buildProfileAwareChatMemoryContext(
   const uniqueRecords = deduplicateAuthorizedMemories(records);
   const profile = buildOwnerProfile(toInsightRecords(uniqueRecords));
   const entryLimit = Math.min(Math.max(Math.floor(maxEntries), 0), MAX_CHAT_MEMORY_ENTRIES);
-  const communicationEntries = profile.profile.communication.slice(0, Math.min(2, entryLimit));
+  if (entryLimit === 0) return emptyChatMemoryContext();
+
+  // The authenticated owner's identity and the assistant's exclusive relationship
+  // are stable context, not query-dependent facts. Include only explicit owner-scope
+  // records; app memories and cross-app data cannot become identity assertions.
+  const identityKeys = new Set(["personal.identity", "communication.relationship"]);
+  const identityEntries = uniqueRecords.filter((record) =>
+    record.scope === "owner" &&
+    record.source_app_id === null &&
+    identityKeys.has(record.memory_key.trim().toLocaleLowerCase("en-US"))
+  );
   const metadataById = new Map(uniqueRecords.map((record) => [record.memory_id, record]));
-  const selected: RankedMemory[] = communicationEntries.map(({ category: _category, ...entry }) => {
+  const selected: RankedMemory[] = identityEntries.slice(0, Math.min(2, entryLimit)).map((record) => ({
+    ...record,
+    created_by_app_id: "owner",
+    ...(record.duplicate_count !== undefined ? { duplicate_count: record.duplicate_count } : {}),
+    ...(record.duplicate_sources ? { duplicate_sources: [...record.duplicate_sources] } : {}),
+    relevance: 200,
+  }));
+  const selectedIds = new Set(selected.map((entry) => entry.memory_id));
+
+  const communicationEntries = profile.profile.communication
+    .filter((entry) => !selectedIds.has(entry.memory_id))
+    .slice(0, Math.min(2, Math.max(0, entryLimit - selected.length)));
+  for (const { category: _category, ...entry } of communicationEntries) {
     const metadata = metadataById.get(entry.memory_id);
-    return {
+    selected.push({
       ...entry,
       created_by_app_id: entry.source_app_id || "owner",
       ...(metadata?.duplicate_count !== undefined ? { duplicate_count: metadata.duplicate_count } : {}),
-      ...(metadata?.duplicate_sources
-        ? { duplicate_sources: [...metadata.duplicate_sources] }
-        : {}),
+      ...(metadata?.duplicate_sources ? { duplicate_sources: [...metadata.duplicate_sources] } : {}),
       relevance: 100,
-    };
-  });
-  const selectedIds = new Set(selected.map((entry) => entry.memory_id));
+    });
+    selectedIds.add(entry.memory_id);
+  }
+
   for (const ranked of rankRelevantMemories(query, uniqueRecords, 20)) {
-    if (selected.length >= Math.min(Math.max(Math.floor(maxEntries), 0), MAX_CHAT_MEMORY_ENTRIES)) break;
+    if (selected.length >= entryLimit) break;
     if (selectedIds.has(ranked.memory_id)) continue;
     selected.push(ranked);
     selectedIds.add(ranked.memory_id);
@@ -381,5 +402,5 @@ export function buildProfileAwareChatMemoryContext(
   const recurringCommunicationTerms = profile.recurring_preferences
     .filter((item) => item.memory_ids.some((id) => communicationIds.has(id)))
     .map((item) => item.term);
-  return buildChatMemoryContext(selected, maxEntries, MAX_CHAT_MEMORY_CHARS, recurringCommunicationTerms);
+  return buildChatMemoryContext(selected, entryLimit, MAX_CHAT_MEMORY_CHARS, recurringCommunicationTerms);
 }
