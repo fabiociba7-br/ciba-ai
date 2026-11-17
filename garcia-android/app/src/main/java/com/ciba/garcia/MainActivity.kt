@@ -785,6 +785,38 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             TextButton(onClick = { attachment = null }) { Text("Remover") }
                         }
                     }
+                    Button(
+                        onClick = {
+                            if (continuousVoice) {
+                                continuousVoice = false
+                                context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
+                                autoListenPending = false
+                                voiceAutoSendPending = false
+                                voiceOutput.stop()
+                                if (whisperRecording) scope.launch(Dispatchers.IO) { whisperRecorder.cancel() }
+                                whisperRecording = false
+                                whisperStatus = "Conversa por voz encerrada"
+                            } else if (!whisperBusy) {
+                                if (whisperModelInfo == null) error = "Baixe e instale o modelo Whisper nas Configurações antes de iniciar a conversa por voz."
+                                else if (!voiceAvailable) error = "A voz offline em português não está pronta. Configure a voz do Android nas Configurações."
+                                else if (input.isNotBlank() || attachment != null) error = "Envie ou limpe o texto pendente antes de iniciar a conversa por voz."
+                                else {
+                                    continuousVoice = true
+                                    voiceReplies = true
+                                    context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", true).putBoolean("enabled", true).apply()
+                                    autoListenPending = false
+                                    microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                                }
+                            }
+                        },
+                        enabled = (!busy && !whisperBusy && whisperModelInfo != null) || continuousVoice,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (continuousVoice) Color(0xFFB94F7C) else Blue)
+                    ) {
+                        Icon(if (continuousVoice) Icons.Default.Stop else Icons.Default.Mic, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (continuousVoice) "Encerrar conversa por voz" else "Conversar por voz")
+                    }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { showAttachmentOptions = true }, enabled = !busy,
                         modifier = Modifier.size(44.dp).background(Color(0xFFF1E8ED), CircleShape)) {
@@ -796,33 +828,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         minLines = 1, maxLines = 5,
                         decorationBox = { inner -> Box { if (input.isBlank()) Text("Converse com a Garcia…", color = Muted); inner() } })
                     Spacer(Modifier.width(7.dp))
-                    IconButton(onClick = {
-                        if (continuousVoice) {
-                            continuousVoice = false
-                            context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
-                            autoListenPending = false
-                            voiceAutoSendPending = false
-                            voiceOutput.stop()
-                            if (whisperRecording) scope.launch(Dispatchers.IO) { whisperRecorder.cancel() }
-                            whisperRecording = false
-                            whisperStatus = "Conversa por voz encerrada"
-                        } else if (!whisperBusy) {
-                            if (whisperModelInfo == null) error = "Baixe e instale o modelo Whisper nas Configurações antes de iniciar a conversa por voz."
-                            else if (!voiceAvailable) error = "A voz offline em português não está pronta. Configure a voz do Android nas Configurações."
-                            else if (input.isNotBlank() || attachment != null) error = "Envie ou limpe o texto pendente antes de iniciar a conversa por voz."
-                            else {
-                                continuousVoice = true
-                                voiceReplies = true
-                                context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", true).putBoolean("enabled", true).apply()
-                                autoListenPending = false
-                                microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
-                            }
-                        }
-                    }, enabled = !busy && !whisperBusy || continuousVoice,
-                        modifier = Modifier.size(44.dp).background(if (continuousVoice) Blue else Color(0xFFF1E8ED), CircleShape)) {
-                        Icon(if (continuousVoice) Icons.Default.Stop else Icons.Default.Mic,
-                            contentDescription = if (continuousVoice) "Encerrar conversa por voz" else "Iniciar conversa por voz", tint = if (continuousVoice) Color.White else Blue)
-                    }
+
                     IconButton(onClick = { send() }, enabled = !busy && (input.isNotBlank() || attachment != null),
                         modifier = Modifier.size(48.dp).background(Blue, CircleShape)) {
                         Icon(Icons.Default.ArrowUpward, "Enviar", tint = Color.White)
