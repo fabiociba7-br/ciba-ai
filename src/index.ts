@@ -582,19 +582,44 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
     // Keep the verified original token; status exposes its actual expiry.
   }
 
+  const graphDiagnostic = (error: unknown) => {
+    const failure = error as {
+      status?: unknown; code?: unknown; subcode?: unknown; type?: unknown;
+    };
+    return {
+      graph_http_status: typeof failure?.status === "number" ? failure.status : null,
+      graph_error_code: typeof failure?.code === "number" ? failure.code : null,
+      graph_error_subcode: typeof failure?.subcode === "number" ? failure.subcode : null,
+      graph_error_type: typeof failure?.type === "string" ? failure.type.slice(0, 80) : null,
+    };
+  };
+
   let profile: Record<string, unknown>;
-  let permissions: string[];
   try {
     profile = await facebookGraphGet<Record<string, unknown>>("me", storedToken, { fields: "id,name" });
+  } catch (error) {
+    return json({
+      error: "facebook_profile_request_failed",
+      diagnostic: graphDiagnostic(error),
+    }, 502);
+  }
+  if (profile.id !== tokenData.user_id) {
+    return json({ error: "facebook_identity_mismatch" }, 401);
+  }
+
+  let permissions: string[];
+  try {
     const permissionResult = await facebookGraphGet<{ data?: Array<{ permission?: string; status?: string }> }>(
       "me/permissions", storedToken,
     );
     permissions = (permissionResult.data || [])
       .filter((item) => item.status === "granted" && typeof item.permission === "string")
       .map((item) => item.permission!);
-    if (profile.id !== tokenData.user_id) return json({ error: "facebook_identity_mismatch" }, 401);
-  } catch {
-    return json({ error: "facebook_profile_verification_failed" }, 502);
+  } catch (error) {
+    return json({
+      error: "facebook_permissions_request_failed",
+      diagnostic: graphDiagnostic(error),
+    }, 502);
   }
 
   const alreadyLinked = await env.DB.prepare(
