@@ -1,7 +1,10 @@
 name: Ciba AI Deploy
 
-# Production deployment is manual only; repository pushes never deploy.
+# Deploy automatically after commits to main; manual runs remain available.
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
