@@ -1604,8 +1604,9 @@ const handleChat = async (request: Request, env: Env) => {
   for (const item of body.messages) {
     if (!item || typeof item !== "object") return json({ error: "invalid_message" }, 400);
     const message = item as Record<string, unknown>;
+    const maxMessageChars = message.role === "user" ? MAX_MESSAGE_CHARS : MAX_TOTAL_INPUT_CHARS;
     if ((message.role !== "user" && message.role !== "assistant") ||
-        typeof message.content !== "string" || message.content.length > MAX_MESSAGE_CHARS) {
+        typeof message.content !== "string" || message.content.length > maxMessageChars) {
       return json({ error: "invalid_message" }, 400);
     }
     totalChars += message.content.length;
