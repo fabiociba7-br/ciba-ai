@@ -143,9 +143,12 @@ class MainActivity : ComponentActivity() {
                 onResult(Result.failure(error))
             }
         })
+        // Keep initial authentication limited to standard Facebook Login.
+        // Page/Messenger scopes must be enabled for this app in Meta first;
+        // otherwise Meta rejects the entire request as "Invalid Scopes".
         LoginManager.getInstance().logInWithReadPermissions(
             this,
-            listOf("public_profile", "pages_show_list", "pages_read_engagement", "pages_messaging")
+            listOf("public_profile")
         )
     }
 
@@ -692,6 +695,10 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             })
                         }
                         if (facebookLinked) {
+                            Text(
+                                "Login básico conectado. A lista de Páginas, publicações e Messenger só ficará disponível depois que a Meta habilitar pages_show_list, pages_read_engagement e pages_messaging para este aplicativo.",
+                                color = Muted, fontSize = 12.sp
+                            )
                             OutlinedButton(
                                 onClick = { showFacebookManager = true },
                                 modifier = Modifier.fillMaxWidth()
