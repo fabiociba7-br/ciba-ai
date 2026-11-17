@@ -32,10 +32,10 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - Gate: build Android reproduzível e testes nativos de carregamento, integridade, cancelamento e incompatibilidade.
 
 ### Etapa 3 — reconhecimento de voz local
-**Estado: captura de microfone, importação manual de modelo e preenchimento do campo para revisão implementados; aguarda CI e teste real no aparelho.**
+**Estado: captura local, importação manual de modelo, revisão da transcrição e detecção de fim de fala por silêncio implementadas; aguarda CI e teste real no aparelho.**
 - Conectar a interface de gravação ao adapter Whisper.cpp já contratado em TypeScript, sem usar RecognitionService externo como motor final.
 - Capturar áudio somente após ação explícita; limitar duração/tamanho; permitir cancelar, revisar e editar a transcrição antes de enviar.
-- Português brasileiro como idioma padrão; tratar silêncio, ruído, permissão negada e modelo indisponível.
+- Português brasileiro como idioma padrão; detecção local de atividade de voz, encerramento após 1,1 s de silêncio, timeout de 10 s sem fala, limite absoluto de 120 s e tratamento de falhas de captura.
 - Gate: testes com frases curtas/longas em pt-BR, números, pontuação, ruído e interrupção; confirmar que áudio não sai do aparelho.
 
 ### Etapa 4 — preparar motor de síntese
@@ -54,6 +54,7 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - Gate: reprodução pt-BR inteligível, interrupção confiável, sem rede e sem bloquear o chat.
 
 ### Etapa 6 — conversação por voz
+**Estado: primeira fatia implementada — detecção de fim de fala e interrupção do TTS ao iniciar nova captura. Ainda não existe envio automático nem loop completo.**
 - Disponibilizar modo push-to-talk e modo contínuo selecionável.
 - Implementar máquina de estados ouvir → transcrever → enviar → aguardar → falar → ouvir novamente.
 - Incluir detecção de fim de fala, cancelamento, interrupção por usuário, prevenção de eco/autoescuta e tratamento de chamadas/áudio focado.
@@ -71,5 +72,6 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - O motor whisper.cpp v1.9.5, JNI/NDK, importação local de modelo, verificação SHA-256 e captura de microfone mono 16 kHz até 120 segundos estão no PR #24.
 - A transcrição preenche o campo de texto para revisão antes do envio; não encaminha áudio ao servidor.
 - A síntese usa Android TextToSpeech e só seleciona voz em português que não exige rede. A leitura automática pode ser desligada nas Configurações.
-- Ainda faltam CI final, escolha/auditoria de um modelo Whisper, instalação de voz offline no aparelho e testes de precisão, latência, memória e reprodução.
+- O detector de atividade de voz encerra a captura após 1,1 s de silêncio; sem fala, cancela após 10 s. A transcrição continua editável e exige toque em Enviar.
+- O workflow executa testes unitários do detector e compilação nativa/Kotlin; teste de áudio e TTS ainda exige aparelho real.
 - Não foi gerado APK.
