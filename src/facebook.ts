@@ -5,11 +5,12 @@ export type FacebookTokenBundle = {
 };
 
 const encoder = new TextEncoder();
+const asArrayBuffer = (bytes: Uint8Array): ArrayBuffer => bytes.slice().buffer as ArrayBuffer;
 
 const deriveEncryptionKey = async (appSecret: string, salt: Uint8Array): Promise<CryptoKey> => {
   const material = await crypto.subtle.importKey("raw", encoder.encode(appSecret.trim()), "HKDF", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
-    { name: "HKDF", hash: "SHA-256", salt, info: encoder.encode("ciba-ai/facebook-token-storage/v1") },
+    { name: "HKDF", hash: "SHA-256", salt: asArrayBuffer(salt), info: asArrayBuffer(encoder.encode("ciba-ai/facebook-token-storage/v1")) },
     material,
     { name: "AES-GCM", length: 256 },
     false,
@@ -23,7 +24,7 @@ export const encryptFacebookToken = async (bundle: FacebookTokenBundle, appSecre
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveEncryptionKey(appSecret, salt);
   const plaintext = encoder.encode(JSON.stringify(bundle));
-  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext);
+  const ciphertext = await crypto.subtle.encrypt({ name: "AES-GCM", iv: asArrayBuffer(iv) }, key, asArrayBuffer(plaintext));
   const toBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
   return { ciphertext: toBase64(new Uint8Array(ciphertext)), iv: toBase64(iv), salt: toBase64(salt) };
 };
@@ -37,7 +38,7 @@ export const decryptFacebookToken = async (
   const salt = fromBase64(record.token_salt);
   const iv = fromBase64(record.token_iv);
   const key = await deriveEncryptionKey(appSecret, salt);
-  const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, fromBase64(record.token_ciphertext));
+  const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv: asArrayBuffer(iv) }, key, asArrayBuffer(fromBase64(record.token_ciphertext)));
   const parsed = JSON.parse(new TextDecoder().decode(plaintext)) as FacebookTokenBundle;
   if (!parsed || typeof parsed.access_token !== "string" || parsed.access_token.length < 20) {
     throw new Error("facebook_token_record_invalid");
