@@ -118,14 +118,14 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     val history = remember { mutableStateListOf<Pair<String, String>>().apply { addAll(chats.first().messages) } }
     var input by remember { mutableStateOf("") }
     var attachment by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("Verificando conexão…") }
+    var error by remember { mutableStateOf("") }
     val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching { readTextAttachment(context, uri) }
             .onSuccess { attachment = it; error = "" }
             .onFailure { error = it.message ?: "Não foi possível anexar o arquivo." }
     }
-    var busy by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("Verificando conexão…") }
-    var error by remember { mutableStateOf("") }
     var activation by remember { mutableStateOf("") }
     var pairingCode by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
