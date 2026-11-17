@@ -30,6 +30,10 @@ O backend atual protege a conversa com token de dispositivo e vínculo explícit
 
 O segredo administrativo do Worker nunca deve ser incluído no APK. A ativação é uma etapa de provisionamento do dispositivo e pode ser substituída por pareamento proprietário dedicado em uma evolução do backend.
 
+## Assinatura e atualizações
+
+A assinatura de produção usa uma chave privada permanente e quatro GitHub Actions secrets. Consulte [RELEASE_SIGNING.md](RELEASE_SIGNING.md) antes da primeira versão distribuída. O workflow `Garcia Android Release` gera APK assinado sob demanda, preserva o mesmo certificado entre versões e incrementa automaticamente o `versionCode`. Nunca altere o `applicationId` nem substitua a chave.
+
 ## Abrir no Android Studio
 
 Abra a pasta `garcia-android`. Use JDK 17 e Android SDK Platform 36. O projeto não contém wrapper Gradle binário. O build e os testes ficam para a rodada final solicitada pelo proprietário; nenhuma APK é gerada automaticamente pelo CI.
