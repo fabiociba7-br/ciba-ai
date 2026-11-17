@@ -1,13 +1,13 @@
 # Garcia para Android
 
-Aplicativo Android independente da Garcia. O projeto não depende do GEIVIA nem do Zupi.
+Aplicativo Android da assistente de IA **Garcia**. Ciba AI é apenas o nome do repositório e da infraestrutura de servidor Cloudflare. O projeto não depende do GEIVIA nem do Zupi.
 
 ## O que está incluído
 
 - Interface nativa em Jetpack Compose, adaptada para celular.
 - Identidade visual baseada na logo oficial: rosa, coral, lilás, branco e cinza.
 - Ícone Android com o símbolo floral da marca e Splash Screen própria com nome e assinatura Garcia.
-- Conversa com o Ciba AI Worker publicado.
+- Conversa com a assistente Garcia por meio da API hospedada no Ciba AI Worker.
 - Histórico local de conversas criptografado com chave mantida no Android Keystore.
 - Token de dispositivo protegido com AES-GCM e Android Keystore.
 - Consulta de status e consumo.
@@ -21,7 +21,8 @@ A paleta oficial está centralizada em `app/src/main/res/values/colors.xml`. O �
 ## Identidade
 
 - Android applicationId: `com.ciba.garcia`
-- API: `https://ciba-ai.fabiociba7.workers.dev`
+- Assistente: `Garcia`
+- Infraestrutura/API: `Ciba AI` — `https://ciba-ai.fabiociba7.workers.dev`
 
 ## Ativação de dispositivo único
 
