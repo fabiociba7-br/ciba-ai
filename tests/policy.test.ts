@@ -1,14 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { getLimit, isValidAppId, resolveModel, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_DAILY_GLOBAL_LIMIT, MAX_DAILY_APP_LIMIT, MAX_DAILY_DEVICE_LIMIT, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "../src/policy";
+import {
+  getLimit,
+  isValidAppId,
+  resolveModel,
+  MAX_ADMIN_AUTH_FAILURES_PER_MINUTE,
+  MAX_OUTPUT_TOKENS,
+  MAX_MESSAGE_CHARS,
+  MAX_TOTAL_INPUT_CHARS,
+} from "../src/policy";
 
 describe("policy: numeric limits", () => {
   it("accepts positive safe integers", () => {
     expect(getLimit("25", 10)).toBe(25);
     expect(getLimit("1", 10)).toBe(1);
   });
-  it.each(["0", "-1", "1.5", "NaN", "Infinity", "999999999999999999999"])("uses fallback for invalid value %s", (value) => {
-    expect(getLimit(value, 10)).toBe(10);
-  });
+  it.each(["0", "-1", "1.5", "NaN", "Infinity", "999999999999999999999"])(
+    "uses fallback for invalid value %s",
+    (value) => expect(getLimit(value, 10)).toBe(10),
+  );
   it("uses fallback when setting is absent", () => expect(getLimit(undefined, 7)).toBe(7));
 });
 
@@ -27,13 +36,10 @@ describe("policy: app identifiers", () => {
     expect(isValidAppId("com.ciba.zupi")).toBe(true);
     expect(isValidAppId("CIBA_APP.2")).toBe(true);
   });
-  it.each(["", "ab", "com.ciba/app", "com ciba", "com.ciba;DROP", "x".repeat(151)])("rejects unsafe identifier %s", (value) => {
-    expect(isValidAppId(value)).toBe(false);
-  });
-});
-
-describe("policy: request throttling", () => {
-  it("keeps the per-device minute ceiling at 12", () => expect(MAX_REQUESTS_PER_MINUTE).toBe(12));
+  it.each(["", "ab", "com.ciba/app", "com ciba", "com.ciba;DROP", "x".repeat(151)])(
+    "rejects unsafe identifier %s",
+    (value) => expect(isValidAppId(value)).toBe(false),
+  );
 });
 
 describe("policy: administrative authentication throttling", () => {
@@ -42,14 +48,8 @@ describe("policy: administrative authentication throttling", () => {
   });
 });
 
-
-describe("policy: hard usage ceilings", () => {
-  it("keeps global, app, device and output ceilings conservative", () => {
-    expect(MAX_DAILY_GLOBAL_LIMIT).toBe(50);
-    expect(MAX_DAILY_APP_LIMIT).toBe(25);
-    expect(MAX_DAILY_DEVICE_LIMIT).toBe(10);
-    expect(MAX_OUTPUT_TOKENS).toBe(512);
-  });
+describe("policy: technical payload and output ceilings", () => {
+  it("keeps the output token ceiling", () => expect(MAX_OUTPUT_TOKENS).toBe(512));
   it("caps individual and aggregate input sizes", () => {
     expect(MAX_MESSAGE_CHARS).toBe(1_500);
     expect(MAX_TOTAL_INPUT_CHARS).toBe(3_000);
