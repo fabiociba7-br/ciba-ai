@@ -128,6 +128,21 @@ describe("bounded chat memory context", () => {
     expect(result.text).toContain("fontes=app-a,app-b");
   });
 
+  it("always carries the authenticated owner's curated identity and relationship into chat", () => {
+    const authorized: MemorySearchRecord[] = [
+      { ...records[0], memory_id: "owner-identity", scope: "owner", source_app_id: null,
+        memory_key: "personal.identity", value: "Ciba é o criador e proprietário da Garcia." },
+      { ...records[1], memory_id: "owner-relationship", scope: "owner", source_app_id: null,
+        memory_key: "communication.relationship", value: "A Garcia trabalha e conversa exclusivamente com Ciba." },
+      { ...records[2], memory_id: "music", memory_key: "music", value: "Gosta de rock clássico." },
+    ];
+    const result = buildProfileAwareChatMemoryContext("Qual a previsão do tempo?", authorized);
+    expect(result.text).toContain("Ciba é o criador e proprietário da Garcia.");
+    expect(result.text).toContain("A Garcia trabalha e conversa exclusivamente com Ciba.");
+    expect(result.entriesUsed).toBe(2);
+    expect(result.text).not.toContain("Gosta de rock clássico.");
+  });
+
   it("returns an empty context for no relevant memories", () => {
     expect(buildChatMemoryContext([])).toEqual({ text: "", entriesUsed: 0, characters: 0, profileSignalsUsed: false, duplicatesCollapsed: 0 });
   });
