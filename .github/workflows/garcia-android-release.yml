@@ -72,13 +72,23 @@ jobs:
         shell: bash
         env:
           VERSION_NAME: ${{ inputs.version_name }}
-          VERSION_CODE: ${{ github.run_number }}
         run: |
           set -euo pipefail
           [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo "::error::Invalid version name"; exit 1; }
+          VERSION_CODE="$(git rev-list --count HEAD)"
+          test "$VERSION_CODE" -gt 2
+          echo "Building versionCode=$VERSION_CODE"
           gradle --no-daemon :app:assembleRelease \
             "-PVERSION_CODE=$VERSION_CODE" \
             "-PVERSION_NAME=$VERSION_NAME"
+
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)
+          test -n "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
