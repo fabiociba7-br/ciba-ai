@@ -895,14 +895,18 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         AlertDialog(onDismissRequest = { showSettings = false },
             title = { Text("Garcia · Configurações") },
             text = {
-                Column {
+                Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState())) {
                     Text(status, color = Muted)
                     Spacer(Modifier.height(8.dp))
                     Text(if (connected) "Dispositivo ativado e token protegido pelo Android Keystore." else "Dispositivo ainda não ativado.")
                     Spacer(Modifier.height(12.dp))
                     Text("Transcrição de voz local", fontWeight = FontWeight.Bold)
                     Text(whisperStatus, color = Muted, fontSize = 12.sp)
-                    Text("Importe um modelo Whisper compatível. O arquivo fica no aparelho e é verificado por SHA-256.", color = Muted, fontSize = 12.sp)
+                    Text("Modelo multilíngue tiny quantizado · 32 MB. O arquivo fica no aparelho e é verificado por SHA-256.", color = Muted, fontSize = 12.sp)
+                    TextButton(onClick = {
+                        val modelUrl = android.net.Uri.parse("https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin")
+                        context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, modelUrl))
+                    }) { Text("Baixar modelo oficial (32 MB)") }
                     OutlinedButton(
                         onClick = { whisperModelPicker.launch(arrayOf("application/octet-stream", "application/x-ggml", "application/*", "*/*")) },
                         enabled = !whisperBusy && !whisperRecording,
