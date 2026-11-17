@@ -22,7 +22,7 @@ A franquia gratuita documentada pela Cloudflare é de 10.000 Neurons por dia. No
 
 ## Estado do projeto
 
-A base do Worker, autenticação por dispositivo, cotas, administração e API de configurações estão implementadas. O workflow de CI valida TypeScript e testes automaticamente em pushes e pull requests para main; não gera APK nem faz deploy. O registro de ferramentas do núcleo é uma primitiva opt-in e ainda não está conectado ao orquestrador ou à chamada do modelo. Ainda exige provisionamento da conta Cloudflare, criação do banco D1, aplicação das migrations, definição dos segredos, confirmação dos package IDs Android e teste real de inferência antes de uso.
+O Worker Ciba AI está publicado em `https://ciba-ai.fabiociba7.workers.dev`, com D1 conectado, migrations aplicadas, autenticação por dispositivo e limites de uso. O endpoint `/v1/status` confirmou o serviço pronto e a IA habilitada; uma inferência real ainda deverá ser validada na rodada final com o aplicativo. O projeto Android independente da Garcia está em [garcia-android/](garcia-android/), com interface nativa, conversa, histórico local criptografado e conexão com a API. A primeira ativação exige os convites privados de registro e pareamento do proprietário. O workflow de CI não gera APK nem faz deploy automático. O registro de ferramentas permanece opt-in e ainda não está conectado ao orquestrador ou à chamada do modelo.
 
 ## Arquitetura
 
@@ -42,6 +42,10 @@ Ciba AI Worker
   v
 Resposta ao app (sem armazenar o histórico)
 ```
+
+## Aplicativo Android Garcia
+
+O aplicativo Android é um projeto independente dentro de `garcia-android/`; não depende do GEIVIA ou do Zupi. Consulte o [README da Garcia](garcia-android/README.md) para arquitetura, abertura no Android Studio e ativação privada de dispositivo único.
 
 ## Desenvolvimento
 
