@@ -1073,7 +1073,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             onCheckedChange = { enabled ->
                                 continuousVoice = enabled
                                 context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", enabled).apply()
-                                autoListenPending = false
+                                autoListenPending = enabled
                                 awaitingTranscriptReview = false
                                 if (!enabled) voiceOutput.stop()
                                 else if (!voiceReplies) error = "Ative também a leitura automática das respostas para usar a conversação contínua."
