@@ -58,12 +58,21 @@ class CibaAiClient(private val store: SecureStore) {
     }
 
     fun chat(history: JSONArray): String {
-        val messages = JSONArray()
+        val selected = mutableListOf<JSONObject>()
+        var totalChars = 0
         val start = maxOf(0, history.length() - 12)
-        for (i in start until history.length()) {
+        for (i in history.length() - 1 downTo start) {
             val item = history.getJSONObject(i)
-            messages.put(JSONObject().put("role", item.getString("role")).put("content", item.getString("content")))
+            val role = item.getString("role")
+            val content = item.getString("content")
+            val perMessageLimit = if (role == "user") 1_500 else 3_000
+            if (content.length > perMessageLimit || totalChars + content.length > 3_000) continue
+            selected.add(JSONObject().put("role", role).put("content", content))
+            totalChars += content.length
         }
+        val messages = JSONArray()
+        selected.asReversed().forEach { messages.put(it) }
+        if (messages.length() == 0) error("A conversa ultrapassa o limite de contexto permitido. Inicie uma nova conversa ou envie uma mensagem menor.")
         val response = request("/v1/ai/chat", "POST", JSONObject().put("messages", messages), true)
         return response.optString("response").ifBlank { "A Garcia recebeu uma resposta vazia do serviço." }
     }
