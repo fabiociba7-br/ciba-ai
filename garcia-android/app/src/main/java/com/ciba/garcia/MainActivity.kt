@@ -28,10 +28,10 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
-private val Ink = Color(0xFF0A1020)
-private val Panel = Color(0xFF141F33)
-private val Blue = Color(0xFF82B4FF)
-private val Muted = Color(0xFF9AAAC2)
+private val Ink = Color(0xFFFFFFFF)
+private val Panel = Color(0xFFFFF8FB)
+private val Blue = Color(0xFFD96E98)
+private val Muted = Color(0xFF777777)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -104,9 +104,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         } catch (_: Exception) { status = "Sem conexão com o Ciba AI" }
     }
 
-    MaterialTheme(colorScheme = darkColorScheme(
-        primary = Blue, background = Ink, surface = Panel, onBackground = Color.White,
-        onSurface = Color.White, secondary = Muted
+    MaterialTheme(colorScheme = lightColorScheme(
+        primary = Blue, background = Ink, surface = Color.White, onBackground = Color(0xFF303030),
+        onSurface = Color(0xFF303030), secondary = Muted
     )) {
         Scaffold(containerColor = Ink, topBar = {
             TopAppBar(
@@ -129,13 +129,13 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             if (connected) {
                 Row(Modifier.fillMaxWidth().background(Panel).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     BasicTextField(value = input, onValueChange = { input = it },
-                        modifier = Modifier.weight(1f).background(Color(0xFF202D43), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 14.dp),
+                        modifier = Modifier.weight(1f).background(Color(0xFFF6EDF2), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 14.dp),
                         textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 15.sp),
                         decorationBox = { inner -> Box { if (input.isBlank()) Text("Converse com a Garcia…", color = Muted); inner() } })
                     Spacer(Modifier.width(8.dp))
                     IconButton(onClick = { send() }, enabled = !busy && input.isNotBlank(),
                         modifier = Modifier.size(48.dp).background(Blue, CircleShape)) {
-                        Icon(Icons.Default.ArrowUpward, "Enviar", tint = Ink)
+                        Icon(Icons.Default.ArrowUpward, "Enviar", tint = Color.White)
                     }
                 }
             }
@@ -155,7 +155,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     Button(onClick = { activate() }, enabled = !busy && activation.isNotBlank() && pairingCode.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
                         Text(if (busy) "Conectando…" else "Ativar Garcia")
                     }
-                    if (error.isNotBlank()) Text(error, color = Color(0xFFFF8B8B), modifier = Modifier.padding(top = 12.dp))
+                    if (error.isNotBlank()) Text(error, color = Color(0xFFB94F7C), modifier = Modifier.padding(top = 12.dp))
                     Text("Não existe cadastro de usuário ou senha. O vínculo é feito uma única vez neste aparelho e associa a Garcia ao seu proprietário.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 18.dp))
                 }
             } else if (history.isEmpty()) {
@@ -169,8 +169,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     items(history) { item ->
                         val user = item.first == "user"
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
-                            Column(Modifier.widthIn(max = 330.dp).background(if (user) Color(0xFF254A78) else Panel, RoundedCornerShape(18.dp)).padding(15.dp)) {
-                                Text(if (user) "Você" else "Garcia", color = if (user) Color(0xFFBBD8FF) else Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Column(Modifier.widthIn(max = 330.dp).background(if (user) Color(0xFFF8E8EF) else Panel, RoundedCornerShape(18.dp)).padding(15.dp)) {
+                                Text(if (user) "Você" else "Garcia", color = if (user) Color(0xFFB94F7C) else Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.height(5.dp))
                                 Text(item.second, fontSize = 15.sp, lineHeight = 22.sp)
                             }
