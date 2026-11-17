@@ -600,9 +600,16 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
   try {
     profile = await facebookGraphGet<Record<string, unknown>>("me", storedToken, { fields: "id,name" });
   } catch (error) {
+    const details = graphDiagnostic(error);
     return json({
       error: "facebook_profile_request_failed",
-      diagnostic: graphDiagnostic(error),
+      facebook_graph_error: {
+        http_status: details.graph_http_status,
+        code: details.graph_error_code,
+        subcode: details.graph_error_subcode,
+        type: details.graph_error_type,
+      },
+      diagnostic: details,
     }, 502);
   }
   if (profile.id !== tokenData.user_id) {
