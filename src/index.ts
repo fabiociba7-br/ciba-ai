@@ -549,7 +549,7 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
     return json({ error: "facebook_verification_unavailable" }, 502);
   }
   if (tokenData.is_valid !== true || tokenData.app_id !== "1395601549081486" ||
-      typeof tokenData.user_id !== "string" || !/^\\d{5,32}$/.test(tokenData.user_id) ||
+      typeof tokenData.user_id !== "string" || !/^\d{5,32}$/.test(tokenData.user_id) ||
       (tokenData.expires_at && tokenData.expires_at <= Math.floor(Date.now() / 1000))) {
     return json({ error: "invalid_facebook_access_token" }, 401);
   }
@@ -689,7 +689,7 @@ const handleOwnerFacebookData = async (request: Request, env: Env, url: URL) => 
       if (path === "pages") {
         return json({ pages: (pages.data || []).map(({ id, name, category, tasks }) => ({ id, name, category: category || null, tasks: tasks || [] })) });
       }
-      if (!/^\\d{5,32}$/.test(pageId)) return json({ error: "valid_page_id_required" }, 400);
+      if (!/^\d{5,32}$/.test(pageId)) return json({ error: "valid_page_id_required" }, 400);
       const page = (pages.data || []).find((item) => item.id === pageId);
       if (!page?.access_token) return json({ error: "facebook_page_not_accessible" }, 403);
       if (path === "posts") {
@@ -706,7 +706,7 @@ const handleOwnerFacebookData = async (request: Request, env: Env, url: URL) => 
         return json({ page: { id: page.id, name: page.name }, conversations });
       }
       const conversationId = url.searchParams.get("conversation_id") || "";
-      if (!/^\\d{5,32}_[\\d]{5,32}$/.test(conversationId) && !/^\\d{10,40}$/.test(conversationId)) {
+      if (!/^\d{5,32}_[\d]{5,32}$/.test(conversationId) && !/^\d{10,40}$/.test(conversationId)) {
         return json({ error: "valid_conversation_id_required" }, 400);
       }
       const messages = await facebookGraphGet(`${conversationId}/messages`, page.access_token, {
