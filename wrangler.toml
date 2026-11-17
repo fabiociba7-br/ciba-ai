@@ -6,7 +6,7 @@ workers_dev = true
 [vars]
 AI_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 # Keep empty until the real Android application IDs are confirmed.
-ALLOWED_APP_IDS = ""
+ALLOWED_APP_IDS = "com.ciba.garcia"
 DAILY_GLOBAL_LIMIT = "50"
 DAILY_APP_LIMIT = "25"
 DAILY_DEVICE_LIMIT = "10"
