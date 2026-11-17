@@ -61,5 +61,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:5.1.0")
+    implementation("com.facebook.android:facebook-login:19.0.1")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
