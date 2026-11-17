@@ -18,6 +18,12 @@ internal class VoiceActivityDetector(
     private var lastSpeechAtMillis: Long? = null
     private var speechObserved = false
 
+    fun reset() {
+        startedAtMillis = null
+        lastSpeechAtMillis = null
+        speechObserved = false
+    }
+
     fun shouldStop(frame: ShortArray, offset: Int, length: Int, nowMillis: Long): StopReason? {
         require(offset >= 0 && length > 0 && offset + length <= frame.size) {
             "Quadro PCM inválido."
