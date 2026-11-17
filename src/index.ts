@@ -3161,6 +3161,43 @@ const handleAcknowledgeAppMessages = async (request: Request, env: Env) => {
 const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+  if ((url.pathname === "/privacy" || url.pathname === "/data-deletion") && request.method === "GET") {
+    const isDeletion = url.pathname === "/data-deletion";
+    const title = isDeletion ? "Exclusão de dados — Garcia" : "Política de Privacidade — Garcia";
+    const body = isDeletion ? `
+      <h1>Exclusão de dados</h1>
+      <p>Esta página explica como solicitar a exclusão dos dados associados à assistente Garcia e à integração com o Facebook.</p>
+      <h2>Dados locais no aparelho</h2>
+      <p>O histórico de conversas da Garcia é armazenado localmente no aparelho, protegido pelo Android Keystore. Para removê-lo, use as opções de limpeza de dados do Android para o aplicativo Garcia ou desinstale o aplicativo. Isso remove os dados locais daquele aparelho.</p>
+      <h2>Vínculo com o Facebook</h2>
+      <p>Para revogar a autorização concedida à Garcia, abra as configurações da sua conta do Facebook, acesse Configurações e privacidade → Configurações → Integrações comerciais (ou Empresas e integrações, conforme a versão) e remova a Garcia. A revogação impede novas utilizações do acesso concedido. A remoção da autorização no Facebook não apaga automaticamente dados já armazenados no serviço.</p>
+      <h2>Solicitação de exclusão no serviço</h2>
+      <p>Para solicitar a exclusão dos dados de vínculo armazenados pelo serviço Garcia, informe o ID do aplicativo Meta <strong>1395601549081486</strong> e solicite a exclusão dos dados associados à integração Garcia/Ciba AI pelo canal de suporte disponibilizado pelo responsável pelo aplicativo.</p>
+      <p><strong>Importante:</strong> o serviço não armazena o conteúdo integral das conversas de chat no backend. O token de acesso do Facebook é armazenado criptografado; dados técnicos de vínculo, permissões e perfil podem ser mantidos enquanto o vínculo existir.</p>
+    ` : `
+      <h1>Política de Privacidade da Garcia</h1>
+      <p><strong>Última atualização: 17 de novembro de 2026.</strong></p>
+      <p>A Garcia é uma assistente de inteligência artificial de uso privado. Esta política descreve os dados tratados pelo aplicativo Android e pelo serviço Ciba AI associado.</p>
+      <h2>Dados tratados</h2>
+      <ul>
+        <li><strong>Conversas:</strong> o histórico é mantido localmente no aparelho, em armazenamento criptografado. As mensagens necessárias para responder a cada solicitação são transmitidas ao serviço Ciba AI e ao provedor de inteligência artificial configurado. O backend não mantém um histórico integral das conversas.</li>
+        <li><strong>Dados técnicos:</strong> identificadores do dispositivo e do aplicativo, dados de autenticação e informações operacionais necessárias para proteger e operar o serviço.</li>
+        <li><strong>Facebook:</strong> quando o titular escolhe vincular sua conta, a Garcia recebe dados de perfil básicos, permissões concedidas e, conforme as permissões efetivamente aprovadas pela Meta, dados das Páginas administradas, publicações e conversas dessas Páginas. O token de acesso é armazenado no backend somente em formato criptografado.</li>
+      </ul>
+      <h2>Finalidades</h2>
+      <p>Os dados são utilizados para fornecer as respostas da assistente, manter a autenticação privada do dispositivo, permitir as funções de integração solicitadas pelo titular, diagnosticar falhas e proteger o serviço contra uso indevido.</p>
+      <h2>Compartilhamento e retenção</h2>
+      <p>As mensagens enviadas para geração de respostas são processadas pela infraestrutura Ciba AI e pelo provedor de IA configurado. Dados do Facebook são consultados na plataforma Meta usando as permissões concedidas. O serviço não vende dados pessoais nem utiliza o histórico local de conversas para publicidade. Dados técnicos são mantidos pelo período necessário à operação, segurança e cumprimento de obrigações aplicáveis.</p>
+      <h2>Segurança</h2>
+      <p>O aplicativo protege credenciais e histórico local com recursos criptográficos do Android. Tokens do Facebook armazenados no servidor são protegidos por criptografia autenticada. Nenhuma medida de segurança elimina totalmente os riscos inerentes à transmissão e ao armazenamento eletrônico.</p>
+      <h2>Controle e exclusão</h2>
+      <p>O titular pode deixar de usar a integração revogando o acesso da Garcia nas configurações de integrações comerciais do Facebook. Para instruções de exclusão, consulte <a href="/data-deletion">Exclusão de dados</a>. A remoção do aplicativo apaga os dados locais do aparelho, mas não substitui a solicitação de exclusão de dados mantidos no serviço.</p>
+      <h2>Contato</h2>
+      <p>Para dúvidas sobre privacidade ou solicitações relacionadas a dados, utilize o canal de suporte pelo qual o aplicativo Garcia foi disponibilizado ao titular, informando o nome Garcia e o ID do aplicativo Meta <strong>1395601549081486</strong>.</p>
+    `;
+    const page = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="index,follow"><title>${title}</title><style>body{font:16px/1.65 system-ui,-apple-system,sans-serif;max-width:820px;margin:40px auto;padding:0 22px;color:#29242a;background:#fff}h1{line-height:1.2;color:#9d426d}h2{margin-top:28px;font-size:1.15rem}a{color:#9d426d}li{margin:9px 0}footer{margin-top:40px;padding-top:16px;border-top:1px solid #eee;color:#777;font-size:13px}</style></head><body><main>${body}</main><footer>Garcia · Assistente de IA · Ciba AI</footer></body></html>`;
+    return new Response(page, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=3600", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" } });
+  }
   if (url.pathname === "/dashboard" && request.method === "GET") {
     return new Response(GARCIA_DASHBOARD_HTML, {
       headers: {
