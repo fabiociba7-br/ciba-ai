@@ -42,9 +42,9 @@ object GarciaLog {
             for (i in 0 until array.length()) {
                 val item = array.getJSONObject(i)
                 append(item.optString("time")).append(" · ")
-                    .append(item.optString("area")).append("\\n")
+                    .append(item.optString("area")).append("\n")
                     .append(item.optString("type")).append(": ")
-                    .append(item.optString("message")).append("\\n\\n")
+                    .append(item.optString("message")).append("\n\n")
             }
         }.trim()
     }

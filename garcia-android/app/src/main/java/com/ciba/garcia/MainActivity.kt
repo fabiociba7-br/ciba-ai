@@ -246,12 +246,11 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 }
             }) { Text("Consultar uso") } },
             dismissButton = { Row {
-                TextButton(onClick = { logs = GarciaLog.read(context); showLogs = true }) { Text("Ver logs") }
+                TextButton(onClick = { logs = GarciaLog.read(context); showSettings = false; showLogs = true }) { Text("Ver logs") }
                 TextButton(onClick = { showSettings = false }) { Text("Fechar") }
             } }
         )
     }
-}
 
     if (showLogs) {
         AlertDialog(onDismissRequest = { showLogs = false },
