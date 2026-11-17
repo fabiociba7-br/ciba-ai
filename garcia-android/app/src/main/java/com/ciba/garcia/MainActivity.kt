@@ -297,7 +297,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         LocalSpeechOutput(
             context,
             { available, message -> voiceAvailable = available; voiceStatus = message },
-            { if (continuousVoice && voiceReplies && !awaitingTranscriptReview && input.isBlank() && !busy) autoListenPending = true }
+            { if (continuousVoice && voiceReplies && !awaitingTranscriptReview && input.isBlank()) autoListenPending = true }
         )
     }
     DisposableEffect(voiceOutput) { onDispose { voiceOutput.shutdown() } }
@@ -996,7 +996,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         Switch(checked = voiceReplies, onCheckedChange = { enabled ->
                             voiceReplies = enabled
                             context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("enabled", enabled).apply()
-                            if (!enabled) voiceOutput.stop()
+                            if (!enabled) { voiceOutput.stop(); continuousVoice = false; context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply() }
                         }, enabled = voiceAvailable)
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
