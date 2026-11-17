@@ -11,8 +11,9 @@ Aplicativo Android da assistente de IA **Garcia**. Ciba AI é apenas o nome do r
 - Histórico local de conversas criptografado com chave mantida no Android Keystore.
 - Token de dispositivo protegido com AES-GCM e Android Keystore.
 - Consulta de status e consumo.
+- Integração Facebook com login pelo SDK, armazenamento do token criptografado no backend e consulta de perfil, permissões, páginas, publicações e conversas/mensagens das Páginas administradas.
 - Sem cadastro de usuário, senha ou conta própria.
-- Sem ferramentas externas, ações automáticas ou permissões de outros aplicativos nesta primeira versão.
+- O acesso ao Facebook depende das permissões concedidas pela pessoa e das aprovações exigidas pela Meta. A caixa de entrada disponível é a das Páginas administradas, não mensagens pessoais.
 
 ## Identidade visual
 
