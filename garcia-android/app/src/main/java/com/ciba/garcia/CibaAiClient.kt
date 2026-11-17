@@ -82,7 +82,8 @@ class CibaAiClient(private val store: SecureStore) {
         for (i in history.length() - 1 downTo start) {
             val item = history.getJSONObject(i)
             val role = item.getString("role")
-            val content = item.getString("content")
+            val content = item.getString("content").replace(Regex("\\[\\[foto:[^\\]]*\\]\\]"), "").trim()
+            if (content.isEmpty()) continue
             val perMessageLimit = if (role == "user") 1_500 else 3_000
             if (content.length > perMessageLimit || totalChars + content.length > 3_000) break
             selected.add(JSONObject().put("role", role).put("content", content))
@@ -93,7 +94,15 @@ class CibaAiClient(private val store: SecureStore) {
         if (messages.length() == 0) error("A conversa ultrapassa o limite de contexto permitido. Inicie uma nova conversa ou envie uma mensagem menor.")
         if (images.length() > 0) messages.getJSONObject(messages.length() - 1).put("images", images)
         val response = request("/v1/ai/chat", "POST", JSONObject().put("messages", messages), true)
-        return response.optString("response").ifBlank { "A Garcia recebeu uma resposta vazia do serviço." }
+        val text = response.optString("response").ifBlank { "A Garcia recebeu uma resposta vazia do serviço." }
+        val photos = response.optJSONArray("photos")
+        if (photos == null || photos.length() == 0) return text
+        val markers = StringBuilder()
+        for (i in 0 until photos.length()) {
+            val url = photos.optJSONObject(i)?.optString("url").orEmpty()
+            if (url.startsWith("https://")) markers.append("\n[[foto:").append(url).append("]]")
+        }
+        return text + markers.toString()
     }
 
     fun facebookStatus(): JSONObject = request("/v1/owner/facebook", "GET", authenticated = true)
