@@ -582,7 +582,7 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
     tokenData?.is_valid !== true ||
     tokenData.app_id !== "1395601549081486" ||
     typeof tokenData.user_id !== "string" ||
-    !/^\\d{5,32}$/.test(tokenData.user_id) ||
+    !/^\d{5,32}$/.test(tokenData.user_id) ||
     (expiresAt > 0 && expiresAt <= Math.floor(Date.now() / 1000))
   ) {
     return json({ error: "invalid_facebook_access_token" }, 401);
