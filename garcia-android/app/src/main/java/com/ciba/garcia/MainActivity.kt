@@ -3,7 +3,14 @@ package com.ciba.garcia
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.util.Base64
+import androidx.activity.result.PickVisualMediaRequest
 import android.os.Bundle
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,6 +24,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -43,6 +52,71 @@ private val Blue = Color(0xFFD96E98)
 private val Muted = Color(0xFF777777)
 
 private data class GarciaChat(val id: String, val title: String, val messages: List<Pair<String, String>>)
+private data class GarciaAttachment(
+    val type: String,
+    val name: String,
+    val text: String? = null,
+    val mimeType: String? = null,
+    val base64: String? = null
+)
+
+private fun displayName(context: Context, uri: Uri, fallback: String): String =
+    context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) cursor.getString(0) else null
+    } ?: fallback
+
+private fun readImageAttachment(context: Context, uri: Uri): GarciaAttachment {
+    val resolver = context.contentResolver
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        ?: throw IllegalArgumentException("Não foi possível abrir a foto.")
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IllegalArgumentException("A imagem selecionada é inválida.")
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 1600) sample *= 2
+    val options = BitmapFactory.Options().apply { inSampleSize = sample }
+    val decoded = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+        ?: throw IllegalArgumentException("Não foi possível processar a foto.")
+    val maxSide = maxOf(decoded.width, decoded.height)
+    val bitmap = if (maxSide > 1280) {
+        val scale = 1280f / maxSide
+        Bitmap.createScaledBitmap(decoded, (decoded.width * scale).toInt().coerceAtLeast(1), (decoded.height * scale).toInt().coerceAtLeast(1), true)
+            .also { if (it !== decoded) decoded.recycle() }
+    } else decoded
+    val output = java.io.ByteArrayOutputStream()
+    bitmap.compress(Bitmap.CompressFormat.JPEG, 82, output)
+    bitmap.recycle()
+    if (output.size() > 1_450_000) throw IllegalArgumentException("A foto ficou muito grande. Escolha uma imagem menor.")
+    return GarciaAttachment(
+        type = "image",
+        name = displayName(context, uri, "foto.jpg").take(120),
+        mimeType = "image/jpeg",
+        base64 = Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+    )
+}
+
+private fun readTextAttachment(context: Context, uri: Uri): GarciaAttachment {
+    val resolver = context.contentResolver
+    val mime = resolver.getType(uri)?.lowercase().orEmpty()
+    val allowed = mime.startsWith("text/") || mime in setOf("application/json", "application/xml")
+    if (!allowed) throw IllegalArgumentException("Por enquanto, anexe arquivos de texto, Markdown, CSV, JSON ou XML.")
+    val name = displayName(context, uri, "arquivo.txt")
+    val output = java.io.ByteArrayOutputStream()
+    resolver.openInputStream(uri)?.use { stream ->
+        val buffer = ByteArray(8192)
+        var total = 0
+        while (true) {
+            val count = stream.read(buffer)
+            if (count < 0) break
+            total += count
+            if (total > 8 * 1024) throw IllegalArgumentException("O arquivo deve ter no máximo 8 KB.")
+            output.write(buffer, 0, count)
+        }
+    } ?: throw IllegalArgumentException("Não foi possível abrir o arquivo.")
+    val content = output.toString(Charsets.UTF_8.name())
+    if (content.isBlank()) throw IllegalArgumentException("O arquivo está vazio.")
+    if (content.length > 1_000) throw IllegalArgumentException("O texto do arquivo deve ter no máximo 1.000 caracteres para respeitar o limite gratuito do chat.")
+    return GarciaAttachment(type = "file", name = name.take(120), text = content)
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,9 +160,21 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var currentChatId by remember { mutableStateOf(chats.first().id) }
     val history = remember { mutableStateListOf<Pair<String, String>>().apply { addAll(chats.first().messages) } }
     var input by remember { mutableStateOf("") }
+    var attachment by remember { mutableStateOf<GarciaAttachment?>(null) }
+    var showAttachmentOptions by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Verificando conexão…") }
     var error by remember { mutableStateOf("") }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) runCatching { readImageAttachment(context, uri) }
+            .onSuccess { attachment = it; error = "" }
+            .onFailure { error = it.message ?: "Não foi possível anexar a foto." }
+    }
+    val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching { readTextAttachment(context, uri) }
+            .onSuccess { attachment = it; error = "" }
+            .onFailure { error = it.message ?: "Não foi possível anexar o arquivo." }
+    }
     var activation by remember { mutableStateOf("") }
     var pairingCode by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
@@ -100,6 +186,14 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var usageError by remember { mutableStateOf("") }
     var loadingUsage by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(store.get("device_token") != null) }
+    val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+    LaunchedEffect(history.size, busy) {
+        if (history.isNotEmpty()) {
+            val lastItem = history.lastIndex + if (busy) 1 else 0
+            chatListState.animateScrollToItem(lastItem.coerceAtLeast(0))
+        }
+    }
 
     fun persist() {
         val index = chats.indexOfFirst { it.id == currentChatId }
@@ -172,13 +266,33 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
 
     fun send() {
         val text = input.trim()
-        if (text.isEmpty() || busy || !connected) return
-        history.add("user" to text); input = ""; persist(); busy = true; error = ""
+        val selectedAttachment = attachment
+        if ((text.isEmpty() && selectedAttachment == null) || busy || !connected) return
+        val message = when (selectedAttachment?.type) {
+            "file" -> buildString {
+                append("Arquivo anexado: ").append(selectedAttachment.name).append("\n\n")
+                append("<conteudo_do_arquivo>\n").append(selectedAttachment.text.orEmpty()).append("\n</conteudo_do_arquivo>")
+                if (text.isNotBlank()) append("\n\nPergunta: ").append(text)
+            }
+            "image" -> buildString {
+                append(text.ifBlank { "Analise a foto anexada e descreva o que você consegue identificar." })
+                append("\n[Foto anexada: ").append(selectedAttachment.name).append("]")
+            }
+            else -> text
+        }
+        if (message.length > 1_500) { error = "A mensagem com o anexo ultrapassa o limite de 1.500 caracteres. Reduza a pergunta ou o conteúdo do arquivo."; return }
+        val imagePayload = JSONArray()
+        if (selectedAttachment?.type == "image") {
+            imagePayload.put(JSONObject()
+                .put("mime_type", selectedAttachment.mimeType)
+                .put("data", selectedAttachment.base64))
+        }
+        history.add("user" to message); input = ""; attachment = null; persist(); busy = true; error = ""
         scope.launch {
             try {
                 val snapshot = JSONArray()
                 history.forEach { (role, content) -> snapshot.put(JSONObject().put("role", role).put("content", content)) }
-                val answer = withContext(Dispatchers.IO) { client.chat(snapshot) }
+                val answer = withContext(Dispatchers.IO) { client.chat(snapshot, imagePayload) }
                 history.add("assistant" to answer); persist()
                 GarciaLog.recordEvent(context, "chat", "HTTP 200 · resposta recebida e salva no histórico · ${answer.length} caracteres")
             } catch (e: Exception) { GarciaLog.record(context, "chat", e); error = e.message ?: "Falha ao conversar com a Garcia." }
@@ -251,15 +365,27 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             )
         }, bottomBar = {
             if (connected) {
-                Row(Modifier.fillMaxWidth().background(Panel).imePadding().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.fillMaxWidth().background(Panel).imePadding().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
+                    if (attachment != null) {
+                        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("${if (attachment!!.type == "image") "Foto" else "Arquivo"}: ${attachment!!.name}", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { attachment = null }) { Text("Remover") }
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { showAttachmentOptions = true }, enabled = !busy) {
+                        Icon(Icons.Default.AttachFile, contentDescription = "Adicionar foto ou arquivo", tint = Blue)
+                    }
                     BasicTextField(value = input, onValueChange = { input = it },
-                        modifier = Modifier.weight(1f).background(Color(0xFFF6EDF2), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 14.dp),
-                        textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF303030), fontSize = 15.sp),
+                        modifier = Modifier.weight(1f).background(Color(0xFFF6EDF2), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 12.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF303030), fontSize = 15.sp, lineHeight = 21.sp),
+                        minLines = 1, maxLines = 5,
                         decorationBox = { inner -> Box { if (input.isBlank()) Text("Converse com a Garcia…", color = Muted); inner() } })
                     Spacer(Modifier.width(7.dp))
-                    IconButton(onClick = { send() }, enabled = !busy && input.isNotBlank(),
+                    IconButton(onClick = { send() }, enabled = !busy && (input.isNotBlank() || attachment != null),
                         modifier = Modifier.size(48.dp).background(Blue, CircleShape)) {
                         Icon(Icons.Default.ArrowUpward, "Enviar", tint = Color.White)
+                    }
                     }
                 }
             }
@@ -287,14 +413,39 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     Text("Sua assistente de inteligência. Posso ajudar a pensar, planejar, pesquisar, escrever e organizar projetos. Por onde começamos?", color = Muted, fontSize = 16.sp)
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 15.dp), contentPadding = PaddingValues(vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                LazyColumn(
+                    state = chatListState,
+                    modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 15.dp),
+                    contentPadding = PaddingValues(vertical = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
                     items(history) { item ->
                         val user = item.first == "user"
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
-                            Column(Modifier.widthIn(max = 330.dp).background(if (user) Color(0xFFF8E8EF) else Panel, RoundedCornerShape(18.dp)).padding(15.dp)) {
+                            Column(
+                                Modifier.widthIn(max = 340.dp)
+                                    .background(if (user) Color(0xFFF8E8EF) else Panel, RoundedCornerShape(18.dp))
+                                    .padding(15.dp)
+                            ) {
                                 Text(if (user) "Você" else "Garcia", color = if (user) Color(0xFFB94F7C) else Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.height(5.dp))
-                                Text(item.second, fontSize = 15.sp, lineHeight = 22.sp)
+                                androidx.compose.foundation.text.selection.SelectionContainer {
+                                    Text(item.second, fontSize = 15.sp, lineHeight = 23.sp)
+                                }
+                                if (!user) {
+                                    TextButton(
+                                        onClick = {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("Resposta da Garcia", item.second))
+                                            GarciaLog.recordEvent(context, "chat", "Resposta copiada · ${item.second.length} caracteres")
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Spacer(Modifier.width(5.dp))
+                                        Text("Copiar resposta", fontSize = 12.sp)
+                                    }
+                                }
                             }
                         }
                     }
@@ -303,6 +454,32 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 }
             }
         }
+    }
+
+    if (showAttachmentOptions) {
+        AlertDialog(
+            onDismissRequest = { showAttachmentOptions = false },
+            title = { Text("Adicionar anexo") },
+            text = {
+                Column {
+                    TextButton(
+                        onClick = {
+                            showAttachmentOptions = false
+                            photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Fotos", modifier = Modifier.fillMaxWidth()) }
+                    TextButton(
+                        onClick = {
+                            showAttachmentOptions = false
+                            attachmentPicker.launch(arrayOf("text/*", "application/json", "application/xml"))
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Arquivos", modifier = Modifier.fillMaxWidth()) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showAttachmentOptions = false }) { Text("Cancelar") } }
+        )
     }
 
     if (showChats) {
