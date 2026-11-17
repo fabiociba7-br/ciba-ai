@@ -290,7 +290,16 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var voiceAvailable by remember { mutableStateOf(false) }
     var voiceStatus by remember { mutableStateOf("Verificando voz offline…") }
     var voiceReplies by remember { mutableStateOf(context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).getBoolean("enabled", true)) }
-    val voiceOutput = remember { LocalSpeechOutput(context) { available, message -> voiceAvailable = available; voiceStatus = message } }
+    var continuousVoice by remember { mutableStateOf(context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).getBoolean("continuous", false)) }
+    var autoListenPending by remember { mutableStateOf(false) }
+    var awaitingTranscriptReview by remember { mutableStateOf(false) }
+    val voiceOutput = remember {
+        LocalSpeechOutput(
+            context,
+            { available, message -> voiceAvailable = available; voiceStatus = message },
+            { if (continuousVoice && voiceReplies && !awaitingTranscriptReview && input.isBlank() && !busy) autoListenPending = true }
+        )
+    }
     DisposableEffect(voiceOutput) { onDispose { voiceOutput.shutdown() } }
     var showAttachmentOptions by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -350,6 +359,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 }
                 check(transcript.isNotBlank()) { "Não foi possível reconhecer fala nessa gravação." }
                 input = listOf(input.trim(), transcript).filter { it.isNotBlank() }.joinToString(" ")
+                awaitingTranscriptReview = true
+                autoListenPending = false
                 whisperStatus = "Transcrição pronta · revise o texto antes de enviar"
                 GarciaLog.recordEvent(context, "Voz", "Transcrição local concluída · ${transcript.length} caracteres")
             } catch (e: Exception) {
@@ -363,7 +374,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             if (whisperModelInfo == null) error = "Instale um modelo Whisper em Configurações antes de gravar."
-            else scope.launch {
+            else if (input.isNotBlank() || attachment != null || busy || whisperBusy) {
+                error = "Envie ou limpe o texto pendente antes de iniciar outra captura."
+            } else scope.launch {
                 try {
                     withContext(Dispatchers.IO) { whisperRecorder.start() }
                     whisperRecording = true
@@ -393,6 +406,15 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 } catch (e: Exception) { error = e.message ?: "Não foi possível iniciar a gravação."; whisperRecording = false }
             }
         } else error = "A permissão do microfone foi negada. Ative-a nas configurações do Android para transcrever voz."
+    }
+    LaunchedEffect(autoListenPending, continuousVoice, voiceReplies, input, attachment, busy, whisperBusy, whisperRecording) {
+        if (!autoListenPending) return@LaunchedEffect
+        if (!continuousVoice || !voiceReplies || input.isNotBlank() || attachment != null || busy || whisperBusy || whisperRecording) {
+            autoListenPending = false
+        } else {
+            autoListenPending = false
+            microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
     }
     val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) cameraPicker.launch(null)
@@ -463,6 +485,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
 
     fun selectChat(chat: GarciaChat) {
         if (busy) return
+        autoListenPending = false
+        awaitingTranscriptReview = false
+        voiceOutput.stop()
         persist()
         currentChatId = chat.id
         history.clear()
@@ -474,6 +499,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
 
     fun newChat() {
         if (busy) return
+        autoListenPending = false
+        awaitingTranscriptReview = false
+        voiceOutput.stop()
         persist()
         val chat = GarciaChat(UUID.randomUUID().toString(), "Nova conversa", emptyList())
         chats.add(chat)
@@ -552,14 +580,18 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 .put("mime_type", selectedAttachment.mimeType)
                 .put("data", selectedAttachment.base64))
         }
-        history.add("user" to message); input = ""; attachment = null; persist(); busy = true; error = ""
+        history.add("user" to message); input = ""; attachment = null; awaitingTranscriptReview = false
+        autoListenPending = false; persist(); busy = true; error = ""
         scope.launch {
             try {
                 val snapshot = JSONArray()
                 history.forEach { (role, content) -> snapshot.put(JSONObject().put("role", role).put("content", content)) }
                 val answer = withContext(Dispatchers.IO) { client.chat(snapshot, imagePayload) }
                 history.add("assistant" to answer); persist()
-                if (voiceReplies && voiceAvailable) voiceOutput.speak(answer)
+                if (voiceReplies && voiceAvailable) {
+                    val spoken = voiceOutput.speak(answer)
+                    if (!spoken) autoListenPending = false
+                } else autoListenPending = false
                 GarciaLog.recordEvent(context, "chat", "HTTP 200 · resposta recebida e salva no histórico · ${answer.length} caracteres")
             } catch (e: Exception) { GarciaLog.record(context, "chat", e); error = e.message ?: "Falha ao conversar com a Garcia." }
             finally { busy = false }
@@ -741,7 +773,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         modifier = Modifier.size(44.dp).background(Color(0xFFF1E8ED), CircleShape)) {
                         Icon(Icons.Default.AttachFile, contentDescription = "Adicionar foto ou arquivo", tint = Blue)
                     }
-                    BasicTextField(value = input, onValueChange = { input = it },
+                    BasicTextField(value = input, onValueChange = { input = it; if (it.isNotBlank()) autoListenPending = false },
                         modifier = Modifier.weight(1f).background(Color(0xFFF6EDF2), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 12.dp),
                         textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF303030), fontSize = 15.sp, lineHeight = 21.sp),
                         minLines = 1, maxLines = 5,
@@ -751,8 +783,10 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         if (whisperRecording) {
                             stopAndTranscribe()
                         } else if (!whisperBusy) {
+                            autoListenPending = false
                             voiceOutput.stop()
-                            microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                            if (input.isNotBlank() || attachment != null) error = "Envie ou limpe o texto pendente antes de iniciar outra captura."
+                            else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
                         }
                     }, enabled = !busy && !whisperBusy && whisperModelInfo != null || whisperRecording,
                         modifier = Modifier.size(44.dp).background(Color(0xFFF1E8ED), CircleShape)) {
@@ -965,6 +999,23 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             if (!enabled) voiceOutput.stop()
                         }, enabled = voiceAvailable)
                     }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Conversação contínua por voz", modifier = Modifier.weight(1f), fontSize = 13.sp)
+                        Switch(
+                            checked = continuousVoice,
+                            onCheckedChange = { enabled ->
+                                continuousVoice = enabled
+                                context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", enabled).apply()
+                                autoListenPending = false
+                                awaitingTranscriptReview = false
+                                if (!enabled) voiceOutput.stop()
+                                else if (!voiceReplies) error = "Ative também a leitura automática das respostas para usar a conversação contínua."
+                                else if (whisperModelInfo == null) error = "Instale o modelo Whisper antes de usar a conversação contínua."
+                            },
+                            enabled = voiceAvailable && voiceReplies && whisperModelInfo != null && !busy && !whisperRecording
+                        )
+                    }
+                    Text("Após cada resposta falada, a Garcia aguarda sua próxima fala. A transcrição aparece no campo para revisão e só é enviada quando você toca em Enviar.", color = Muted, fontSize = 11.sp)
                     if (connected) {
                         Spacer(Modifier.height(12.dp))
                         Text("Conta Facebook", fontWeight = FontWeight.Bold)
