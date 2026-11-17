@@ -3118,14 +3118,19 @@ export default {
       }
       const diagnosticId = crypto.randomUUID();
       const errorName = error instanceof Error ? error.name : "unknown";
-      const safeMessage = (error instanceof Error ? error.message : "unknown")
+      const rawMessage = error instanceof Error ? error.message : "unknown";
+      const safeMessage = rawMessage
         .replace(/Bearer\\s+\\S+/gi, "Bearer [redacted]")
-        .replace(/[A-Za-z0-9_-]{28,}/g, "[redacted]")
+        .replace(/\\b(?:sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_-]{12,}|github_pat_[A-Za-z0-9_-]{12,}|eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+)\\b/gi, "[redacted_secret]")
+        .replace(/\\b[0-9a-f]{32,}\\b/gi, "[redacted_id]")
+        .replace(/\\b[A-Za-z0-9_-]{28,}\\b/g, (token) =>
+          /^[A-Z][A-Z0-9_-]{3,127}$/.test(token) ? token : `[redacted_token:${token.length}]`)
         .slice(0, 240);
       console.error("Ciba AI request failed", JSON.stringify({
         diagnostic_id: diagnosticId,
         error_name: errorName,
         message: safeMessage,
+        message_length: rawMessage.length,
       }));
       return applyResponseHeaders(json({ error: "internal_error", diagnostic_id: diagnosticId }, 500), cors);
     }
