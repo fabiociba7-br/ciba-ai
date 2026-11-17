@@ -2,53 +2,49 @@
 
 ## Objetivo e limites
 
-O Ciba AI possui contratos TypeScript para transcrição local usando `whisper.cpp`. O desenho é *fail closed*: a transcrição só acontece quando um adapter local foi explicitamente registrado, o dispositivo atende aos requisitos do modelo e a solicitação contém consentimento explícito. Não existe fallback para um serviço remoto.
+A Garcia usa `whisper.cpp` embarcado no Android para reconhecer fala localmente. O fluxo é *fail closed*: a transcrição só poderá ocorrer quando a biblioteca nativa estiver pronta, um modelo local aprovado e validado estiver carregado, o dispositivo atender aos requisitos e a solicitação tiver consentimento explícito. Não existe fallback para serviço remoto.
 
-A existência desses contratos não significa que o motor nativo esteja instalado ou operacional. O repositório contém a camada TypeScript de integração Android (`src/core/android-whisper-bridge.ts`), mas não contém, neste momento, uma implementação JNI/NDK, bibliotecas nativas compiladas ou arquivos de pesos do Whisper. O aplicativo Android que integrar o núcleo ainda precisa fornecer a implementação concreta de `AndroidWhisperCppBridge` e disponibilizar o modelo local.
+O aplicativo não baixa modelos automaticamente e não envia gravações ou transcrições para terceiros por conta própria. O modelo deve ser obtido e instalado por uma ação explícita do usuário, depois de sua origem, licença e SHA-256 serem aprovados.
 
-## Componentes
+## Implementação existente
 
-- `src/core/speech-to-text.ts`: contratos de solicitação, consentimento, resultado, política, registro de adapters, verificação de compatibilidade do dispositivo e execução protegida.
-- `src/core/android-whisper-bridge.ts`: adapter para uma ponte nativa Android fornecida explicitamente pelo aplicativo. Confere o estado da biblioteca e a identidade/hash do modelo antes de transcrever.
-- `src/core/device-capabilities.ts`: valida o perfil do dispositivo e os requisitos mínimos de hardware.
-- `tests/whisper-execution.test.ts` e `tests/android-whisper-bridge.test.ts`: especificações automatizadas existentes para os contratos. Não foram executadas nesta etapa.
+- `src/core/speech-to-text.ts`: contratos de solicitação, consentimento, resultado, política, registro de adapters, verificação de compatibilidade e execução protegida.
+- `src/core/android-whisper-bridge.ts`: adapter TypeScript que exige estado nativo pronto e confere identidade e SHA-256 do modelo.
+- `garcia-android/app/src/main/cpp/CMakeLists.txt`: compila `whisper.cpp` para Android por CMake/NDK, com origem fixada no commit `d1be6fde11ac6e0407606b4e42fe72d34add8037` (tag upstream `v1.9.5`).
+- `garcia-android/app/src/main/cpp/whisper_jni.cpp`: ponte JNI para carregar o modelo, transcrever PCM mono 16 kHz em português, devolver segmentos com timestamps, cancelar e liberar o contexto.
+- `garcia-android/app/src/main/java/com/ciba/garcia/WhisperNative.kt`: fronteira Kotlin/JNI.
+- `.github/workflows/garcia-android-compile-check.yml`: compila a biblioteca nativa no CI, sem gerar APK.
 
-## Regras de segurança e limites atuais
+O código upstream do motor whisper.cpp é MIT. Isso não aprova automaticamente qualquer arquivo de pesos: a licença, proveniência e checksum do modelo escolhido precisam ser avaliados separadamente.
 
-1. O consentimento deve representar uma ação explícita do usuário e ter finalidade `transcription`.
-2. Os tipos MIME aceitos são WAV, MPEG, MP4, OGG, WebM e FLAC.
-3. O áudio é limitado a 25 MiB no núcleo; o registro também aplica o limite configurado, sem permitir ultrapassar esse teto.
-4. A concorrência é controlada pelo registro de execução; o limite padrão da política é definido na criação do registro.
-5. O áudio é copiado antes do processamento e a cópia de trabalho é zerada ao final, inclusive em falhas.
-6. Cancelamentos são verificados antes da execução e novamente antes de publicar o resultado.
-7. Os resultados são copiados para estruturas limitadas e imutáveis; segmentos, idioma, duração e tamanho do texto são validados.
-8. A compatibilidade é verificada para o runtime e para os requisitos específicos do modelo.
-9. A ponte Android exige que a biblioteca nativa esteja pronta e que o modelo carregado corresponda ao identificador e ao SHA-256 configurados.
-10. Nenhum código deste fluxo baixa modelos, instala bibliotecas nativas ou encaminha áudio para provedores remotos.
-
-## Runtimes previstos
-
-- `android_embedded`: modelo e engine embarcados no aplicativo Android, através da ponte nativa.
-- `desktop_local`: engine local em ambiente desktop, por adapter próprio.
-- `local_service`: serviço local explicitamente configurado, sem equivaler a um provedor remoto.
-
-Os três runtimes são contratos suportados pelo núcleo; isso não indica que existam adapters instalados para todos eles.
-
-## Estado de implementação
+## O que ainda falta
 
 | Capacidade | Estado |
 |---|---|
-| Contratos, validação e controle de execução | Implementados no núcleo |
-| Verificação de requisitos de dispositivo | Implementada |
-| Adapter TypeScript para a ponte Android | Implementado |
-| Implementação JNI/NDK e biblioteca whisper.cpp | Ainda não presente neste repositório |
-| Modelo local e verificação de sua distribuição/licença | Não configurados |
-| Adapter Android registrado em uma aplicação executável | Não demonstrado |
-| Adapters desktop e serviço local | Não configurados |
-| Transcrição local ponta a ponta em dispositivo real | Não validada |
+| Contratos e validação TypeScript | Implementados |
+| Adapter TypeScript Android | Implementado |
+| Origem whisper.cpp fixada por commit | Implementada |
+| Ponte JNI e wrapper Kotlin | Implementados nesta etapa; aguardando CI |
+| Modelo multilíngue pt-BR, licença e SHA-256 | Pendente |
+| Importação/instalação local do modelo | Pendente |
+| Captura de áudio com permissão explícita | Pendente |
+| Ligação do gravador ao motor e ao chat | Pendente |
+| Revisar/editar transcrição antes do envio | Pendente |
+| Teste real em aparelho Android | Pendente |
 
-## Próxima integração necessária
+## Regras de segurança e limites
 
-A próxima etapa de produto é implementar e empacotar a ponte nativa Android no aplicativo hospedeiro, selecionar um modelo com licença e proveniência verificadas, validar seu hash e registrar o adapter somente após a aprovação de licença. A integração deve permanecer desativada quando biblioteca, modelo, compatibilidade ou consentimento estiverem ausentes.
+1. Consentimento explícito e finalidade `transcription` são obrigatórios.
+2. O áudio deve ser capturado apenas após ação do usuário, em mono 16 kHz.
+3. Limite de duração nativa inicial: 120 segundos por gravação.
+4. Cancelamento deve interromper a inferência e impedir que resultados tardios sejam enviados.
+5. O contexto nativo deve ser liberado ao sair do fluxo ou encerrar a sessão.
+6. A aplicação deve verificar SHA-256 antes de carregar qualquer modelo.
+7. O modelo não pode ser incluído no Git nem baixado silenciosamente.
+8. Ausência de modelo, biblioteca ou compatibilidade bloqueia a função; não usar `RecognitionService` remoto como fallback.
 
-Não habilitar download automático, processamento remoto ou fallback pago como atalho para contornar a ausência do motor local.
+## Referências
+
+- Código-fonte: https://github.com/ggml-org/whisper.cpp
+- Versão fixada: https://github.com/ggml-org/whisper.cpp/tree/v1.9.5
+- Exemplo Android oficial: https://github.com/ggml-org/whisper.cpp/tree/master/examples/whisper.android
