@@ -409,9 +409,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     }
     LaunchedEffect(autoListenPending, continuousVoice, voiceReplies, input, attachment, busy, whisperBusy, whisperRecording) {
         if (!autoListenPending) return@LaunchedEffect
-        if (!continuousVoice || !voiceReplies || input.isNotBlank() || attachment != null || busy || whisperBusy || whisperRecording) {
+        if (!continuousVoice || !voiceReplies || input.isNotBlank() || attachment != null || whisperBusy || whisperRecording) {
             autoListenPending = false
-        } else {
+        } else if (!busy) {
             autoListenPending = false
             microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
         }
