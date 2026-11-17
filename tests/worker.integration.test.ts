@@ -341,6 +341,44 @@ describe("Ciba AI response security headers", () => {
 });
 
 
+describe("Garcia private single-owner access", () => {
+  it("allows only one active Garcia device and one owner pairing", async () => {
+    const privateAppId = "com.ciba.garcia";
+    const firstInvite = await adminRequest("/v1/admin/invitations", "POST", { app_id: privateAppId });
+    expect(firstInvite.status).toBe(201);
+    const inviteCode = (await firstInvite.json() as { invitation_code: string }).invitation_code;
+    const device = await registerDevice(inviteCode, privateAppId);
+
+    const secondInvite = await adminRequest("/v1/admin/invitations", "POST", { app_id: privateAppId });
+    expect(secondInvite.status).toBe(409);
+    expect(await secondInvite.json()).toEqual({ error: "private_device_already_registered" });
+
+    const ownerResponse = await adminRequest("/v1/admin/owners", "POST", { app_id: privateAppId });
+    expect(ownerResponse.status).toBe(201);
+    const owner = await ownerResponse.json() as { owner_id: string; pairing_invitation_code: string };
+
+    const duplicateOwner = await adminRequest("/v1/admin/owners", "POST", { app_id: privateAppId });
+    expect(duplicateOwner.status).toBe(409);
+    expect(await duplicateOwner.json()).toEqual({ error: "private_owner_already_configured" });
+
+    const paired = await request("/v1/owner/pair", {
+      method: "POST",
+      headers: { authorization: `Bearer ${device.access_token}`, "content-type": "application/json" },
+      body: JSON.stringify({ pairing_invitation_code: owner.pairing_invitation_code }),
+    });
+    expect(paired.status).toBe(200);
+
+    const duplicatePairing = await adminRequest("/v1/admin/owner-invitations", "POST", {
+      owner_id: owner.owner_id, app_id: privateAppId,
+    });
+    expect(duplicatePairing.status).toBe(409);
+    expect(await duplicatePairing.json()).toEqual({ error: "private_owner_device_already_paired" });
+
+    const revoked = await adminRequest("/v1/admin/devices/revoke", "POST", { device_id: device.device_id });
+    expect(revoked.status).toBe(200);
+  });
+});
+
 describe("Ciba AI administrative safety ceilings", () => {
   it("rejects runtime limits that exceed the zero-cost safety ceilings", async () => {
     const globalLimit = await adminRequest("/v1/admin/settings", "POST", {
