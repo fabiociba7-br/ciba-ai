@@ -344,6 +344,10 @@ describe("Ciba AI response security headers", () => {
 describe("Garcia private single-owner access", () => {
   it("allows only one active Garcia device and one owner pairing", async () => {
     const privateAppId = "com.ciba.garcia";
+    const app = await adminRequest("/v1/admin/apps", "POST", {
+      app_id: privateAppId, display_name: "Garcia", enabled: true,
+    });
+    expect(app.status).toBe(200);
     const firstInvite = await adminRequest("/v1/admin/invitations", "POST", { app_id: privateAppId });
     expect(firstInvite.status).toBe(201);
     const inviteCode = (await firstInvite.json() as { invitation_code: string }).invitation_code;
