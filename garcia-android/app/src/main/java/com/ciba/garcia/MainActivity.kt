@@ -60,7 +60,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var activation by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
     var usage by remember { mutableStateOf("") }
-    val connected = store.get("device_token") != null
+    var connected by remember { mutableStateOf(store.get("device_token") != null) }
 
     fun persist() {
         val array = JSONArray()
@@ -73,6 +73,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         scope.launch {
             try {
                 withContext(Dispatchers.IO) { client.activate(activation.trim()) }
+                connected = true
                 status = "Conectada ao Ciba AI"
                 activation = ""
             } catch (e: Exception) { error = e.message ?: "Não foi possível ativar." }
