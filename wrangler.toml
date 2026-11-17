@@ -7,9 +7,9 @@ workers_dev = true
 AI_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 # Standalone Garcia Android application ID.
 ALLOWED_APP_IDS = "com.ciba.garcia"
-DAILY_GLOBAL_LIMIT = "50"
-DAILY_APP_LIMIT = "25"
-DAILY_DEVICE_LIMIT = "10"
+DAILY_GLOBAL_LIMIT = "2000"
+DAILY_APP_LIMIT = "1000"
+DAILY_DEVICE_LIMIT = "300"
 MAX_OUTPUT_TOKENS = "512"
 ALLOWED_ORIGINS = ""
 
