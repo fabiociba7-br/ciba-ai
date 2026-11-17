@@ -450,6 +450,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var activation by remember { mutableStateOf("") }
     var pairingCode by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
+    var settingsSection by remember { mutableStateOf("menu") }
+    var showBrowser by remember { mutableStateOf(false) }
     var showLogs by remember { mutableStateOf(false) }
     var showChats by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -765,7 +767,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
               }
               TextButton(onClick = { showArchived = !showArchived }, modifier = Modifier.fillMaxWidth()) { Text(if (showArchived) "← Voltar às conversas" else "Conversas arquivadas") }
               HorizontalDivider()
-              TextButton(onClick = { showSettings = true; scope.launch { drawerState.close() } }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Settings, null); Spacer(Modifier.width(8.dp)); Text("Configurações") }
+              TextButton(onClick = { showBrowser = true; scope.launch { drawerState.close() } }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Search, null); Spacer(Modifier.width(8.dp)); Text("Pesquisar na internet") }
+               TextButton(onClick = { settingsSection = "menu"; showSettings = true; scope.launch { drawerState.close() } }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Settings, null); Spacer(Modifier.width(8.dp)); Text("Configurações") }
             }
           }
         }
@@ -1012,23 +1015,103 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     }
 
     if (showSettings) {
-        AlertDialog(onDismissRequest = { showSettings = false },
-            title = { Text("Garcia · Configurações") },
+        val voiceOptions = voiceOutput.availableVoices()
+        val sectionTitle = when (settingsSection) {
+            "voice" -> "Voz e conversação"
+            "speech" -> "Transcrição de voz"
+            "accounts" -> "Contas e integrações"
+            "diagnostics" -> "Uso e diagnóstico"
+            "privacy" -> "Privacidade e segurança"
+            else -> "Configurações da Garcia"
+        }
+        AlertDialog(
+            onDismissRequest = { showSettings = false; settingsSection = "menu" },
+            title = { Text(sectionTitle) },
             text = {
                 Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState())) {
-                    Text(status, color = Muted)
-                    Spacer(Modifier.height(8.dp))
-                    Text(if (connected) "Dispositivo ativado e token protegido pelo Android Keystore." else "Dispositivo ainda não ativado.")
-                    Spacer(Modifier.height(12.dp))
-                    Text("Transcrição de voz local", fontWeight = FontWeight.Bold)
-                    Text(whisperStatus, color = Muted, fontSize = 12.sp)
-                    Text("Modelo multilíngue tiny quantizado · 32 MB. O arquivo fica no aparelho e é verificado por SHA-256.", color = Muted, fontSize = 12.sp)
-                    Button(
-                        onClick = {
+                    if (settingsSection == "menu") {
+                        Text("Escolha uma área para configurar.", color = Muted, fontSize = 13.sp)
+                        Spacer(Modifier.height(8.dp))
+                        listOf(
+                            "voice" to ("Voz e conversação" to "Escolha uma voz, ouça amostras e configure a conversa por voz"),
+                            "speech" to ("Transcrição de voz" to "Instalar, reparar ou remover o modelo Whisper"),
+                            "accounts" to ("Contas e integrações" to "Facebook e serviços conectados"),
+                            "diagnostics" to ("Uso e diagnóstico" to "Consumo, logs e estado da conexão"),
+                            "privacy" to ("Privacidade e segurança" to "Como credenciais, histórico e navegação são tratados")
+                        ).forEach { (key, item) ->
+                            ListItem(
+                                headlineContent = { Text(item.first, fontWeight = FontWeight.SemiBold) },
+                                supportingContent = { Text(item.second, fontSize = 12.sp) },
+                                modifier = Modifier.fillMaxWidth().clickable { settingsSection = key }
+                            )
+                        }
+                        ListItem(
+                            headlineContent = { Text("Internet e sites", fontWeight = FontWeight.SemiBold) },
+                            supportingContent = { Text("Pesquisar, abrir páginas e entrar em sites", fontSize = 12.sp) },
+                            leadingContent = { Icon(Icons.Default.Search, null, tint = Blue) },
+                            modifier = Modifier.fillMaxWidth().clickable { showSettings = false; settingsSection = "menu"; showBrowser = true }
+                        )
+                    } else if (settingsSection == "voice") {
+                        Text(voiceStatus, color = Muted, fontSize = 12.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Voz da Garcia", fontWeight = FontWeight.Bold)
+                        if (voiceOptions.isEmpty()) {
+                            Text("Nenhuma voz em português foi encontrada. Instale outras vozes nas configurações de texto para fala do Android.", color = Muted, fontSize = 12.sp)
+                        } else {
+                            voiceOptions.forEach { voice ->
+                                val selected = voice.id == voiceOutput.selectedVoice()
+                                Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(voice.name, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, fontSize = 13.sp)
+                                        Text("${voice.language} · ${if (voice.offline) "Offline" else "Requer internet"}", color = Muted, fontSize = 11.sp)
+                                    }
+                                    TextButton(onClick = {
+                                        if (!voiceOutput.previewVoice(voice.id)) error = "Não foi possível reproduzir a amostra desta voz."
+                                    }, enabled = voiceAvailable) { Text("Ouvir") }
+                                    TextButton(onClick = {
+                                        if (!voiceOutput.selectVoice(voice.id)) error = "Não foi possível selecionar esta voz."
+                                    }, enabled = voiceAvailable && !selected) { Text(if (selected) "Atual" else "Usar") }
+                                }
+                                HorizontalDivider()
+                            }
+                        }
+                        TextButton(onClick = { context.startActivity(android.content.Intent(android.speech.tts.TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)) }) { Text("Instalar mais vozes no Android") }
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Ler respostas automaticamente", modifier = Modifier.weight(1f), fontSize = 13.sp)
+                            Switch(checked = voiceReplies, onCheckedChange = { enabled ->
+                                voiceReplies = enabled
+                                context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("enabled", enabled).apply()
+                                if (!enabled) {
+                                    voiceOutput.stop(); continuousVoice = false; autoListenPending = false
+                                    if (whisperRecording) { whisperRecording = false; whisperRecorder.cancel() }
+                                    context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
+                                }
+                            }, enabled = voiceAvailable)
+                        }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Conversação contínua por voz", modifier = Modifier.weight(1f), fontSize = 13.sp)
+                            Switch(checked = continuousVoice, onCheckedChange = { enabled ->
+                                continuousVoice = enabled
+                                context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", enabled).apply()
+                                autoListenPending = enabled
+                                awaitingTranscriptReview = false
+                                if (!enabled) {
+                                    voiceOutput.stop()
+                                    if (whisperRecording) { whisperRecording = false; whisperRecorder.cancel() }
+                                    whisperStatus = "Conversa por voz pausada"
+                                } else if (!voiceReplies) error = "Ative também a leitura automática das respostas."
+                                else if (whisperModelInfo == null) error = "Instale o modelo Whisper antes de usar a conversa contínua."
+                            }, enabled = voiceAvailable && voiceReplies && whisperModelInfo != null && !busy && !whisperRecording)
+                        }
+                        Text("Na conversa contínua, a fala é transcrita localmente, enviada à Garcia e respondida em voz alta. O áudio bruto não é enviado ao servidor.", color = Muted, fontSize = 11.sp)
+                    } else if (settingsSection == "speech") {
+                        Text("Modelo de transcrição local", fontWeight = FontWeight.Bold)
+                        Text(whisperStatus, color = Muted, fontSize = 12.sp)
+                        Text("Modelo multilíngue tiny quantizado · 32 MB. O arquivo fica no aparelho e é verificado por SHA-256.", color = Muted, fontSize = 12.sp)
+                        Button(onClick = {
                             if (!whisperBusy && !whisperRecording) scope.launch {
-                                whisperBusy = true
-                                whisperDownloadProgress = 0
-                                whisperStatus = "Baixando modelo Whisper oficial…"
+                                whisperBusy = true; whisperDownloadProgress = 0; whisperStatus = "Baixando modelo Whisper oficial…"
                                 try {
                                     val info = withContext(Dispatchers.IO) {
                                         whisperModelStore.downloadModel { downloaded, total ->
@@ -1043,112 +1126,63 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     GarciaLog.record(context, "Whisper download", e)
                                 } finally { whisperBusy = false }
                             }
-                        },
-                        enabled = !whisperBusy && !whisperRecording,
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text(if (whisperBusy) "Baixando modelo… ${whisperDownloadProgress}%" else if (whisperModelInfo == null) "Baixar e instalar modelo Whisper (32 MB)" else "Baixar novamente / reparar modelo Whisper") }
-                    OutlinedButton(
-                        onClick = { whisperModelPicker.launch(arrayOf("application/octet-stream", "application/x-ggml", "application/*", "*/*")) },
-                        enabled = !whisperBusy && !whisperRecording,
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Importar modelo manualmente (opcional)") }
-                    if (whisperModelInfo != null) {
-                        Text("Modelo: ${whisperModelInfo!!.file.name} · ${whisperModelInfo!!.sizeBytes / (1024 * 1024)} MB", color = Muted, fontSize = 11.sp)
-                        TextButton(onClick = {
-                            scope.launch(Dispatchers.IO) { runCatching { WhisperNative.nativeRelease(); whisperModelStore.forgetModel() } }
-                            whisperModelInfo = null
-                            whisperStatus = "Modelo removido"
-                        }, enabled = !whisperBusy && !whisperRecording) { Text("Remover modelo") }
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    Text("Resposta por voz", fontWeight = FontWeight.Bold)
-                    Text(voiceStatus, color = Muted, fontSize = 12.sp)
-                    if (!voiceAvailable) {
-                        TextButton(onClick = {
-                            context.startActivity(android.content.Intent(android.speech.tts.TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA))
-                        }) { Text("Instalar/configurar voz offline") }
-                    }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Ler respostas automaticamente", modifier = Modifier.weight(1f), fontSize = 13.sp)
-                        Switch(checked = voiceReplies, onCheckedChange = { enabled ->
-                            voiceReplies = enabled
-                            context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("enabled", enabled).apply()
-                            if (!enabled) { voiceOutput.stop(); continuousVoice = false; autoListenPending = false; if (whisperRecording) { whisperRecording = false; whisperRecorder.cancel() }; context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply() }
-                        }, enabled = voiceAvailable)
-                    }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Conversação contínua por voz", modifier = Modifier.weight(1f), fontSize = 13.sp)
-                        Switch(
-                            checked = continuousVoice,
-                            onCheckedChange = { enabled ->
-                                continuousVoice = enabled
-                                context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", enabled).apply()
-                                autoListenPending = enabled
-                                awaitingTranscriptReview = false
-                                if (!enabled) {
-                                    voiceOutput.stop()
-                                    if (whisperRecording) { whisperRecording = false; whisperRecorder.cancel() }
-                                    whisperStatus = "Conversa por voz pausada"
-                                } else if (!voiceReplies) error = "Ative também a leitura automática das respostas para usar a conversação contínua."
-                                else if (whisperModelInfo == null) error = "Instale o modelo Whisper antes de usar a conversação contínua."
-                            },
-                            enabled = voiceAvailable && voiceReplies && whisperModelInfo != null && !busy && !whisperRecording
-                        )
-                    }
-                    Text("Na conversa contínua, cada fala é transcrita localmente, enviada automaticamente à Garcia, respondida em voz alta e seguida por nova escuta. Nenhum áudio bruto é enviado ao servidor.", color = Muted, fontSize = 11.sp)
-                    if (connected) {
-                        Spacer(Modifier.height(12.dp))
-                        Text("Conta Facebook", fontWeight = FontWeight.Bold)
-                        Text(
-                            if (facebookLinked) "Facebook vinculado a esta conta proprietária."
-                            else "Não vinculado. O Facebook não substitui os códigos privados de ativação.",
-                            color = Muted, fontSize = 13.sp
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        Button(
-                            onClick = { connectFacebook() },
-                            enabled = !facebookBusy,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(when {
-                                facebookBusy -> "Conectando Facebook…"
-                                facebookLinked -> "Reconectar / atualizar permissões"
-                                else -> "Vincular Facebook"
-                            })
+                        }, enabled = !whisperBusy && !whisperRecording, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (whisperBusy) "Baixando modelo… ${whisperDownloadProgress}%" else if (whisperModelInfo == null) "Baixar e instalar Whisper (32 MB)" else "Baixar novamente / reparar Whisper")
                         }
-                        if (facebookLinked) {
-                            Text(
-                                "A Garcia consulta seu perfil, suas publicações e suas fotos com as permissões pessoais concedidas. Comentários, vídeos e mensagens pessoais dependem dos limites atuais da API da Meta.",
-                                color = Muted, fontSize = 12.sp
-                            )
-                            OutlinedButton(
-                                onClick = { showFacebookManager = true },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Abrir dados do Facebook") }
+                        OutlinedButton(onClick = { whisperModelPicker.launch(arrayOf("application/octet-stream", "application/x-ggml", "application/*", "*/*")) }, enabled = !whisperBusy && !whisperRecording, modifier = Modifier.fillMaxWidth()) { Text("Importar modelo manualmente (opcional)") }
+                        if (whisperModelInfo != null) {
+                            Text("Modelo: ${whisperModelInfo!!.file.name} · ${whisperModelInfo!!.sizeBytes / (1024 * 1024)} MB", color = Muted, fontSize = 11.sp)
+                            TextButton(onClick = {
+                                scope.launch(Dispatchers.IO) { runCatching { WhisperNative.nativeRelease(); whisperModelStore.forgetModel() } }
+                                whisperModelInfo = null; whisperStatus = "Modelo removido"
+                            }, enabled = !whisperBusy && !whisperRecording) { Text("Remover modelo") }
                         }
-                        if (facebookError.isNotBlank()) {
-                            Text(facebookError, color = Color(0xFFB94F7C), fontSize = 12.sp)
-                        }
-                    }
-                    if (loadingUsage) { Spacer(Modifier.height(10.dp)); CircularProgressIndicator() }
-                    if (usage.isNotBlank()) {
-                        Spacer(Modifier.height(10.dp))
-                        Text("Uso diário", fontWeight = FontWeight.Bold)
-                        Text(usage, color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
-                    }
-                    if (usageError.isNotBlank()) {
+                    } else if (settingsSection == "accounts") {
+                        Text("Dispositivo ativado e token protegido pelo Android Keystore.", color = Muted, fontSize = 12.sp)
+                        if (connected) {
+                            Text("Conta Facebook", fontWeight = FontWeight.Bold)
+                            Text(if (facebookLinked) "Facebook vinculado a esta conta proprietária." else "Não vinculado. O Facebook não substitui os códigos privados de ativação.", color = Muted, fontSize = 13.sp)
+                            Button(onClick = { connectFacebook() }, enabled = !facebookBusy, modifier = Modifier.fillMaxWidth()) {
+                                Text(when { facebookBusy -> "Conectando Facebook…"; facebookLinked -> "Reconectar / atualizar permissões"; else -> "Vincular Facebook" })
+                            }
+                            if (facebookLinked) {
+                                Text("A Garcia consulta dados conforme as permissões pessoais concedidas pela Meta.", color = Muted, fontSize = 12.sp)
+                                OutlinedButton(onClick = { showFacebookManager = true }, modifier = Modifier.fillMaxWidth()) { Text("Abrir dados do Facebook") }
+                            }
+                            if (facebookError.isNotBlank()) Text(facebookError, color = Color(0xFFB94F7C), fontSize = 12.sp)
+                        } else Text("Ative o dispositivo para liberar integrações.", color = Muted)
+                    } else if (settingsSection == "diagnostics") {
+                        Text(status, color = Muted)
+                        Button(onClick = { loadUsage() }, enabled = connected && !loadingUsage, modifier = Modifier.fillMaxWidth()) { Text(if (loadingUsage) "Consultando…" else "Consultar uso") }
+                        if (loadingUsage) CircularProgressIndicator()
+                        if (usage.isNotBlank()) { Text("Uso diário", fontWeight = FontWeight.Bold); Text(usage, color = Muted, fontSize = 13.sp) }
+                        if (usageError.isNotBlank()) Text(usageError, color = Color(0xFFB94F7C), fontSize = 13.sp)
+                        OutlinedButton(onClick = { logs = GarciaLog.read(context); showSettings = false; showLogs = true }, modifier = Modifier.fillMaxWidth()) { Text("Ver logs de diagnóstico") }
+                    } else if (settingsSection == "privacy") {
+                        Text("Histórico e credenciais locais são protegidos pelo Android Keystore. A navegação em sites acontece em uma janela interna; quando um site exigir login, digite seus dados diretamente no próprio site.", color = Muted, fontSize = 13.sp)
                         Spacer(Modifier.height(8.dp))
-                        Text(usageError, color = Color(0xFFB94F7C), fontSize = 13.sp)
+                        Text("A Garcia não lê nem copia os campos de senha. Ao compartilhar uma página, somente o texto visível será enviado à conversa. Não compartilhe códigos de autenticação ou senhas no chat quando puder autenticar diretamente no site.", color = Muted, fontSize = 13.sp)
                     }
+                    if (error.isNotBlank()) Text(error, color = Color(0xFFB94F7C), fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                 }
             },
-            confirmButton = { TextButton(onClick = { loadUsage() }, enabled = connected && !loadingUsage) {
-                Text(if (loadingUsage) "Consultando…" else "Consultar uso")
-            } },
-            dismissButton = { Row {
-                TextButton(onClick = { logs = GarciaLog.read(context); showSettings = false; showLogs = true }) { Text("Ver logs") }
-                TextButton(onClick = { showSettings = false }) { Text("Fechar") }
-            } }
+            confirmButton = {
+                if (settingsSection == "menu") TextButton(onClick = { showSettings = false }) { Text("Fechar") }
+                else TextButton(onClick = { settingsSection = "menu"; error = "" }) { Text("Voltar") }
+            },
+            dismissButton = { if (settingsSection != "menu") TextButton(onClick = { showSettings = false; settingsSection = "menu" }) { Text("Fechar") } }
+        )
+    }
+
+    if (showBrowser) {
+        GarciaBrowserDialog(
+            onDismiss = { showBrowser = false },
+            onSharePage = { pageContext ->
+                input = pageContext
+                attachment = null
+                error = ""
+                showBrowser = false
+            }
         )
     }
 
