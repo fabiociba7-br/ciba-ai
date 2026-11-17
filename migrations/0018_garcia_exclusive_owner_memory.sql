@@ -1,4 +1,9 @@
 -- Garcia is a private, single-owner assistant for Ciba.
+-- Database-level backstop: only one active Garcia installation can exist.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_garcia_single_active_device
+  ON devices(app_id)
+  WHERE app_id = 'com.ciba.garcia' AND revoked_at IS NULL;
+
 -- Enable curated memory and seed only the identity facts explicitly supplied
 -- by the owner. No chat transcript is imported or stored.
 
