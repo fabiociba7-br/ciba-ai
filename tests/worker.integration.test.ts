@@ -161,6 +161,9 @@ describe("Ciba AI Worker integration", () => {
     await testDb.prepare(
       "UPDATE runtime_settings SET setting_value = '2', updated_at = ? WHERE setting_key = 'daily_device_limit'"
     ).bind(new Date().toISOString()).run();
+    // Keep this regression case independent from the per-device minute limiter.
+    await testDb.prepare("DELETE FROM minute_usage WHERE device_id = ?")
+      .bind(secondDevice.device_id).run();
     const assistantHistory = await request("/v1/ai/chat", {
       method: "POST",
       headers: {
