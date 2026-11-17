@@ -132,6 +132,10 @@ class MainActivity : ComponentActivity() {
     private val facebookCallbackManager: CallbackManager = CallbackManager.Factory.create()
 
     fun startFacebookLogin(onResult: (Result<String>) -> Unit) {
+        // A tela de reconexão precisa descartar o AccessToken em cache do SDK.
+        // Caso contrário, o SDK pode concluir o login silenciosamente com a sessão
+        // antiga e não entregar um token novo para reparar o vínculo no backend.
+        LoginManager.getInstance().logOut()
         LoginManager.getInstance().registerCallback(facebookCallbackManager, object : FacebookCallback<LoginResult> {
             override fun onSuccess(result: LoginResult) {
                 onResult(Result.success(result.accessToken.token))
