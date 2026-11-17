@@ -2002,7 +2002,7 @@ const handleChat = async (request: Request, env: Env) => {
 
   let facebookContext = "";
   const latestUserText = [...messages].reverse().find((message) => message.role === "user")?.content || "";
-  const asksAboutOwnFacebook = /facebook|minhas? publica|meus? posts?|coment[aá]rios?|minhas? fotos?|meus? v[ií]deos?|meu perfil|minha conta|messenger|minhas? mensagens/i.test(latestUserText);
+  const asksAboutOwnFacebook = /facebook|posts?|publica[cç][aã]o|coment[aá]rio|fotos?|v[ií]deos?|perfil|conta|messenger|mensagem/i.test(latestUserText);
   if (owner && device.app_id === "com.ciba.garcia" && asksAboutOwnFacebook && env.FACEBOOK_APP_SECRET) {
     try {
       const facebookLink = await env.DB.prepare(`
