@@ -269,7 +269,7 @@ approve.disabled=true;reject.disabled=true;
 try{await api("/v1/owner/tool-approvals/"+encodeURIComponent(item.approval_id)+"/decision","POST",{allow:false});say("Solicitação rejeitada.");await loadToolApprovals()}
 catch(error){say(error.message);approve.disabled=false;reject.disabled=false}
 });
-actions.appendChild(approve);actions.appendChild(reject);card.appendChild(actions);}else{card.appendChild(el("small","Autorizada. Aguardando execução; esta tela não executa ferramentas."));}host.appendChild(card);
+actions.appendChild(approve);actions.appendChild(reject);card.appendChild(actions);}else if(item.status==="approved"){card.appendChild(el("small","Autorizada, mas ainda não executada. Você pode cancelar esta autorização enquanto ela não for consumida."));var cancelActions=el("div","");cancelActions.className="actions";var cancel=el("button","Cancelar autorização");cancel.className="danger";cancel.addEventListener("click",async function(){if(!confirm("Cancelar a autorização de uso único de "+item.tool_id+"? A ferramenta não será executada com esta aprovação."))return;cancel.disabled=true;try{await api("/v1/owner/tool-approvals/"+encodeURIComponent(item.approval_id)+"/cancel","POST",{});say("Autorização cancelada.");await loadToolApprovals()}catch(error){say(error.message);cancel.disabled=false}});cancelActions.appendChild(cancel);card.appendChild(cancelActions);}else{card.appendChild(el("small","Estado: "+item.status+". Esta solicitação não pode mais ser aprovada nesta tela."));}host.appendChild(card);
 });
 }catch(error){host.appendChild(el("p","Não foi possível carregar as aprovações: "+error.message))}
 };
