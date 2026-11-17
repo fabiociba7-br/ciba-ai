@@ -64,5 +64,6 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 
 - O CI Android run 44052335162 compilou as fontes Kotlin com sucesso.
 - O deploy Ciba AI run 44052072818 concluiu com sucesso; é uma validação do backend, não teste de inferência de áudio.
-- O código já contém contratos TypeScript para Whisper.cpp e Chatterbox, mas o repositório ainda não contém implementação JNI/NDK, pesos Whisper ou runtime/pesos Chatterbox.
+- O núcleo contém contratos para Whisper.cpp e TTS; a ponte JNI/NDK para Whisper.cpp está sendo adicionada em branch própria, com upstream v1.9.5 fixado por commit. Ainda não há modelo Whisper, gravador integrado ou teste de inferência em aparelho.
+- O runtime/pesos Chatterbox não está disponível para Android; a escolha de TTS local Android permanece pendente de avaliação.
 - A compilação Kotlin não substitui o teste de interface no aparelho. A Etapa 1 permanece aberta até o gate manual ser validado.
