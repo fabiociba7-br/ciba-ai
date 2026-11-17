@@ -3,16 +3,21 @@ package com.ciba.garcia
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.SystemClock
 
 /**
  * Captures microphone audio locally as mono PCM16 at 16 kHz.
- * Maximum recording length is two minutes; no audio is persisted to disk.
+ * Audio is held in memory only and is cleared after stop or cancellation.
  */
 internal class WhisperAudioRecorder {
     private var recorder: AudioRecord? = null
     private var samples = ShortArray(0)
     private var sampleCount = 0
     private var recording = false
+    private var startedAtMillis = 0L
+    private val activityDetector = VoiceActivityDetector()
+    var stopReason: VoiceActivityDetector.StopReason? = null
+        private set
 
     @Synchronized
     fun start() {
@@ -36,19 +41,40 @@ internal class WhisperAudioRecorder {
         }
         samples = ShortArray(SAMPLE_RATE * MAX_SECONDS)
         sampleCount = 0
+        stopReason = null
+        startedAtMillis = SystemClock.elapsedRealtime()
         recorder = audioRecord
-        audioRecord.startRecording()
-        recording = true
+        try {
+            audioRecord.startRecording()
+            recording = true
+        } catch (error: Exception) {
+            recorder = null
+            audioRecord.release()
+            samples.fill(0)
+            samples = ShortArray(0)
+            throw IllegalStateException("Não foi possível iniciar a captura do microfone.", error)
+        }
     }
 
     @Synchronized
     fun readChunk(): Boolean {
         val active = recorder ?: return false
         if (!recording || sampleCount >= samples.size) return false
-        val count = active.read(samples, sampleCount, minOf(4096, samples.size - sampleCount))
-        if (count <= 0) return false
+        val count = active.read(samples, sampleCount, minOf(FRAME_SAMPLES, samples.size - sampleCount))
+        if (count < 0) {
+            recording = false
+            throw IllegalStateException("A captura de áudio foi interrompida pelo Android (código $count).")
+        }
+        if (count == 0) return recording
+        val frameOffset = sampleCount
         sampleCount += count
-        return sampleCount < samples.size
+        val reason = activityDetector.shouldStop(samples, frameOffset, count, SystemClock.elapsedRealtime())
+        if (reason != null) {
+            stopReason = reason
+            recording = false
+            return false
+        }
+        return recording && sampleCount < samples.size
     }
 
     @Synchronized
@@ -78,10 +104,12 @@ internal class WhisperAudioRecorder {
         samples.fill(0)
         samples = ShortArray(0)
         sampleCount = 0
+        stopReason = null
     }
 
     companion object {
         const val SAMPLE_RATE = 16_000
         const val MAX_SECONDS = 120
+        private const val FRAME_SAMPLES = 4_096
     }
 }
