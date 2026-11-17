@@ -695,7 +695,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         }
                         if (facebookLinked) {
                             Text(
-                                "Login básico conectado. A lista de Páginas, publicações e Messenger só ficará disponível depois que a Meta habilitar pages_show_list, pages_read_engagement e pages_messaging para este aplicativo.",
+                                "A Garcia consulta seu perfil, suas publicações e suas fotos com as permissões pessoais concedidas. Comentários, vídeos e mensagens pessoais dependem dos limites atuais da API da Meta.",
                                 color = Muted, fontSize = 12.sp
                             )
                             OutlinedButton(
