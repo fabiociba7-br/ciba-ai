@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.Uri
 import android.webkit.CookieManager
-import android.webkit.SafeBrowsingResponse
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -33,7 +32,6 @@ import java.net.URLEncoder
 internal fun GarciaBrowserDialog(onDismiss: () -> Unit, onSharePage: (String) -> Unit) {
     val context = LocalContext.current
     var address by remember { mutableStateOf("https://duckduckgo.com") }
-    var currentUrl by remember { mutableStateOf("https://duckduckgo.com") }
     var pageTitle by remember { mutableStateOf("Pesquisa na internet") }
     var loading by remember { mutableStateOf(false) }
     var pageError by remember { mutableStateOf("") }
@@ -46,7 +44,7 @@ internal fun GarciaBrowserDialog(onDismiss: () -> Unit, onSharePage: (String) ->
             else if (value.contains('.') && !value.contains(' ')) "https://$value"
             else "https://html.duckduckgo.com/html/?q=" + URLEncoder.encode(value, "UTF-8")
         val parsed = runCatching { Uri.parse(url) }.getOrNull()
-        if (parsed?.scheme !in setOf("http", "https") || parsed?.host.isNullOrBlank()) {
+        if (parsed == null || parsed.scheme !in setOf("http", "https") || parsed.host.isNullOrBlank()) {
             pageError = "Endereço inválido. Use um site HTTP ou HTTPS."
             return
         }
@@ -93,7 +91,7 @@ internal fun GarciaBrowserDialog(onDismiss: () -> Unit, onSharePage: (String) ->
                 }
                 if (pageError.isNotBlank()) Text(pageError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 AndroidView(
-                    modifier = Modifier.fillMaxSize().weight(1f),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                     factory = { ctx ->
                         WebView(ctx).apply {
                             settings.javaScriptEnabled = true
@@ -109,11 +107,11 @@ internal fun GarciaBrowserDialog(onDismiss: () -> Unit, onSharePage: (String) ->
                             webViewClient = object : WebViewClient() {
                                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                                     loading = true
-                                    if (!url.isNullOrBlank()) { currentUrl = url; address = url }
+                                    if (!url.isNullOrBlank()) address = url
                                 }
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     loading = false
-                                    if (!url.isNullOrBlank()) { currentUrl = url; address = url }
+                                    if (!url.isNullOrBlank()) address = url
                                     pageTitle = view?.title?.take(80).orEmpty().ifBlank { "Página aberta" }
                                 }
                                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
