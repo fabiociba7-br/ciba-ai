@@ -29,18 +29,39 @@ Fontes oficiais:
 - [Workers e D1 — limites e preços](https://developers.cloudflare.com/workers/platform/pricing/)
 - [D1 — perguntas frequentes](https://developers.cloudflare.com/d1/reference/faq/)
 
-## 3. Sequência de ativação (somente após autorização)
+## 3. Preparar os secrets de deploy
 
-1. O banco D1 remoto `ciba-ai-db` já existe; não o recrie. O ID real está em `wrangler.toml`.
-2. Substituir `ALLOWED_APP_IDS` pelos application IDs confirmados. Não inventar IDs.
-4. Configurar `ALLOWED_ORIGINS` somente se existir frontend web e usar origens HTTPS exatas.
-5. Aplicar as migrations com `npm run db:migrate:remote`.
-6. Gerar um `ADMIN_TOKEN` aleatório forte localmente e configurá-lo com `npx wrangler secret put ADMIN_TOKEN`. Não enviar o token ao chat, ao GitHub ou aos apps.
-7. Executar `npm run check`.
-8. Fazer deploy com `npm run deploy`.
-9. Validar `GET /v1/status` e `GET /v1/config`.
-10. Cadastrar os apps em `POST /v1/admin/apps`, emitir convites individuais e testar cadastro de dispositivo e uma chamada de IA.
-11. Conferir consumo de Neurons, métricas D1, erros e limites antes de liberar qualquer APK.
+O workflow `.github/workflows/deploy.yml` faz deploy manual, depois de validar o projeto e aplicar as migrations pendentes. Ele não publica em todo push.
+
+No repositório GitHub, abra **Settings → Secrets and variables → Actions → New repository secret** e cadastre:
+
+- `CLOUDFLARE_API_TOKEN`: token da Cloudflare com permissão de edição do Worker existente (Workers Editor / Workers Scripts Edit) e permissão **D1 Edit** na conta que contém `ciba-ai-db`. Se o Worker ainda não existir, a primeira criação exige permissão Workers Admin; depois o token pode ser reduzido para Editor.
+- `CLOUDFLARE_ACCOUNT_ID`: ID da conta Cloudflare que contém o Worker e o D1.
+- `CIBA_AI_ADMIN_TOKEN`: token aleatório forte com pelo menos 32 caracteres. Ele será gravado no Worker como secret `ADMIN_TOKEN`. Não reutilize senha pessoal e não coloque esse valor no código, em variáveis públicas ou em mensagens.
+
+O token Cloudflare deve ser limitado à conta e aos recursos necessários. A documentação oficial explica as funções Editor/Admin e as permissões de D1:
+- [Cloudflare Workers — funções e permissões](https://developers.cloudflare.com/workers/authorization/)
+- [Cloudflare — permissões de API](https://developers.cloudflare.com/fundamentals/api/reference/permissions/)
+
+Depois de cadastrar os três secrets, abra **Actions → Ciba AI Deploy → Run workflow**. O fluxo executa, nesta ordem:
+1. Instala as dependências e roda typecheck + testes.
+2. Aplica somente as migrations D1 ainda não aplicadas.
+3. Publica o Worker `ciba-ai`.
+4. Configura `ADMIN_TOKEN` como secret do Worker.
+
+O workflow é manual para impedir deploy ou alteração do banco em cada commit. Ele não altera o plano Cloudflare e não configura fallback pago.
+
+## 4. Sequência de ativação após preparar os secrets
+
+1. Confirmar que a conta Cloudflare está no plano Workers Free.
+2. Não habilitar Workers Paid, créditos pré-pagos do AI Gateway ou qualquer fallback pago.
+3. Confirmar os application IDs reais de Zupi, GEIVIA e outros clientes Ciba nos respectivos projetos Android.
+4. Definir se haverá um painel web. Se não houver, manter `ALLOWED_ORIGINS` vazio; apps nativos não precisam de CORS.
+5. Confirmar que o administrador guardará o `ADMIN_TOKEN` fora do GitHub e dos APKs.
+6. Executar o workflow manual **Ciba AI Deploy**. O D1 remoto `ciba-ai-db` já existe; não o recriar.
+7. Substituir `ALLOWED_APP_IDS` pelos application IDs confirmados. Não inventar IDs.
+8. Cadastrar os apps em `POST /v1/admin/apps`, emitir convites individuais e testar cadastro de dispositivo e uma chamada de IA.
+9. Conferir consumo de Neurons, métricas D1, erros e limites antes de liberar qualquer APK.
 
 ## 4. Controles de interrupção
 
