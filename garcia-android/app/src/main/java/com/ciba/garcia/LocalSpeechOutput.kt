@@ -5,100 +5,86 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.os.Handler
 import android.os.Looper
-import java.util.Locale
 
-/**
- * Uses only an installed Android voice explicitly marked as not requiring
- * network connectivity. It never falls back to a cloud voice.
- */
-internal class LocalSpeechOutput(
-    context: Context,
-    private val onAvailabilityChanged: (Boolean, String) -> Unit,
-    private val onUtteranceDone: () -> Unit = {}
-) {
+internal data class GarciaVoiceOption(val id: String, val name: String, val language: String, val offline: Boolean, val quality: Int)
+
+/** Android TTS voice selector. Preview never changes the saved voice. */
+internal class LocalSpeechOutput(context: Context, private val onAvailabilityChanged: (Boolean, String) -> Unit, private val onUtteranceDone: () -> Unit = {}) {
+    private val appContext = context.applicationContext
+    private val preferences = appContext.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
     private var engine: TextToSpeech? = null
     private var ready = false
     private var closed = false
     private var activeUtteranceId: String? = null
+    private var selectedVoiceId: String? = preferences.getString("voice_id", null)
+    private var previewRestoreVoiceId: String? = null
 
     init {
-        engine = TextToSpeech(context.applicationContext) { status ->
+        engine = TextToSpeech(appContext) { status ->
             if (closed) return@TextToSpeech
             val tts = engine
-            if (status != TextToSpeech.SUCCESS || tts == null) {
-                ready = false
-                onAvailabilityChanged(false, "Motor de voz do Android indisponível.")
-                return@TextToSpeech
-            }
-            val localVoice = tts.voices
-                ?.filter { it.locale.language == "pt" && !it.isNetworkConnectionRequired }
-                ?.sortedByDescending { it.locale.country == "BR" }
-                ?.firstOrNull()
-            if (localVoice == null) {
-                ready = false
-                onAvailabilityChanged(false, "Instale uma voz offline em português nas configurações de texto para fala do Android.")
-                return@TextToSpeech
-            }
-            val languageResult = tts.setLanguage(Locale("pt", "BR"))
-            if (languageResult == TextToSpeech.LANG_MISSING_DATA ||
-                languageResult == TextToSpeech.LANG_NOT_SUPPORTED) {
-                ready = false
-                onAvailabilityChanged(false, "A voz offline em português não é compatível com este aparelho.")
-                return@TextToSpeech
-            }
-            tts.voice = localVoice
+            if (status != TextToSpeech.SUCCESS || tts == null) { ready = false; onAvailabilityChanged(false, "Motor de voz do Android indisponível."); return@TextToSpeech }
+            val voices = supportedVoices(tts)
+            if (voices.isEmpty()) { ready = false; onAvailabilityChanged(false, "Nenhuma voz em português foi encontrada. Instale vozes nas configurações de texto para fala do Android."); return@TextToSpeech }
+            val chosen = voices.firstOrNull { it.name == selectedVoiceId } ?: voices.firstOrNull { it.locale.country == "BR" && !it.isNetworkConnectionRequired } ?: voices.firstOrNull { it.locale.country == "BR" } ?: voices.first()
+            tts.language = chosen.locale
+            tts.voice = chosen
+            selectedVoiceId = chosen.name
+            preferences.edit().putString("voice_id", chosen.name).apply()
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) = Unit
-                override fun onDone(utteranceId: String?) {
-                    Handler(Looper.getMainLooper()).post {
-                        if (!closed && utteranceId != null && activeUtteranceId == utteranceId) {
-                            activeUtteranceId = null
-                            onUtteranceDone()
-                        }
-                    }
-                }
-                override fun onError(utteranceId: String?) {
-                    Handler(Looper.getMainLooper()).post {
-                        if (!closed && utteranceId != null && activeUtteranceId == utteranceId) {
-                            activeUtteranceId = null
-                            onAvailabilityChanged(false, "Falha na reprodução da resposta por voz.")
-                        }
-                    }
-                }
+                override fun onDone(utteranceId: String?) { Handler(Looper.getMainLooper()).post { if (!closed && utteranceId != null && activeUtteranceId == utteranceId) { activeUtteranceId = null; previewRestoreVoiceId?.let { restore -> previewRestoreVoiceId = null; setVoiceInternal(restore) }; onUtteranceDone() } } }
+                override fun onError(utteranceId: String?) { Handler(Looper.getMainLooper()).post { if (!closed && utteranceId != null && activeUtteranceId == utteranceId) { activeUtteranceId = null; previewRestoreVoiceId = null; onAvailabilityChanged(false, "Falha na reprodução da resposta por voz.") } } }
             })
             ready = true
-            onAvailabilityChanged(true, "Resposta por voz local pronta · " + localVoice.name)
+            onAvailabilityChanged(true, statusLabel(chosen))
         }
     }
 
-    fun isReady(): Boolean = ready
+    private fun supportedVoices(tts: TextToSpeech) = tts.voices?.filter { it.locale.language == "pt" }?.sortedWith(compareByDescending<android.speech.tts.Voice> { it.locale.country == "BR" }.thenByDescending { !it.isNetworkConnectionRequired }.thenByDescending { it.quality }.thenBy { it.name }).orEmpty()
 
-    fun speak(text: String): Boolean {
+    fun availableVoices(): List<GarciaVoiceOption> = (engine?.let(::supportedVoices) ?: emptyList()).map { voice -> GarciaVoiceOption(voice.name, voice.name.replace('_', ' '), if (voice.locale.country == "BR") "Português (Brasil)" else "Português (${voice.locale.displayCountry})", !voice.isNetworkConnectionRequired, voice.quality) }
+    fun selectedVoice(): String? = selectedVoiceId
+
+    private fun setVoiceInternal(id: String): Boolean {
+        val tts = engine ?: return false
+        val voice = supportedVoices(tts).firstOrNull { it.name == id } ?: return false
+        val languageResult = tts.setLanguage(voice.locale)
+        if (languageResult == TextToSpeech.LANG_MISSING_DATA || languageResult == TextToSpeech.LANG_NOT_SUPPORTED) return false
+        tts.voice = voice
+        return true
+    }
+
+    fun selectVoice(id: String): Boolean {
+        if (!ready || closed || !setVoiceInternal(id)) return false
+        selectedVoiceId = id
+        previewRestoreVoiceId = null
+        preferences.edit().putString("voice_id", id).apply()
+        onAvailabilityChanged(true, "Voz selecionada · " + (availableVoices().firstOrNull { it.id == id }?.name ?: "Português"))
+        return true
+    }
+
+    fun previewVoice(id: String): Boolean {
+        if (!ready || closed) return false
+        val previous = selectedVoiceId ?: return false
+        if (!setVoiceInternal(id)) return false
+        previewRestoreVoiceId = previous
+        return speakInternal("Olá! Eu sou a Garcia. Esta é uma amostra da minha voz. Você pode ouvir outras opções antes de escolher.")
+    }
+
+    fun isReady(): Boolean = ready
+    private fun speakInternal(text: String): Boolean {
         val tts = engine ?: return false
         if (!ready || closed || text.isBlank()) return false
-        val safeText = text.take(MAX_SPOKEN_CHARS)
         val utteranceId = "garcia-" + System.nanoTime()
         activeUtteranceId = utteranceId
-        val result = tts.speak(safeText, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
-        if (result != TextToSpeech.SUCCESS) activeUtteranceId = null
+        val result = tts.speak(text.take(MAX_SPOKEN_CHARS), TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+        if (result != TextToSpeech.SUCCESS) { activeUtteranceId = null; previewRestoreVoiceId = null }
         return result == TextToSpeech.SUCCESS
     }
-
-    fun stop() {
-        activeUtteranceId = null
-        engine?.stop()
-    }
-
-    fun shutdown() {
-        closed = true
-        ready = false
-        activeUtteranceId = null
-        engine?.stop()
-        engine?.shutdown()
-        engine = null
-    }
-
-    companion object {
-        private const val MAX_SPOKEN_CHARS = 8_000
-    }
+    fun speak(text: String): Boolean { previewRestoreVoiceId = null; return speakInternal(text) }
+    fun stop() { activeUtteranceId = null; previewRestoreVoiceId = null; engine?.stop(); selectedVoiceId?.let(::setVoiceInternal) }
+    fun shutdown() { closed = true; ready = false; activeUtteranceId = null; engine?.stop(); engine?.shutdown(); engine = null }
+    private fun statusLabel(voice: android.speech.tts.Voice) = "Resposta por voz pronta · ${voice.name.replace('_', ' ')}" + if (voice.isNetworkConnectionRequired) " · requer internet" else " · offline"
+    companion object { private const val MAX_SPOKEN_CHARS = 8_000 }
 }
