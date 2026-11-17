@@ -39,41 +39,11 @@ fun FacebookManagerDialog(client: CibaAiClient, onDismiss: () -> Unit) {
     var error by remember { mutableStateOf("") }
     var profile by remember { mutableStateOf(JSONObject()) }
     var permissions by remember { mutableStateOf(JSONArray()) }
-    var pages by remember { mutableStateOf(JSONArray()) }
     var posts by remember { mutableStateOf(JSONArray()) }
-    var conversations by remember { mutableStateOf(JSONArray()) }
-    var messages by remember { mutableStateOf(JSONArray()) }
-    var selectedPageId by remember { mutableStateOf("") }
-    var selectedPageName by remember { mutableStateOf("") }
-    var selectedConversationId by remember { mutableStateOf("") }
-
-    fun loadPage(page: JSONObject) {
-        val pageId = page.optString("id")
-        if (pageId.isBlank()) return
-        selectedPageId = pageId
-        selectedPageName = page.optString("name", "Página")
-        selectedConversationId = ""
-        messages = JSONArray()
-        busy = true
-        error = ""
-        scope.launch {
-            try {
-                val result = withContext(Dispatchers.IO) {
-                    JSONObject()
-                        .put("posts_result", client.facebookPosts(pageId))
-                        .put("conversations_result", client.facebookConversations(pageId))
-                }
-                posts = result.optJSONObject("posts_result")
-                    ?.optJSONObject("posts")?.optJSONArray("data") ?: JSONArray()
-                conversations = result.optJSONObject("conversations_result")
-                    ?.optJSONObject("conversations")?.optJSONArray("data") ?: JSONArray()
-            } catch (e: Exception) {
-                error = e.message ?: "Não foi possível carregar os dados desta página."
-            } finally {
-                busy = false
-            }
-        }
-    }
+    var photos by remember { mutableStateOf(JSONArray()) }
+    var videos by remember { mutableStateOf(JSONArray()) }
+    var videoNote by remember { mutableStateOf("") }
+    var commentsNote by remember { mutableStateOf("A Meta pode limitar a leitura de comentários feitos por outras pessoas em publicações de perfil pessoal.") }
 
     fun refresh() {
         if (busy) return
@@ -82,46 +52,30 @@ fun FacebookManagerDialog(client: CibaAiClient, onDismiss: () -> Unit) {
         scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    val currentProfile = client.facebookProfile().optJSONObject("profile") ?: JSONObject()
-                    val currentPermissions = client.facebookPermissions().optJSONArray("data") ?: JSONArray()
-                    val currentPages = client.facebookPages().optJSONArray("pages") ?: JSONArray()
+                    val p = client.facebookProfile().optJSONObject("profile") ?: JSONObject()
+                    val perms = client.facebookPermissions().optJSONArray("data") ?: JSONArray()
+                    val postResult = client.facebookPosts(30)
+                    val photoResult = client.facebookPhotos(30)
+                    val videoResult = client.facebookVideos(30)
                     JSONObject()
-                        .put("profile", currentProfile)
-                        .put("permissions", currentPermissions)
-                        .put("pages", currentPages)
+                        .put("profile", p)
+                        .put("permissions", perms)
+                        .put("posts", postResult.optJSONObject("posts")?.optJSONArray("data") ?: JSONArray())
+                        .put("photos", photoResult.optJSONObject("photos")?.optJSONArray("data") ?: JSONArray())
+                        .put("videos", videoResult.optJSONObject("videos")?.optJSONArray("data") ?: JSONArray())
+                        .put("video_availability", videoResult.optString("availability", "available"))
+                        .put("video_note", videoResult.optString("note"))
                 }
                 profile = result.optJSONObject("profile") ?: JSONObject()
                 permissions = result.optJSONArray("permissions") ?: JSONArray()
-                pages = result.optJSONArray("pages") ?: JSONArray()
-                posts = JSONArray()
-                conversations = JSONArray()
-                messages = JSONArray()
-                selectedPageId = ""
-                selectedConversationId = ""
-                if (pages.length() > 0) {
-                    loadPage(pages.getJSONObject(0))
+                posts = result.optJSONArray("posts") ?: JSONArray()
+                photos = result.optJSONArray("photos") ?: JSONArray()
+                videos = result.optJSONArray("videos") ?: JSONArray()
+                videoNote = result.optString("video_note").ifBlank {
+                    if (result.optString("video_availability") == "available") "" else "A leitura direta de vídeos não está disponível nesta versão da API."
                 }
             } catch (e: Exception) {
-                error = e.message ?: "Não foi possível consultar os dados do Facebook."
-            } finally {
-                busy = false
-            }
-        }
-    }
-
-    fun loadMessages(conversationId: String) {
-        if (selectedPageId.isBlank() || conversationId.isBlank()) return
-        selectedConversationId = conversationId
-        busy = true
-        error = ""
-        scope.launch {
-            try {
-                val result = withContext(Dispatchers.IO) {
-                    client.facebookMessages(selectedPageId, conversationId)
-                }
-                messages = result.optJSONObject("messages")?.optJSONArray("data") ?: JSONArray()
-            } catch (e: Exception) {
-                error = e.message ?: "Não foi possível carregar as mensagens desta conversa."
+                error = e.message ?: "Não foi possível consultar os dados pessoais do Facebook."
             } finally {
                 busy = false
             }
@@ -132,7 +86,7 @@ fun FacebookManagerDialog(client: CibaAiClient, onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Facebook · Garcia", fontWeight = FontWeight.Bold) },
+        title = { Text("Meu Facebook · Garcia", fontWeight = FontWeight.Bold) },
         text = {
             Column(
                 Modifier.fillMaxWidth().heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
@@ -141,120 +95,75 @@ fun FacebookManagerDialog(client: CibaAiClient, onDismiss: () -> Unit) {
                 if (busy) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         CircularProgressIndicator()
-                        Text("Consultando o Facebook…")
+                        Text("Lendo sua conta do Facebook…")
                     }
                 }
                 if (error.isNotBlank()) {
                     Text(error, color = androidx.compose.material3.MaterialTheme.colorScheme.error, fontSize = 12.sp)
                 }
 
-                Text(profile.optString("name").ifBlank { "Conta Facebook vinculada" }, fontWeight = FontWeight.Bold)
-                Text("ID: ${profile.optString("id", "indisponível")}", fontSize = 11.sp)
+                Text(profile.optString("name").ifBlank { "Seu perfil Facebook" }, fontWeight = FontWeight.Bold)
+                val picture = profile.optJSONObject("picture")?.optJSONObject("data")?.optString("url").orEmpty()
+                if (picture.isNotBlank()) Text("Foto de perfil disponível")
+                profile.optString("email").takeIf { it.isNotBlank() }?.let { Text("E-mail: $it", fontSize = 12.sp) }
+                profile.optString("link").takeIf { it.isNotBlank() }?.let { Text("Perfil: $it", fontSize = 11.sp) }
 
                 Divider()
-                Text("Permissões concedidas", fontWeight = FontWeight.Bold)
+                Text("Permissões efetivamente concedidas", fontWeight = FontWeight.Bold)
                 if (permissions.length() == 0) {
-                    Text("Nenhuma permissão foi retornada pela Meta.", fontSize = 12.sp)
+                    Text("A Meta não retornou a lista de permissões.", fontSize = 12.sp)
                 } else {
                     for (index in 0 until permissions.length()) {
                         val item = permissions.optJSONObject(index) ?: continue
-                        val permission = item.optString("permission")
-                        val status = item.optString("status")
-                        Text("• $permission — $status", fontSize = 12.sp)
+                        Text("• ${item.optString("permission")} — ${item.optString("status")}", fontSize = 12.sp)
                     }
                 }
 
                 Divider()
-                Text("Páginas que você administra", fontWeight = FontWeight.Bold)
-                if (pages.length() == 0) {
-                    Text(
-                        "Nenhuma página disponível. Verifique se a conta administra uma Página e se a Meta concedeu pages_show_list.",
-                        fontSize = 12.sp
-                    )
+                Text("Suas publicações (${posts.length()})", fontWeight = FontWeight.Bold)
+                if (posts.length() == 0) {
+                    Text("Nenhuma publicação retornada. Confirme se user_posts foi concedida e liberada para o app.", fontSize = 12.sp)
                 } else {
-                    for (index in 0 until pages.length()) {
-                        val page = pages.optJSONObject(index) ?: continue
-                        val pageId = page.optString("id")
-                        val pageName = page.optString("name", "Página sem nome")
-                        TextButton(
-                            onClick = { loadPage(page) },
-                            enabled = !busy,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                (if (pageId == selectedPageId) "✓ " else "") + pageName,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
+                    for (index in 0 until minOf(posts.length(), 30)) {
+                        val post = posts.optJSONObject(index) ?: continue
+                        Text(post.optString("message").ifBlank { post.optString("story").ifBlank { "Publicação sem texto" } }, fontSize = 12.sp)
+                        val date = post.optString("created_time")
+                        if (date.isNotBlank()) Text(date, fontSize = 10.sp)
+                        val likes = post.optJSONObject("likes")?.optJSONObject("summary")?.optInt("total_count", -1) ?: -1
+                        val commentCount = post.optJSONObject("comments")?.optJSONObject("summary")?.optInt("total_count", -1) ?: -1
+                        val metrics = buildList {
+                            if (likes >= 0) add("$likes reações")
+                            if (commentCount >= 0) add("$commentCount comentários indicados")
+                        }.joinToString(" · ")
+                        if (metrics.isNotBlank()) Text(metrics, fontSize = 10.sp)
+                        post.optString("permalink_url").takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 10.sp) }
+                        Divider()
                     }
                 }
+                Text(commentsNote, fontSize = 11.sp)
 
-                if (selectedPageId.isNotBlank()) {
-                    Divider()
-                    Text("Publicações de $selectedPageName", fontWeight = FontWeight.Bold)
-                    if (posts.length() == 0) {
-                        Text("Nenhuma publicação retornada ou permissão de leitura indisponível.", fontSize = 12.sp)
-                    } else {
-                        for (index in 0 until minOf(posts.length(), 10)) {
-                            val post = posts.optJSONObject(index) ?: continue
-                            val body = post.optString("message").ifBlank { "Publicação sem texto" }
-                            Text(body, fontSize = 12.sp)
-                            val date = post.optString("created_time")
-                            if (date.isNotBlank()) Text(date, fontSize = 10.sp)
-                            val link = post.optString("permalink_url")
-                            if (link.isNotBlank()) Text(link, fontSize = 10.sp)
-                            Divider()
-                        }
-                    }
-
-                    Text("Conversas do Messenger", fontWeight = FontWeight.Bold)
-                    if (conversations.length() == 0) {
-                        Text("Nenhuma conversa retornada ou permissão pages_messaging indisponível.", fontSize = 12.sp)
-                    } else {
-                        for (index in 0 until minOf(conversations.length(), 25)) {
-                            val conversation = conversations.optJSONObject(index) ?: continue
-                            val id = conversation.optString("id")
-                            val participants = conversation.optJSONObject("participants")?.optJSONArray("data")
-                            val names = mutableListOf<String>()
-                            if (participants != null) {
-                                for (participantIndex in 0 until participants.length()) {
-                                    val name = participants.optJSONObject(participantIndex)?.optString("name").orEmpty()
-                                    if (name.isNotBlank()) names.add(name)
-                                }
-                            }
-                            val label = names.joinToString(", ").ifBlank { "Conversa" }
-                            TextButton(
-                                onClick = { loadMessages(id) },
-                                enabled = !busy && id.isNotBlank(),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    (if (id == selectedConversationId) "✓ " else "") + label,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
-                        }
-                    }
+                Divider()
+                Text("Suas fotos enviadas (${photos.length()})", fontWeight = FontWeight.Bold)
+                if (photos.length() == 0) Text("Nenhuma foto retornada ou permissão indisponível.", fontSize = 12.sp)
+                for (index in 0 until minOf(photos.length(), 20)) {
+                    val photo = photos.optJSONObject(index) ?: continue
+                    Text(photo.optString("name").ifBlank { "Foto sem descrição" }, fontSize = 12.sp)
+                    Text(photo.optString("created_time"), fontSize = 10.sp)
+                    photo.optString("link").takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 10.sp) }
                 }
 
-                if (selectedConversationId.isNotBlank()) {
-                    Divider()
-                    Text("Mensagens", fontWeight = FontWeight.Bold)
-                    if (messages.length() == 0) {
-                        Text("Nenhuma mensagem retornada.", fontSize = 12.sp)
-                    } else {
-                        for (index in 0 until minOf(messages.length(), 30)) {
-                            val message = messages.optJSONObject(index) ?: continue
-                            val sender = message.optJSONObject("from")?.optString("name").orEmpty()
-                                .ifBlank { "Participante" }
-                            val body = message.optString("message").ifBlank { "(mensagem sem texto)" }
-                            Text(sender, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                            Text(body, fontSize = 12.sp)
-                            Text(message.optString("created_time"), fontSize = 10.sp)
-                            Spacer(Modifier.height(3.dp))
-                        }
-                    }
+                Divider()
+                Text("Seus vídeos (${videos.length()})", fontWeight = FontWeight.Bold)
+                if (videos.length() == 0) Text(videoNote.ifBlank { "A API não retornou vídeos por leitura direta." }, fontSize = 12.sp)
+                for (index in 0 until minOf(videos.length(), 20)) {
+                    val video = videos.optJSONObject(index) ?: continue
+                    Text(video.optString("description").ifBlank { "Vídeo" }, fontSize = 12.sp)
+                    Text(video.optString("created_time"), fontSize = 10.sp)
                 }
+
+                Divider()
+                Text("Mensagens pessoais do Messenger", fontWeight = FontWeight.Bold)
+                Text("A API oficial disponível para este aplicativo não permite ler a caixa de entrada pessoal. Esse recurso fica identificado como indisponível, sem tentar acessar conversas de Páginas.", fontSize = 12.sp)
             }
         },
         confirmButton = {
