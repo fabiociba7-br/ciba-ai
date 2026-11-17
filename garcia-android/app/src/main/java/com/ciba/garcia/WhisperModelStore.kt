@@ -63,7 +63,7 @@ internal class WhisperModelStore(context: Context) {
         val file = File(path)
         if (!file.isFile || file.length() !in MIN_MODEL_BYTES..MAX_MODEL_BYTES) return null
         val actualHash = sha256(file)
-        if (!actualHash.equals(expectedHash, ignoreCase = true) || !hasWhisperMagic(file)) return null
+        if (!actualHash.equals(expectedHash, ignoreCase = true) || actualHash != APPROVED_TINY_Q5_1_SHA256 || !hasWhisperMagic(file)) return null
         return ModelInfo(file, actualHash, file.length())
     }
 
