@@ -578,7 +578,7 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
       });
       const body = await response.json().catch(() => null) as {
         access_token?: string;
-        error?: { code?: number; error_subcode?: number; type?: string };
+        error?: { code?: number; error_subcode?: number; type?: string; message?: string; fbtrace_id?: string };
       } | null;
       return { response, body };
     };
@@ -596,14 +596,26 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
 
     if (!tokenResult.response.ok || typeof tokenResult.body?.access_token !== "string" || !tokenResult.body.access_token) {
       const graphError = tokenResult.body?.error;
+      const safeMetaMessage = typeof graphError?.message === "string"
+        ? graphError.message.slice(0, 240)
+            .replaceAll(env.FACEBOOK_APP_SECRET!, "[redacted]")
+            .replaceAll(accessToken, "[redacted]")
+        : "";
+      const traceId = typeof graphError?.fbtrace_id === "string"
+        ? graphError.fbtrace_id.slice(0, 64)
+        : null;
       return json({
-        error: "facebook_app_access_token_failed",
+        error: "facebook_app_access_token_failed" +
+          " [endpoint: " + endpoint + "]" +
+          (safeMetaMessage ? " · Meta: " + safeMetaMessage : "") +
+          (traceId ? " · fbtrace: " + traceId : ""),
         facebook_graph_error: {
           http_status: tokenResult.response.status,
           code: typeof graphError?.code === "number" ? graphError.code : null,
           subcode: typeof graphError?.error_subcode === "number" ? graphError.error_subcode : null,
           type: typeof graphError?.type === "string" ? graphError.type.slice(0, 80) : null,
           endpoint,
+          fbtrace_id: traceId,
         },
       }, 502);
     }
