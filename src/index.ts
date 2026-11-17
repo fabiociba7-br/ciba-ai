@@ -520,11 +520,6 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
   if (accessToken.length < 20 || accessToken.length > 4_000) {
     return json({ error: "invalid_facebook_access_token" }, 400);
   }
-  const existingOwnerLink = await env.DB.prepare(
-    "SELECT facebook_user_id FROM owner_facebook_links WHERE owner_id = ?"
-  ).bind(owner.owner_id).first<{ facebook_user_id: string }>();
-  if (existingOwnerLink) return json({ error: "facebook_already_linked" }, 409);
-
   let appAccessToken = "";
   try {
     const appTokenUrl = new URL("https://graph.facebook.com/v27.0/oauth/access_token");
@@ -600,21 +595,41 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
   if (alreadyLinked && alreadyLinked.owner_id !== owner.owner_id) {
     return json({ error: "facebook_account_already_linked" }, 409);
   }
+  const currentLink = await env.DB.prepare(
+    "SELECT facebook_user_id FROM owner_facebook_links WHERE owner_id = ?"
+  ).bind(owner.owner_id).first<{ facebook_user_id: string }>();
+  if (currentLink && currentLink.facebook_user_id !== tokenData.user_id) {
+    return json({ error: "facebook_already_linked_to_another_account" }, 409);
+  }
 
   const encrypted = await encryptFacebookToken({ access_token: storedToken, expires_at: expiresAt }, env.FACEBOOK_APP_SECRET);
   const linkedAt = nowIso();
   try {
-    await env.DB.prepare(`
-      INSERT INTO owner_facebook_links(
-        owner_id, facebook_user_id, linked_at, token_ciphertext, token_iv, token_salt,
-        token_expires_at, permissions_json, profile_json
-      ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
-      owner.owner_id, tokenData.user_id, linkedAt,
-      encrypted.ciphertext, encrypted.iv, encrypted.salt,
-      expiresAt ? new Date(expiresAt * 1000).toISOString() : null,
-      JSON.stringify(permissions), JSON.stringify(profile),
-    ).run();
+    if (currentLink) {
+      await env.DB.prepare(`
+        UPDATE owner_facebook_links SET
+          token_ciphertext = ?, token_iv = ?, token_salt = ?, token_expires_at = ?,
+          permissions_json = ?, profile_json = ?, linked_at = ?
+        WHERE owner_id = ? AND facebook_user_id = ?
+      `).bind(
+        encrypted.ciphertext, encrypted.iv, encrypted.salt,
+        expiresAt ? new Date(expiresAt * 1000).toISOString() : null,
+        JSON.stringify(permissions), JSON.stringify(profile), linkedAt,
+        owner.owner_id, tokenData.user_id,
+      ).run();
+    } else {
+      await env.DB.prepare(`
+        INSERT INTO owner_facebook_links(
+          owner_id, facebook_user_id, linked_at, token_ciphertext, token_iv, token_salt,
+          token_expires_at, permissions_json, profile_json
+        ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        owner.owner_id, tokenData.user_id, linkedAt,
+        encrypted.ciphertext, encrypted.iv, encrypted.salt,
+        expiresAt ? new Date(expiresAt * 1000).toISOString() : null,
+        JSON.stringify(permissions), JSON.stringify(profile),
+      ).run();
+    }
   } catch {
     return json({ error: "facebook_link_conflict" }, 409);
   }
