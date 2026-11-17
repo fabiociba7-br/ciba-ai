@@ -339,7 +339,28 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     withContext(Dispatchers.IO) { whisperRecorder.start() }
                     whisperRecording = true
                     whisperStatus = "Gravando… toque em parar quando terminar"
-                    scope.launch(Dispatchers.IO) { while (whisperRecorder.readChunk()) { /* capture locally */ } }
+                    scope.launch {
+                        try {
+                            val stopReason = withContext(Dispatchers.IO) {
+                                while (whisperRecorder.readChunk()) { /* capture locally */ }
+                                whisperRecorder.stopReason
+                            }
+                            if (whisperRecording) {
+                                if (stopReason == VoiceActivityDetector.StopReason.NO_SPEECH) {
+                                    whisperRecording = false
+                                    withContext(Dispatchers.IO) { whisperRecorder.cancel() }
+                                    whisperStatus = "Não detectei fala. Toque no microfone e fale próximo ao aparelho."
+                                } else {
+                                    stopAndTranscribe()
+                                }
+                            }
+                        } catch (captureError: Exception) {
+                            whisperRecording = false
+                            withContext(Dispatchers.IO) { whisperRecorder.cancel() }
+                            whisperStatus = captureError.message ?: "A captura de voz foi interrompida."
+                            GarciaLog.record(context, "Whisper captura", captureError)
+                        }
+                    }
                 } catch (e: Exception) { error = e.message ?: "Não foi possível iniciar a gravação."; whisperRecording = false }
             }
         } else error = "A permissão do microfone foi negada. Ative-a nas configurações do Android para transcrever voz."
@@ -726,8 +747,12 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         decorationBox = { inner -> Box { if (input.isBlank()) Text("Converse com a Garcia…", color = Muted); inner() } })
                     Spacer(Modifier.width(7.dp))
                     IconButton(onClick = {
-                        if (whisperRecording) stopAndTranscribe()
-                        else if (!whisperBusy) microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                        if (whisperRecording) {
+                            stopAndTranscribe()
+                        } else if (!whisperBusy) {
+                            voiceOutput.stop()
+                            microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                        }
                     }, enabled = !busy && !whisperBusy && whisperModelInfo != null || whisperRecording,
                         modifier = Modifier.size(44.dp).background(Color(0xFFF1E8ED), CircleShape)) {
                         Icon(if (whisperRecording) Icons.Default.Stop else Icons.Default.Mic,
