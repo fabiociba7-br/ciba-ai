@@ -3,7 +3,10 @@ package com.ciba.garcia
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.net.Uri
 import android.os.Bundle
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -44,6 +48,31 @@ private val Blue = Color(0xFFD96E98)
 private val Muted = Color(0xFF777777)
 
 private data class GarciaChat(val id: String, val title: String, val messages: List<Pair<String, String>>)
+
+private fun readTextAttachment(context: Context, uri: Uri): Pair<String, String> {
+    val resolver = context.contentResolver
+    val mime = resolver.getType(uri)?.lowercase().orEmpty()
+    val allowed = mime.startsWith("text/") || mime in setOf("application/json", "application/xml")
+    if (!allowed) throw IllegalArgumentException("Por enquanto, anexe arquivos de texto, Markdown, CSV, JSON ou XML.")
+    val name = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) cursor.getString(0) else null
+    } ?: "arquivo.txt"
+    val output = java.io.ByteArrayOutputStream()
+    resolver.openInputStream(uri)?.use { stream ->
+        val buffer = ByteArray(8192)
+        var total = 0
+        while (true) {
+            val count = stream.read(buffer)
+            if (count < 0) break
+            total += count
+            if (total > 64 * 1024) throw IllegalArgumentException("O arquivo deve ter no máximo 64 KB.")
+            output.write(buffer, 0, count)
+        }
+    } ?: throw IllegalArgumentException("Não foi possível abrir o arquivo.")
+    val content = output.toString(Charsets.UTF_8.name())
+    if (content.isBlank()) throw IllegalArgumentException("O arquivo está vazio.")
+    return name.take(120) to content
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -87,6 +116,12 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var currentChatId by remember { mutableStateOf(chats.first().id) }
     val history = remember { mutableStateListOf<Pair<String, String>>().apply { addAll(chats.first().messages) } }
     var input by remember { mutableStateOf("") }
+    var attachment by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) runCatching { readTextAttachment(context, uri) }
+            .onSuccess { attachment = it; error = "" }
+            .onFailure { error = it.message ?: "Não foi possível anexar o arquivo." }
+    }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Verificando conexão…") }
     var error by remember { mutableStateOf("") }
@@ -181,8 +216,16 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
 
     fun send() {
         val text = input.trim()
-        if (text.isEmpty() || busy || !connected) return
-        history.add("user" to text); input = ""; persist(); busy = true; error = ""
+        val selectedAttachment = attachment
+        if ((text.isEmpty() && selectedAttachment == null) || busy || !connected) return
+        val message = buildString {
+            if (selectedAttachment != null) {
+                append("Arquivo anexado: ").append(selectedAttachment.first).append("\n\n")
+                append("<conteudo_do_arquivo>\n").append(selectedAttachment.second).append("\n</conteudo_do_arquivo>")
+                if (text.isNotBlank()) append("\n\nPergunta: ").append(text)
+            } else append(text)
+        }
+        history.add("user" to message); input = ""; attachment = null; persist(); busy = true; error = ""
         scope.launch {
             try {
                 val snapshot = JSONArray()
@@ -260,16 +303,27 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             )
         }, bottomBar = {
             if (connected) {
-                Row(Modifier.fillMaxWidth().background(Panel).imePadding().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.fillMaxWidth().background(Panel).imePadding().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
+                    if (attachment != null) {
+                        Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Anexo: ${attachment!!.first}", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            TextButton(onClick = { attachment = null }) { Text("Remover") }
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { attachmentPicker.launch(arrayOf("text/*", "application/json", "application/xml")) }, enabled = !busy) {
+                        Icon(Icons.Default.AttachFile, contentDescription = "Anexar arquivo", tint = Blue)
+                    }
                     BasicTextField(value = input, onValueChange = { input = it },
                         modifier = Modifier.weight(1f).background(Color(0xFFF6EDF2), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 12.dp),
                         textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF303030), fontSize = 15.sp, lineHeight = 21.sp),
                         minLines = 1, maxLines = 5,
                         decorationBox = { inner -> Box { if (input.isBlank()) Text("Converse com a Garcia…", color = Muted); inner() } })
                     Spacer(Modifier.width(7.dp))
-                    IconButton(onClick = { send() }, enabled = !busy && input.isNotBlank(),
+                    IconButton(onClick = { send() }, enabled = !busy && (input.isNotBlank() || attachment != null),
                         modifier = Modifier.size(48.dp).background(Blue, CircleShape)) {
                         Icon(Icons.Default.ArrowUpward, "Enviar", tint = Color.White)
+                    }
                     }
                 }
             }
