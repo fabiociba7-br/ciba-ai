@@ -58,7 +58,12 @@ internal class LocalSpeechOutput(
                     }
                 }
                 override fun onError(utteranceId: String?) {
-                    onAvailabilityChanged(false, "Falha na reprodução da resposta por voz.")
+                    Handler(Looper.getMainLooper()).post {
+                        if (!closed && utteranceId != null && activeUtteranceId == utteranceId) {
+                            activeUtteranceId = null
+                            onAvailabilityChanged(false, "Falha na reprodução da resposta por voz.")
+                        }
+                    }
                 }
             })
             ready = true
