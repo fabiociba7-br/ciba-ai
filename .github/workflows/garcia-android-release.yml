@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - "garcia-android/gradle.properties"
+      - ".github/workflows/garcia-android-release.yml"
   workflow_dispatch:
     inputs:
       version_name:
