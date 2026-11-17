@@ -130,29 +130,83 @@ private fun readTextAttachment(context: Context, uri: Uri): GarciaAttachment {
 
 class MainActivity : ComponentActivity() {
     private val facebookCallbackManager: CallbackManager = CallbackManager.Factory.create()
+    private var pendingFacebookResult: ((Result<String>) -> Unit)? = null
+    private var facebookExternalScreenOpened = false
+    private val facebookReturnWatchdog = android.os.Handler(android.os.Looper.getMainLooper())
+    private val facebookReturnTimeout = Runnable {
+        completeFacebookLogin(
+            Result.failure(
+                IllegalStateException(
+                    "O Facebook voltou para a Garcia sem concluir a autorização. Nenhuma conta foi vinculada. Tente novamente; se persistir, verifique a configuração do aplicativo na Meta."
+                )
+            )
+        )
+    }
+
+    private fun completeFacebookLogin(result: Result<String>) {
+        val callback = pendingFacebookResult ?: return
+        pendingFacebookResult = null
+        facebookExternalScreenOpened = false
+        facebookReturnWatchdog.removeCallbacks(facebookReturnTimeout)
+        callback(result)
+    }
 
     fun startFacebookLogin(onResult: (Result<String>) -> Unit) {
-        // A tela de reconexão precisa descartar o AccessToken em cache do SDK.
-        // Caso contrário, o SDK pode concluir o login silenciosamente com a sessão
-        // antiga e não entregar um token novo para reparar o vínculo no backend.
-        LoginManager.getInstance().logOut()
+        if (pendingFacebookResult != null) {
+            onResult(Result.failure(IllegalStateException("Já existe uma autenticação do Facebook em andamento.")))
+            return
+        }
+        pendingFacebookResult = onResult
+        facebookExternalScreenOpened = false
+
         LoginManager.getInstance().registerCallback(facebookCallbackManager, object : FacebookCallback<LoginResult> {
             override fun onSuccess(result: LoginResult) {
-                onResult(Result.success(result.accessToken.token))
+                val token = result.accessToken.token
+                if (token.isBlank()) {
+                    completeFacebookLogin(Result.failure(IllegalStateException("O Facebook retornou uma autorização sem token de acesso.")))
+                } else {
+                    completeFacebookLogin(Result.success(token))
+                }
             }
             override fun onCancel() {
-                onResult(Result.failure(IllegalStateException("Login com Facebook cancelado.")))
+                completeFacebookLogin(
+                    Result.failure(IllegalStateException("A autenticação foi cancelada ou recusada no Facebook. Nenhuma conta foi vinculada."))
+                )
             }
             override fun onError(error: FacebookException) {
-                onResult(Result.failure(error))
+                completeFacebookLogin(
+                    Result.failure(IllegalStateException("Falha na autenticação do Facebook: ${error.message ?: error.javaClass.simpleName}", error))
+                )
             }
         })
-        // Personal-account access only: no Page or Messenger scopes.
-        // These scopes must also have the required access level in Meta Dashboard.
-        LoginManager.getInstance().logInWithReadPermissions(
-            this,
-            listOf("public_profile", "user_posts", "user_photos", "user_videos")
-        )
+
+        try {
+            LoginManager.getInstance().setLoginBehavior(com.facebook.login.LoginBehavior.WEB_ONLY)
+            LoginManager.getInstance().logOut()
+            LoginManager.getInstance().logInWithReadPermissions(
+                this,
+                listOf("public_profile", "user_posts", "user_photos", "user_videos")
+            )
+            GarciaLog.recordEvent(this, "Facebook", "Fluxo WEB_ONLY iniciado; aguardando retorno do OAuth.")
+        } catch (error: Exception) {
+            completeFacebookLogin(
+                Result.failure(IllegalStateException("Não foi possível abrir a autenticação do Facebook: ${error.message ?: error.javaClass.simpleName}", error))
+            )
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        if (pendingFacebookResult != null) facebookExternalScreenOpened = true
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (pendingFacebookResult != null && facebookExternalScreenOpened) {
+            facebookExternalScreenOpened = false
+            facebookReturnWatchdog.removeCallbacks(facebookReturnTimeout)
+            facebookReturnWatchdog.postDelayed(facebookReturnTimeout, 2500L)
+        }
     }
 
     @Deprecated("Facebook SDK callback bridge")
