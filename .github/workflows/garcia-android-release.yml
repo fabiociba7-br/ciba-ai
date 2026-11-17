@@ -24,6 +24,7 @@ jobs:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      FACEBOOK_CLIENT_TOKEN: ${{ secrets.FACEBOOK_CLIENT_TOKEN }}
       VERSION_NAME: ${{ inputs.version_name || '1.0.4' }}
     defaults:
       run:
@@ -35,7 +36,7 @@ jobs:
           ref: ${{ github.ref }}
           fetch-depth: 1
 
-      - name: Validate signing secrets
+      - name: Validate signing and Facebook secrets
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -45,6 +46,7 @@ jobs:
           test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo "::error::Missing ANDROID_KEYSTORE_PASSWORD"; exit 1; }
           test -n "$ANDROID_KEY_ALIAS" || { echo "::error::Missing ANDROID_KEY_ALIAS"; exit 1; }
           test -n "$ANDROID_KEY_PASSWORD" || { echo "::error::Missing ANDROID_KEY_PASSWORD"; exit 1; }
+          test -n "$FACEBOOK_CLIENT_TOKEN" || { echo "::error::Missing FACEBOOK_CLIENT_TOKEN"; exit 1; }
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -92,9 +94,9 @@ jobs:
           test -n "$APK" || { echo "::error::Release APK was not generated"; exit 1; }
           AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
           BADGING="$("$AAPT" dump badging "$APK")"
-          PACKAGE="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" <<< "$BADGING")"
-          APK_VERSION_CODE="$(sed -n "s/^package:.*versionCode='\([^']*\)'.*/\1/p" <<< "$BADGING")"
-          APK_VERSION_NAME="$(sed -n "s/^package:.*versionName='\([^']*\)'.*/\1/p" <<< "$BADGING")"
+          PACKAGE="$(sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" <<< "$BADGING")"
+          APK_VERSION_CODE="$(sed -n "s/^package:.*versionCode='\\([^']*\\)'.*/\\1/p" <<< "$BADGING")"
+          APK_VERSION_NAME="$(sed -n "s/^package:.*versionName='\\([^']*\\)'.*/\\1/p" <<< "$BADGING")"
           test "$PACKAGE" = "com.ciba.garcia" || { echo "::error::Wrong package: $PACKAGE"; exit 1; }
           test "$APK_VERSION_CODE" -gt 1003 || { echo "::error::Version code is not upgrade-safe: $APK_VERSION_CODE"; exit 1; }
           test "$APK_VERSION_NAME" = "$VERSION_NAME" || { echo "::error::Wrong version name: $APK_VERSION_NAME"; exit 1; }
