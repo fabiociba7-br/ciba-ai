@@ -2,6 +2,12 @@ name: Garcia Android Release
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "garcia-android/**"
+      - ".github/workflows/garcia-android-release.yml"
     inputs:
       version_name:
         description: "Versão pública do aplicativo"
