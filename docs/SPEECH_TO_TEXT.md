@@ -18,7 +18,7 @@ A Garcia integra `whisper.cpp` no Android por JNI/NDK. A captura e inferência s
 - Medir consumo de memória, tempo de carregamento, latência e precisão em português brasileiro.
 - Confirmar comportamento em gravações longas, silêncio, ruído, permissão negada e cancelamento.
 
-O aplicativo não inclui pesos no Git nem baixa modelos automaticamente. A validação SHA-256 detecta alteração do arquivo depois da importação; a impressão digital é exibida para auditoria. A procedência/licença do modelo escolhido ainda precisa ser confirmada separadamente.
+O aplicativo não inclui pesos no Git nem baixa modelos automaticamente. Nesta etapa, o app aceita somente o modelo multilíngue `ggml-tiny-q5_1.bin` do repositório oficial `ggerganov/whisper.cpp`, com SHA-256 fixado em `818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7` (32,2 MB). O repositório Hugging Face declara licença MIT. A verificação do hash é obrigatória na importação e em cada inicialização; modelos diferentes são rejeitados. A variante tiny quantizada é o ponto de partida leve, não uma garantia de precisão máxima.
 
 ## Resposta falada local
 
@@ -39,6 +39,8 @@ Esta implementação usa TTS local do Android, não Chatterbox. Chatterbox perma
 6. O limite de captura é 120 segundos por gravação.
 
 ## Referências
+- Modelo tiny-q5_1 (arquivo e SHA-256): https://huggingface.co/ggerganov/whisper.cpp/blob/main/ggml-tiny-q5_1.bin
+- Repositório de modelos e licença declarada: https://huggingface.co/ggerganov/whisper.cpp
 - whisper.cpp: https://github.com/ggml-org/whisper.cpp
 - versão fixada: https://github.com/ggml-org/whisper.cpp/tree/v1.9.5
 - exemplo Android upstream: https://github.com/ggml-org/whisper.cpp/tree/master/examples/whisper.android
