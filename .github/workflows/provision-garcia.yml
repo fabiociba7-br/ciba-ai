@@ -1,0 +1,65 @@
+name: Provision Garcia Device
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    name: Create private owner and one-time Garcia activation codes
+    runs-on: ubuntu-latest
+    env:
+      CIBA_AI_ADMIN_TOKEN: ${{ secrets.CIBA_AI_ADMIN_TOKEN }}
+      CIBA_AI_URL: https://ciba-ai.fabiociba7.workers.dev
+      GARCIA_APP_ID: com.ciba.garcia
+    steps:
+      - name: Validate administrator secret
+        shell: bash
+        run: |
+          if [ "${#CIBA_AI_ADMIN_TOKEN}" -lt 32 ]; then
+            echo "::error::Missing or invalid CIBA_AI_ADMIN_TOKEN secret"
+            exit 1
+          fi
+
+      - name: Create private owner and device invitation
+        shell: bash
+        run: |
+          set -euo pipefail
+          owner_response="$(curl --fail-with-body --silent --show-error \
+            -X POST "$CIBA_AI_URL/v1/admin/owners" \
+            -H "Authorization: Bearer $CIBA_AI_ADMIN_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -nc --arg app "$GARCIA_APP_ID" '{app_id:$app}')")"
+          owner_id="$(jq -er '.owner_id' <<< "$owner_response")"
+          pairing_code="$(jq -er '.pairing_invitation_code' <<< "$owner_response")"
+
+          device_response="$(curl --fail-with-body --silent --show-error \
+            -X POST "$CIBA_AI_URL/v1/admin/invitations" \
+            -H "Authorization: Bearer $CIBA_AI_ADMIN_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -nc --arg app "$GARCIA_APP_ID" '{app_id:$app}')")"
+          registration_code="$(jq -er '.invitation_code' <<< "$device_response")"
+          expires_at="$(jq -r '.expires_at' <<< "$device_response")"
+
+          {
+            echo "## Garcia — ativação privada do dispositivo"
+            echo
+            echo "Os códigos abaixo são de uso único. Copie-os para a primeira ativação no aplicativo. Eles não devem ser compartilhados."
+            echo
+            echo "- **App ID:** `$GARCIA_APP_ID`"
+            echo "- **Validade do convite de registro:** `$expires_at`"
+            echo "- **Código privado de registro:**"
+            echo
+            echo "```text"
+            echo "$registration_code"
+            echo "```"
+            echo "- **Código de vínculo do proprietário:**"
+            echo
+            echo "```text"
+            echo "$pairing_code"
+            echo "```"
+            echo
+            echo "O segredo administrativo não é exibido. Esta execução criou um proprietário privado e um convite de dispositivo."
+          } >> "$GITHUB_STEP_SUMMARY"
