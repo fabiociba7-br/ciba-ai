@@ -953,16 +953,6 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         Spacer(Modifier.width(8.dp))
                         Text("Encerrar conversa por voz")
                     }
-                    TextButton(
-                        onClick = {
-                            voiceOutput.stop()
-                            autoListenPending = false
-                            if (whisperRecording) { whisperRecording = false; scope.launch(Dispatchers.IO) { whisperRecorder.cancel() } }
-                            continuousVoice = false
-                            context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
-                        },
-                        enabled = busy
-                    ) { Text("Parar resposta atual e sair") }
                 }
             } else if (history.isEmpty()) {
                 Column(Modifier.fillMaxSize().padding(padding).padding(26.dp), verticalArrangement = Arrangement.Center) {
