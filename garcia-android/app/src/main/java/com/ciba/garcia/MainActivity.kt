@@ -1,0 +1,200 @@
+package com.ciba.garcia
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
+
+private val Ink = Color(0xFF0A1020)
+private val Panel = Color(0xFF141F33)
+private val Blue = Color(0xFF82B4FF)
+private val Muted = Color(0xFF9AAAC2)
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val store = SecureStore(this)
+        val client = CibaAiClient(store)
+        setContent { GarciaApp(store, client) }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
+    val scope = rememberCoroutineScope()
+    val history = remember { mutableStateListOf<Pair<String, String>>().apply {
+        val saved = store.loadHistory()
+        for (i in 0 until saved.length()) runCatching {
+            val item = saved.getJSONObject(i)
+            add(item.getString("role") to item.getString("content"))
+        }
+    } }
+    var input by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("Verificando conexão…") }
+    var error by remember { mutableStateOf("") }
+    var activation by remember { mutableStateOf("") }
+    var showSettings by remember { mutableStateOf(false) }
+    var usage by remember { mutableStateOf("") }
+    val connected = store.get("device_token") != null
+
+    fun persist() {
+        val array = JSONArray()
+        history.forEach { (role, content) -> array.put(JSONObject().put("role", role).put("content", content)) }
+        store.saveHistory(array)
+    }
+    fun activate() {
+        if (activation.isBlank() || busy) return
+        busy = true; error = ""
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) { client.activate(activation.trim()) }
+                status = "Conectada ao Ciba AI"
+                activation = ""
+            } catch (e: Exception) { error = e.message ?: "Não foi possível ativar." }
+            finally { busy = false }
+        }
+    }
+    fun send() {
+        val text = input.trim()
+        if (text.isEmpty() || busy || !connected) return
+        history.add("user" to text); input = ""; persist(); busy = true; error = ""
+        scope.launch {
+            try {
+                val snapshot = JSONArray()
+                history.forEach { (role, content) -> snapshot.put(JSONObject().put("role", role).put("content", content)) }
+                val answer = withContext(Dispatchers.IO) { client.chat(snapshot) }
+                history.add("assistant" to answer); persist()
+            } catch (e: Exception) { error = e.message ?: "Falha ao conversar com a Garcia." }
+            finally { busy = false }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        try {
+            val result = withContext(Dispatchers.IO) { client.status() }
+            status = if (result.optString("status") == "ready") "Ciba AI conectado" else "Serviço indisponível"
+        } catch (_: Exception) { status = "Sem conexão com o Ciba AI" }
+    }
+
+    MaterialTheme(colorScheme = darkColorScheme(
+        primary = Blue, background = Ink, surface = Panel, onBackground = Color.White,
+        onSurface = Color.White, secondary = Muted
+    )) {
+        Scaffold(containerColor = Ink, topBar = {
+            TopAppBar(
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(38.dp).background(Blue, RoundedCornerShape(13.dp)), Alignment.Center) {
+                            Text("G", color = Ink, fontSize = 23.sp, fontWeight = FontWeight.Black)
+                        }
+                        Spacer(Modifier.width(11.dp))
+                        Column {
+                            Text("Garcia", fontWeight = FontWeight.Bold, fontSize = 19.sp)
+                            Text(status, color = Muted, fontSize = 11.sp)
+                        }
+                    }
+                },
+                actions = { IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, "Configurações") } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Ink)
+            )
+        }, bottomBar = {
+            if (connected) {
+                Row(Modifier.fillMaxWidth().background(Panel).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    BasicTextField(value = input, onValueChange = { input = it },
+                        modifier = Modifier.weight(1f).background(Color(0xFF202D43), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 14.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 15.sp),
+                        decorationBox = { inner -> Box { if (input.isBlank()) Text("Converse com a Garcia…", color = Muted); inner() } })
+                    Spacer(Modifier.width(8.dp))
+                    IconButton(onClick = { send() }, enabled = !busy && input.isNotBlank(),
+                        modifier = Modifier.size(48.dp).background(Blue, CircleShape)) {
+                        Icon(Icons.Default.ArrowUpward, "Enviar", tint = Ink)
+                    }
+                }
+            }
+        }) { padding ->
+            if (!connected) {
+                Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.Center) {
+                    Text("Sua inteligência pessoal.", fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text("A Garcia funciona de forma independente. Para vincular este único dispositivo, informe o código privado de ativação emitido pelo administrador.", color = Muted)
+                    Spacer(Modifier.height(22.dp))
+                    OutlinedTextField(activation, { activation = it }, Modifier.fillMaxWidth(),
+                        label = { Text("Código de ativação") }, singleLine = true)
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = { activate() }, enabled = !busy && activation.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
+                        Text(if (busy) "Conectando…" else "Ativar Garcia")
+                    }
+                    if (error.isNotBlank()) Text(error, color = Color(0xFFFF8B8B), modifier = Modifier.padding(top = 12.dp))
+                    Text("Não existe cadastro de usuário ou senha. A ativação é feita uma única vez neste aparelho.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 18.dp))
+                }
+            } else if (history.isEmpty()) {
+                Column(Modifier.fillMaxSize().padding(padding).padding(26.dp), verticalArrangement = Arrangement.Center) {
+                    Text("Olá. Eu sou a Garcia.", fontSize = 29.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(12.dp))
+                    Text("Sua assistente de inteligência. Posso ajudar a pensar, planejar, pesquisar, escrever e organizar projetos. Por onde começamos?", color = Muted, fontSize = 16.sp)
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 15.dp), contentPadding = PaddingValues(vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    items(history) { item ->
+                        val user = item.first == "user"
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
+                            Column(Modifier.widthIn(max = 330.dp).background(if (user) Color(0xFF254A78) else Panel, RoundedCornerShape(18.dp)).padding(15.dp)) {
+                                Text(if (user) "Você" else "Garcia", color = if (user) Color(0xFFBBD8FF) else Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.height(5.dp))
+                                Text(item.second, fontSize = 15.sp, lineHeight = 22.sp)
+                            }
+                        }
+                    }
+                    if (busy) item { Text("Garcia está pensando…", color = Muted, modifier = Modifier.padding(8.dp)) }
+                    if (error.isNotBlank()) item { Text(error, color = Color(0xFFFF8B8B), modifier = Modifier.padding(8.dp)) }
+                }
+            }
+        }
+    }
+
+    if (showSettings) {
+        AlertDialog(onDismissRequest = { showSettings = false },
+            title = { Text("Garcia · Configurações") },
+            text = {
+                Column {
+                    Text(status, color = Muted)
+                    Spacer(Modifier.height(8.dp))
+                    Text(if (connected) "Dispositivo ativado e token protegido pelo Android Keystore." else "Dispositivo ainda não ativado.")
+                    if (usage.isNotBlank()) Text(usage, color = Muted)
+                }
+            },
+            confirmButton = { TextButton(onClick = {
+                showSettings = false
+                if (connected) scope.launch {
+                    usage = runCatching { withContext(Dispatchers.IO) { client.usage().toString(2) } }.getOrElse { it.message ?: "Indisponível" }
+                }
+            }) { Text("Consultar uso") } },
+            dismissButton = { TextButton(onClick = { showSettings = false }) { Text("Fechar") } }
+        )
+    }
+}
