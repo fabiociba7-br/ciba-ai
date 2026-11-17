@@ -1894,12 +1894,19 @@ const handleChat = async (request: Request, env: Env) => {
           invocationId: crypto.randomUUID(),
         },
         executeReadOnlyProposals: true,
+        getFacebookConnectionStatus: async () => {
+          const link = await env.DB.prepare(
+            "SELECT linked_at FROM owner_facebook_links WHERE owner_id = ?"
+          ).bind(owner.owner_id).first<{ linked_at: string }>();
+          return { linked: Boolean(link), linkedAt: link?.linked_at || null };
+        },
         authorize: async (toolRequest) =>
           device.owner_id === owner.owner_id &&
           toolRequest.risk === "read" &&
           toolRequest.requiresApproval === false &&
           (toolRequest.toolId === "garcia.capabilities.list" ||
-            toolRequest.toolId === "garcia.capabilities.get"),
+            toolRequest.toolId === "garcia.capabilities.get" ||
+            toolRequest.toolId === "facebook.connection.status"),
       })
     : undefined;
 
