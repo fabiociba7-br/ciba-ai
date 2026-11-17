@@ -341,20 +341,25 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         }
         facebookBusy = true
         facebookError = ""
+        GarciaLog.recordEvent(context, "Facebook", "Iniciando fluxo de vinculação.")
         activity.startFacebookLogin { loginResult ->
             loginResult.onSuccess { accessToken ->
+                GarciaLog.recordEvent(context, "Facebook", "Login concluído; enviando solicitação de vínculo ao Ciba AI.")
                 scope.launch {
                     try {
                         val result = withContext(Dispatchers.IO) { client.linkFacebook(accessToken) }
                         facebookLinked = result.optBoolean("linked", false)
+                        GarciaLog.recordEvent(context, "Facebook", if (facebookLinked) "Vínculo confirmado pelo servidor." else "Servidor respondeu sem confirmar o vínculo.")
                         if (!facebookLinked) facebookError = "O servidor não confirmou o vínculo."
                     } catch (e: Exception) {
+                        GarciaLog.record(context, "Facebook", e)
                         facebookError = e.message ?: "Não foi possível vincular o Facebook."
                     } finally {
                         facebookBusy = false
                     }
                 }
             }.onFailure { e ->
+                GarciaLog.record(context, "Facebook login", e)
                 facebookError = e.message ?: "Falha no login com Facebook."
                 facebookBusy = false
             }
