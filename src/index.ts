@@ -748,7 +748,7 @@ const handleOwnerFacebookData = async (request: Request, env: Env, url: URL) => 
     if (path === "posts") {
       if (!needs("user_posts")) return json({ error: "facebook_permission_missing", permission: "user_posts" }, 403);
       const posts = await facebookGraphGet("me/posts", token, {
-        fields: "id,message,story,created_time,updated_time,permalink_url,full_picture,attachments{media_type,type,url,title,target,subattachments},likes.summary(true),comments.summary(true)",
+        fields: "id,message,story,created_time,updated_time,permalink_url,full_picture,attachments{media_type,type,url,title,target,subattachments}",
         limit,
       });
       return json({ posts, source: "facebook_graph_api", checked_at: nowIso() });
@@ -804,7 +804,7 @@ const handleOwnerFacebookData = async (request: Request, env: Env, url: URL) => 
       const profile = await facebookGraphGet("me", token, { fields: "id,name,picture" });
       const [posts, photos] = await Promise.all([
         needs("user_posts")
-          ? facebookGraphGet("me/posts", token, { fields: "id,message,story,created_time,permalink_url,comments.summary(true),likes.summary(true)", limit: "10" }).catch(error => ({ error: "posts_unavailable", diagnostic: diagnostic(error) }))
+          ? facebookGraphGet("me/posts", token, { fields: "id,message,story,created_time,permalink_url", limit: "10" }).catch(error => ({ error: "posts_unavailable", diagnostic: diagnostic(error) }))
           : Promise.resolve({ error: "permission_not_granted", permission: "user_posts" }),
         (needs("user_photos") || needs("user_posts"))
           ? facebookGraphGet("me/photos", token, { type: "uploaded", fields: "id,name,created_time,link", limit: "10" }).catch(error => ({ error: "photos_unavailable", diagnostic: diagnostic(error) }))
@@ -2035,7 +2035,7 @@ const handleChat = async (request: Request, env: Env) => {
         if (granted.includes("user_posts")) {
           const result = await facebookGraphGet<{ data?: Array<Record<string, unknown>> }>(
             "me/posts", bundle.access_token, {
-              fields: "id,message,story,created_time,permalink_url,attachments{media_type,type,url,title,target},likes.summary(true),comments.summary(true)",
+              fields: "id,message,story,created_time,permalink_url,attachments{media_type,type,url,title,target}",
               limit: "8",
             },
           );
