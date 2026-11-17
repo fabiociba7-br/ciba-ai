@@ -2,6 +2,12 @@ name: Provision Garcia Device
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm_provision:
+        description: 'Confirmar criação do proprietário e dos códigos únicos da Garcia'
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -10,6 +16,7 @@ jobs:
   provision:
     name: Create private owner and one-time Garcia activation codes
     runs-on: ubuntu-latest
+    if: ${{ inputs.confirm_provision == true }}
     env:
       CIBA_AI_ADMIN_TOKEN: ${{ secrets.CIBA_AI_ADMIN_TOKEN }}
       CIBA_AI_URL: https://ciba-ai.fabiociba7.workers.dev
@@ -48,7 +55,10 @@ jobs:
             echo
             echo "Os códigos abaixo são de uso único. Copie-os para a primeira ativação no aplicativo. Eles não devem ser compartilhados."
             echo
+            echo "- **Nome do assistente:** Garcia"
+            echo "- **Backend / infraestrutura:** Ciba AI (Cloudflare Worker e repositório)
             echo "- **App ID:** `$GARCIA_APP_ID`"
+            echo "- **Owner ID:** `$owner_id`"
             echo "- **Validade do convite de registro:** `$expires_at`"
             echo "- **Código privado de registro:**"
             echo
