@@ -13,10 +13,10 @@ class VoiceActivityDetectorTest {
         val detector = VoiceActivityDetector(trailingSilenceMillis = 1_000)
         assertNull(detector.shouldStop(speechFrame, 0, speechFrame.size, 0))
         assertNull(detector.shouldStop(silenceFrame, 0, silenceFrame.size, 500))
-        assertNull(detector.shouldStop(silenceFrame, 0, silenceFrame.size, 1_200))
+        assertNull(detector.shouldStop(silenceFrame, 0, silenceFrame.size, 900))
         assertEquals(
             VoiceActivityDetector.StopReason.SILENCE,
-            detector.shouldStop(silenceFrame, 0, silenceFrame.size, 1_500)
+            detector.shouldStop(silenceFrame, 0, silenceFrame.size, 1_000)
         )
     }
 
