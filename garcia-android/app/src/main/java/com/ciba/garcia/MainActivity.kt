@@ -143,12 +143,11 @@ class MainActivity : ComponentActivity() {
                 onResult(Result.failure(error))
             }
         })
-        // Keep initial authentication limited to standard Facebook Login.
-        // Page/Messenger scopes must be enabled for this app in Meta first;
-        // otherwise Meta rejects the entire request as "Invalid Scopes".
+        // Personal-account access only: no Page or Messenger scopes.
+        // These scopes must also have the required access level in Meta Dashboard.
         LoginManager.getInstance().logInWithReadPermissions(
             this,
-            listOf("public_profile")
+            listOf("public_profile", "user_posts", "user_photos", "user_videos")
         )
     }
 
