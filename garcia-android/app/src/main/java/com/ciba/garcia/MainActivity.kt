@@ -358,6 +358,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             facebookError = "O servidor não confirmou o vínculo."
                         } else {
                             facebookStatusLoaded = false
+                            showSettings = false
                             showFacebookManager = true
                         }
                     } catch (e: Exception) {
