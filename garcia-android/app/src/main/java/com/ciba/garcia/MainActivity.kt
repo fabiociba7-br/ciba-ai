@@ -11,14 +11,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
@@ -36,11 +34,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 
 private val Ink = Color(0xFFFFFFFF)
 private val Panel = Color(0xFFFFF8FB)
 private val Blue = Color(0xFFD96E98)
 private val Muted = Color(0xFF777777)
+
+private data class GarciaChat(val id: String, val title: String, val messages: List<Pair<String, String>>)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,13 +58,32 @@ class MainActivity : ComponentActivity() {
 private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val history = remember { mutableStateListOf<Pair<String, String>>().apply {
-        val saved = store.loadHistory()
-        for (i in 0 until saved.length()) runCatching {
-            val item = saved.getJSONObject(i)
-            add(item.getString("role") to item.getString("content"))
+    val chats = remember {
+        mutableStateListOf<GarciaChat>().apply {
+            val savedChats = store.loadChats()
+            for (i in 0 until savedChats.length()) runCatching {
+                val item = savedChats.getJSONObject(i)
+                val messagesJson = item.optJSONArray("messages") ?: JSONArray()
+                val messages = mutableListOf<Pair<String, String>>()
+                for (j in 0 until messagesJson.length()) {
+                    val message = messagesJson.getJSONObject(j)
+                    messages.add(message.getString("role") to message.getString("content"))
+                }
+                add(GarciaChat(item.getString("id"), item.optString("title", "Nova conversa"), messages))
+            }
+            if (isEmpty()) {
+                val legacy = store.loadHistory()
+                val messages = mutableListOf<Pair<String, String>>()
+                for (i in 0 until legacy.length()) runCatching {
+                    val item = legacy.getJSONObject(i)
+                    messages.add(item.getString("role") to item.getString("content"))
+                }
+                add(GarciaChat(UUID.randomUUID().toString(), "Conversa anterior", messages))
+            }
         }
-    } }
+    }
+    var currentChatId by remember { mutableStateOf(chats.first().id) }
+    val history = remember { mutableStateListOf<Pair<String, String>>().apply { addAll(chats.first().messages) } }
     var input by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Verificando conexão…") }
@@ -72,15 +92,68 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var pairingCode by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
     var showLogs by remember { mutableStateOf(false) }
+    var showChats by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
     var logs by remember { mutableStateOf("") }
     var usage by remember { mutableStateOf("") }
+    var usageError by remember { mutableStateOf("") }
+    var loadingUsage by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(store.get("device_token") != null) }
 
     fun persist() {
+        val index = chats.indexOfFirst { it.id == currentChatId }
+        val firstUser = history.firstOrNull { it.first == "user" }?.second.orEmpty()
+        val title = firstUser.replace("\\s+".toRegex(), " ").take(42).ifBlank { "Nova conversa" }
+        val current = GarciaChat(currentChatId, title, history.toList())
+        if (index >= 0) chats[index] = current else chats.add(current)
         val array = JSONArray()
-        history.forEach { (role, content) -> array.put(JSONObject().put("role", role).put("content", content)) }
-        store.saveHistory(array)
+        chats.forEach { chat ->
+            val messages = JSONArray()
+            chat.messages.forEach { (role, content) -> messages.put(JSONObject().put("role", role).put("content", content)) }
+            array.put(JSONObject().put("id", chat.id).put("title", chat.title).put("messages", messages))
+        }
+        store.saveChats(array)
+        store.saveHistory(JSONArray().apply {
+            history.forEach { (role, content) -> put(JSONObject().put("role", role).put("content", content)) }
+        })
     }
+
+    fun selectChat(chat: GarciaChat) {
+        if (busy) return
+        persist()
+        currentChatId = chat.id
+        history.clear()
+        history.addAll(chat.messages)
+        input = ""
+        error = ""
+        showChats = false
+    }
+
+    fun newChat() {
+        if (busy) return
+        persist()
+        val chat = GarciaChat(UUID.randomUUID().toString(), "Nova conversa", emptyList())
+        chats.add(chat)
+        currentChatId = chat.id
+        history.clear()
+        input = ""
+        error = ""
+        persist()
+    }
+
+    fun deleteCurrentChat() {
+        if (busy) return
+        chats.removeAll { it.id == currentChatId }
+        val next = chats.lastOrNull() ?: GarciaChat(UUID.randomUUID().toString(), "Nova conversa", emptyList()).also { chats.add(it) }
+        currentChatId = next.id
+        history.clear()
+        history.addAll(next.messages)
+        input = ""
+        error = ""
+        confirmDelete = false
+        persist()
+    }
+
     fun activate() {
         if (activation.isBlank() || busy) return
         busy = true; error = ""
@@ -95,6 +168,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             finally { busy = false }
         }
     }
+
     fun send() {
         val text = input.trim()
         if (text.isEmpty() || busy || !connected) return
@@ -108,6 +182,36 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 GarciaLog.recordEvent(context, "chat", "HTTP 200 · resposta recebida e salva no histórico · ${answer.length} caracteres")
             } catch (e: Exception) { GarciaLog.record(context, "chat", e); error = e.message ?: "Falha ao conversar com a Garcia." }
             finally { busy = false }
+        }
+    }
+
+    fun loadUsage() {
+        if (loadingUsage || !connected) return
+        loadingUsage = true
+        usageError = ""
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) { client.usage() }
+                val buckets = result.optJSONArray("buckets") ?: JSONArray()
+                val day = result.optString("day", "hoje")
+                val lines = mutableListOf("Data (UTC): $day")
+                for (i in 0 until buckets.length()) {
+                    val item = buckets.getJSONObject(i)
+                    val key = item.optString("scope_key")
+                    val label = when {
+                        key == "global" -> "Global"
+                        key == "app:${CibaAiClient.APP_ID}" -> "Aplicativo Garcia"
+                        key.startsWith("device:") -> "Este dispositivo"
+                        else -> key
+                    }
+                    lines.add("$label: ${item.optInt("requests", 0)} / ${item.optInt("request_limit", 0)} solicitações")
+                }
+                usage = if (buckets.length() == 0) "Ainda não há solicitações contabilizadas hoje.\\nData (UTC): $day" else lines.joinToString("\\n")
+                GarciaLog.recordEvent(context, "uso", "Consulta de uso concluída · ${buckets.length()} limites")
+            } catch (e: Exception) {
+                usageError = e.message ?: "Não foi possível consultar o uso."
+                GarciaLog.record(context, "uso", e)
+            } finally { loadingUsage = false }
         }
     }
 
@@ -134,7 +238,14 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         }
                     }
                 },
-                actions = { IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, "Configurações") } },
+                actions = {
+                    if (connected) {
+                        TextButton(onClick = { showChats = true }) { Text("Conversas") }
+                        TextButton(onClick = { newChat() }, enabled = !busy) { Text("Novo") }
+                        TextButton(onClick = { confirmDelete = true }, enabled = !busy) { Text("Excluir") }
+                    }
+                    IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, "Configurações") }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Ink)
             )
         }, bottomBar = {
@@ -158,11 +269,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     Spacer(Modifier.height(8.dp))
                     Text("A Garcia funciona de forma independente. Para vincular este único dispositivo, informe os dois códigos privados de provisionamento emitidos para este aparelho.", color = Muted)
                     Spacer(Modifier.height(22.dp))
-                    OutlinedTextField(activation, { activation = it }, Modifier.fillMaxWidth(),
-                        label = { Text("Código privado de registro") }, singleLine = true)
+                    OutlinedTextField(activation, { activation = it }, Modifier.fillMaxWidth(), label = { Text("Código privado de registro") }, singleLine = true)
                     Spacer(Modifier.height(10.dp))
-                    OutlinedTextField(pairingCode, { pairingCode = it }, Modifier.fillMaxWidth(),
-                        label = { Text("Código de vínculo do proprietário") }, singleLine = true)
+                    OutlinedTextField(pairingCode, { pairingCode = it }, Modifier.fillMaxWidth(), label = { Text("Código de vínculo do proprietário") }, singleLine = true)
                     Spacer(Modifier.height(12.dp))
                     Button(onClick = { activate() }, enabled = !busy && activation.isNotBlank() && pairingCode.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
                         Text(if (busy) "Conectando…" else "Ativar Garcia")
@@ -195,6 +304,31 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         }
     }
 
+    if (showChats) {
+        AlertDialog(onDismissRequest = { showChats = false },
+            title = { Text("Conversas salvas") },
+            text = {
+                Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    chats.asReversed().forEach { chat ->
+                        TextButton(onClick = { selectChat(chat) }, modifier = Modifier.fillMaxWidth()) {
+                            Text(chat.title, modifier = Modifier.fillMaxWidth(), color = Color(0xFF303030))
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showChats = false }) { Text("Fechar") } }
+        )
+    }
+
+    if (confirmDelete) {
+        AlertDialog(onDismissRequest = { confirmDelete = false },
+            title = { Text("Excluir conversa?") },
+            text = { Text("Esta conversa será removida deste aparelho. As outras conversas salvas serão mantidas.") },
+            confirmButton = { TextButton(onClick = { deleteCurrentChat() }) { Text("Excluir") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancelar") } }
+        )
+    }
+
     if (showSettings) {
         AlertDialog(onDismissRequest = { showSettings = false },
             title = { Text("Garcia · Configurações") },
@@ -203,15 +337,21 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     Text(status, color = Muted)
                     Spacer(Modifier.height(8.dp))
                     Text(if (connected) "Dispositivo ativado e token protegido pelo Android Keystore." else "Dispositivo ainda não ativado.")
-                    if (usage.isNotBlank()) Text(usage, color = Muted)
+                    if (loadingUsage) { Spacer(Modifier.height(10.dp)); CircularProgressIndicator() }
+                    if (usage.isNotBlank()) {
+                        Spacer(Modifier.height(10.dp))
+                        Text("Uso diário", fontWeight = FontWeight.Bold)
+                        Text(usage, color = Muted, fontSize = 13.sp, lineHeight = 19.sp)
+                    }
+                    if (usageError.isNotBlank()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(usageError, color = Color(0xFFB94F7C), fontSize = 13.sp)
+                    }
                 }
             },
-            confirmButton = { TextButton(onClick = {
-                showSettings = false
-                if (connected) scope.launch {
-                    usage = runCatching { withContext(Dispatchers.IO) { client.usage().toString(2) } }.getOrElse { it.message ?: "Indisponível" }
-                }
-            }) { Text("Consultar uso") } },
+            confirmButton = { TextButton(onClick = { loadUsage() }, enabled = connected && !loadingUsage) {
+                Text(if (loadingUsage) "Consultando…" else "Consultar uso")
+            } },
             dismissButton = { Row {
                 TextButton(onClick = { logs = GarciaLog.read(context); showSettings = false; showLogs = true }) { Text("Ver logs") }
                 TextButton(onClick = { showSettings = false }) { Text("Fechar") }
@@ -236,4 +376,3 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         )
     }
 }
-
