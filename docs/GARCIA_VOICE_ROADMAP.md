@@ -23,6 +23,7 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - Microfone, permissão de gravação e síntese de voz foram retirados temporariamente da interface de teste. Voz só volta após aprovação da conversa por texto.
 
 ### Etapa 2 — preparar Whisper.cpp no Android
+**Estado: ponte JNI/NDK adicionada; CI de compilação executado.**
 - Revisar upstream, versão, licença e notices; selecionar variante e modelo multilingue apropriado para pt-BR.
 - Medir tamanho do APK/modelo, RAM, CPU, ABI, API mínima, latência e consumo de bateria.
 - Integrar whisper.cpp por JNI/NDK ou biblioteca Android mantida e verificável; implementar ciclo de vida, cancelamento e liberação de memória.
@@ -31,12 +32,14 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - Gate: build Android reproduzível e testes nativos de carregamento, integridade, cancelamento e incompatibilidade.
 
 ### Etapa 3 — reconhecimento de voz local
+**Estado: captura de microfone, importação manual de modelo e preenchimento do campo para revisão implementados; aguarda CI e teste real no aparelho.**
 - Conectar a interface de gravação ao adapter Whisper.cpp já contratado em TypeScript, sem usar RecognitionService externo como motor final.
 - Capturar áudio somente após ação explícita; limitar duração/tamanho; permitir cancelar, revisar e editar a transcrição antes de enviar.
 - Português brasileiro como idioma padrão; tratar silêncio, ruído, permissão negada e modelo indisponível.
 - Gate: testes com frases curtas/longas em pt-BR, números, pontuação, ruído e interrupção; confirmar que áudio não sai do aparelho.
 
 ### Etapa 4 — preparar motor de síntese
+**Estado: para o Android, adotado inicialmente o TTS nativo do sistema com filtro obrigatório de voz offline em português; Chatterbox permanece não integrado.**
 - Reavaliar Chatterbox para Android: o contrato existente é desktop-local e não equivale a runtime Android.
 - Conferir licença do código e dos pesos/checkpoints separadamente, suporte real a pt-BR, tamanho, RAM, CPU/GPU e latência.
 - Comparar somente alternativas open source com licença e runtime Android viáveis; escolher automaticamente a melhor opção compatível.
@@ -44,6 +47,7 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - Gate: decisão documentada, artefatos com hashes e prova de execução local em aparelho suportado.
 
 ### Etapa 5 — voz da Garcia sob demanda
+**Estado: reprodução automática opcional das respostas implementada com controle nas Configurações; aguarda validação em aparelho com pacote de voz offline instalado.**
 - Integrar TTS local e adicionar botão de reprodução em cada resposta da Garcia.
 - Controles: reproduzir, pausar/interromper e retomar quando tecnicamente suportado; voz/idioma configuráveis se houver opções compatíveis.
 - Não falar automaticamente todas as respostas por padrão.
@@ -64,6 +68,8 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 
 - O CI Android run 44052335162 compilou as fontes Kotlin com sucesso.
 - O deploy Ciba AI run 44052072818 concluiu com sucesso; é uma validação do backend, não teste de inferência de áudio.
-- O núcleo contém contratos para Whisper.cpp e TTS; a ponte JNI/NDK para Whisper.cpp está sendo adicionada em branch própria, com upstream v1.9.5 fixado por commit. Ainda não há modelo Whisper, gravador integrado ou teste de inferência em aparelho.
-- O runtime/pesos Chatterbox não está disponível para Android; a escolha de TTS local Android permanece pendente de avaliação.
-- A compilação Kotlin não substitui o teste de interface no aparelho. A Etapa 1 permanece aberta até o gate manual ser validado.
+- O motor whisper.cpp v1.9.5, JNI/NDK, importação local de modelo, verificação SHA-256 e captura de microfone mono 16 kHz até 120 segundos estão no PR #24.
+- A transcrição preenche o campo de texto para revisão antes do envio; não encaminha áudio ao servidor.
+- A síntese usa Android TextToSpeech e só seleciona voz em português que não exige rede. A leitura automática pode ser desligada nas Configurações.
+- Ainda faltam CI final, escolha/auditoria de um modelo Whisper, instalação de voz offline no aparelho e testes de precisão, latência, memória e reprodução.
+- Não foi gerado APK.
