@@ -25,7 +25,7 @@ A paleta oficial está centralizada em `app/src/main/res/values/colors.xml`. O �
 
 ## Ativação de dispositivo único
 
-O backend atual protege a conversa com token de dispositivo e vínculo explícito ao proprietário. Por isso, a primeira instalação apresenta uma ativação técnica única, não um cadastro de usuário. São necessários dois códigos de uso único: um convite de registro (`POST /v1/auth/register`) e um convite de pareamento do proprietário (`POST /v1/auth/pair-owner`). Ambos são emitidos pelo fluxo administrativo do Ciba AI, com validade de 24 horas. O package ID `com.ciba.garcia` precisa estar permitido no Worker antes da emissão. O token recebido fica protegido no Android Keystore; não é exibido nem registrado em logs.
+O backend atual protege a conversa com token de dispositivo e vínculo explícito ao proprietário. Por isso, a primeira instalação apresenta uma ativação técnica única, não um cadastro de usuário. São necessários dois códigos de uso único: um convite de registro (`POST /v1/auth/register`) e um convite de pareamento do proprietário (`POST /v1/owner/pair`). O workflow manual `Provision Garcia Device` cria o proprietário privado e os dois códigos; o convite de registro tem validade de 24 horas. O convite de pareamento também expira em 24 horas. O package ID `com.ciba.garcia` precisa estar permitido no Worker antes da emissão. O token recebido fica protegido no Android Keystore; não é exibido nem registrado em logs.
 
 O segredo administrativo do Worker nunca deve ser incluído no APK. A ativação é uma etapa de provisionamento do dispositivo e pode ser substituída por pareamento proprietário dedicado em uma evolução do backend.
 
