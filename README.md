@@ -5,11 +5,12 @@ Repositório e infraestrutura de servidor para a assistente de IA Garcia e futur
 ## Objetivos
 
 - Backend independente que fornece inferência e APIs à assistente Garcia; integrações com outros aplicativos serão adicionadas futuramente.
-- Acesso controlado por convites e tokens individuais de dispositivo.
+- Acesso privado de proprietário único: a Garcia só pode ter um proprietário ativo e um dispositivo registrado por vez; não há cadastro público ou fluxo multiusuário.
+- Acesso controlado por convites de uso único e token de dispositivo protegido.
 - Núcleo Ciba Core com roteamento por especialidade e identidade unificada.
 - Provider atual Cloudflare Workers AI e adapter preparado para endpoints OpenAI-compatible auto-hospedados.
 - Perfis especialistas selecionados sem chamadas adicionais no modo econômico single-pass.
-- Memória limitada ao contexto enviado; conversas não são persistidas pelo gateway.
+- Memória curada e privada do proprietário, separada do histórico; conversas não são persistidas pelo gateway.
 - Primitiva opt-in de ensemble para até três especialistas independentes e uma síntese, ainda desativada sem providers configurados.
 - Registro de providers e ferramentas opt-in com allowlist, validação de entrada/saída e autorização pela aplicação.
 - Sem fallback pago, cobrança automática ou uso de credenciais Google do mantenedor.
@@ -42,6 +43,10 @@ Ciba AI Worker
   v
 Resposta ao app (sem armazenar o histórico)
 ```
+
+## Identidade exclusiva da Garcia
+
+A Garcia é uma assistente privada de Ciba, não um serviço multiusuário. O backend permite apenas um dispositivo ativo para `com.ciba.garcia`, impede a emissão de convites adicionais enquanto esse dispositivo estiver ativo e não permite criar outro proprietário para a mesma instalação. Para substituir o aparelho, o dispositivo anterior deve ser revogado pelo administrador antes de um novo provisionamento. A memória curada inicial identifica Ciba como criador, proprietário, mentor, amigo e parceiro da Garcia; nenhum histórico de conversa é importado automaticamente.
 
 ## Aplicativo Android Garcia
 
