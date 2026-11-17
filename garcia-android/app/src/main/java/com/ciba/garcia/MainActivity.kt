@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -100,6 +101,14 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var usageError by remember { mutableStateOf("") }
     var loadingUsage by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(store.get("device_token") != null) }
+    val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+    LaunchedEffect(history.size, busy) {
+        if (history.isNotEmpty()) {
+            val lastItem = history.lastIndex + if (busy) 1 else 0
+            chatListState.animateScrollToItem(lastItem.coerceAtLeast(0))
+        }
+    }
 
     fun persist() {
         val index = chats.indexOfFirst { it.id == currentChatId }
@@ -253,8 +262,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             if (connected) {
                 Row(Modifier.fillMaxWidth().background(Panel).imePadding().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     BasicTextField(value = input, onValueChange = { input = it },
-                        modifier = Modifier.weight(1f).background(Color(0xFFF6EDF2), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 14.dp),
-                        textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF303030), fontSize = 15.sp),
+                        modifier = Modifier.weight(1f).background(Color(0xFFF6EDF2), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 12.dp),
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF303030), fontSize = 15.sp, lineHeight = 21.sp),
+                        minLines = 1, maxLines = 5,
                         decorationBox = { inner -> Box { if (input.isBlank()) Text("Converse com a Garcia…", color = Muted); inner() } })
                     Spacer(Modifier.width(7.dp))
                     IconButton(onClick = { send() }, enabled = !busy && input.isNotBlank(),
@@ -287,14 +297,39 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     Text("Sua assistente de inteligência. Posso ajudar a pensar, planejar, pesquisar, escrever e organizar projetos. Por onde começamos?", color = Muted, fontSize = 16.sp)
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 15.dp), contentPadding = PaddingValues(vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                LazyColumn(
+                    state = chatListState,
+                    modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 15.dp),
+                    contentPadding = PaddingValues(vertical = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
                     items(history) { item ->
                         val user = item.first == "user"
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = if (user) Arrangement.End else Arrangement.Start) {
-                            Column(Modifier.widthIn(max = 330.dp).background(if (user) Color(0xFFF8E8EF) else Panel, RoundedCornerShape(18.dp)).padding(15.dp)) {
+                            Column(
+                                Modifier.widthIn(max = 340.dp)
+                                    .background(if (user) Color(0xFFF8E8EF) else Panel, RoundedCornerShape(18.dp))
+                                    .padding(15.dp)
+                            ) {
                                 Text(if (user) "Você" else "Garcia", color = if (user) Color(0xFFB94F7C) else Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.height(5.dp))
-                                Text(item.second, fontSize = 15.sp, lineHeight = 22.sp)
+                                androidx.compose.foundation.text.selection.SelectionContainer {
+                                    Text(item.second, fontSize = 15.sp, lineHeight = 23.sp)
+                                }
+                                if (!user) {
+                                    TextButton(
+                                        onClick = {
+                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("Resposta da Garcia", item.second))
+                                            GarciaLog.recordEvent(context, "chat", "Resposta copiada · ${item.second.length} caracteres")
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
+                                    ) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Spacer(Modifier.width(5.dp))
+                                        Text("Copiar resposta", fontSize = 12.sp)
+                                    }
+                                }
                             }
                         }
                     }
