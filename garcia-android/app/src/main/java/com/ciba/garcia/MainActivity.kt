@@ -3,6 +3,7 @@ package com.ciba.garcia
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -11,7 +12,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -112,9 +113,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(38.dp).background(Blue, RoundedCornerShape(13.dp)), Alignment.Center) {
-                            Text("G", color = Ink, fontSize = 23.sp, fontWeight = FontWeight.Black)
-                        }
+                        Image(painterResource(R.drawable.ic_garcia), contentDescription = "Símbolo Garcia", modifier = Modifier.size(42.dp))
                         Spacer(Modifier.width(11.dp))
                         Column {
                             Text("Garcia", fontWeight = FontWeight.Bold, fontSize = 19.sp)
@@ -130,7 +129,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 Row(Modifier.fillMaxWidth().background(Panel).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     BasicTextField(value = input, onValueChange = { input = it },
                         modifier = Modifier.weight(1f).background(Color(0xFFF6EDF2), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 14.dp),
-                        textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 15.sp),
+                        textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF303030), fontSize = 15.sp),
                         decorationBox = { inner -> Box { if (input.isBlank()) Text("Converse com a Garcia…", color = Muted); inner() } })
                     Spacer(Modifier.width(8.dp))
                     IconButton(onClick = { send() }, enabled = !busy && input.isNotBlank(),
@@ -177,7 +176,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         }
                     }
                     if (busy) item { Text("Garcia está pensando…", color = Muted, modifier = Modifier.padding(8.dp)) }
-                    if (error.isNotBlank()) item { Text(error, color = Color(0xFFFF8B8B), modifier = Modifier.padding(8.dp)) }
+                    if (error.isNotBlank()) item { Text(error, color = Color(0xFFB94F7C), modifier = Modifier.padding(8.dp)) }
                 }
             }
         }
