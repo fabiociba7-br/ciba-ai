@@ -49,6 +49,11 @@ jobs:
             exit 1
           fi
 
+      - name: Inspect existing private Garcia registrations
+        run: |
+          npx wrangler d1 execute ciba-ai-db --remote --command "SELECT device_id, owner_id, created_at, revoked_at FROM devices WHERE app_id = 'com.ciba.garcia' ORDER BY created_at DESC" --json
+          npx wrangler d1 execute ciba-ai-db --remote --command "SELECT o.owner_id, o.status, i.consumed_device_id, i.created_at, i.consumed_at FROM owners o JOIN owner_pairing_invitations i ON i.owner_id = o.owner_id WHERE i.app_id = 'com.ciba.garcia' ORDER BY i.created_at DESC" --json
+
       - name: Apply pending D1 migrations
         run: npx wrangler d1 migrations apply ciba-ai-db --remote
 
