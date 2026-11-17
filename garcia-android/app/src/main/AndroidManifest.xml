@@ -3,6 +3,7 @@
     <application
         android:allowBackup="false"
         android:label="Garcia"
+        android:icon="@drawable/ic_garcia"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="false"
         android:supportsRtl="true">
