@@ -3,7 +3,11 @@ package com.ciba.garcia
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.util.Base64
+import androidx.activity.result.PickVisualMediaRequest
 import android.os.Bundle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,15 +52,54 @@ private val Blue = Color(0xFFD96E98)
 private val Muted = Color(0xFF777777)
 
 private data class GarciaChat(val id: String, val title: String, val messages: List<Pair<String, String>>)
+private data class GarciaAttachment(
+    val type: String,
+    val name: String,
+    val text: String? = null,
+    val mimeType: String? = null,
+    val base64: String? = null
+)
 
-private fun readTextAttachment(context: Context, uri: Uri): Pair<String, String> {
+private fun displayName(context: Context, uri: Uri, fallback: String): String =
+    context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) cursor.getString(0) else null
+    } ?: fallback
+
+private fun readImageAttachment(context: Context, uri: Uri): GarciaAttachment {
+    val resolver = context.contentResolver
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        ?: throw IllegalArgumentException("Não foi possível abrir a foto.")
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IllegalArgumentException("A imagem selecionada é inválida.")
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 1600) sample *= 2
+    val options = BitmapFactory.Options().apply { inSampleSize = sample }
+    val decoded = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+        ?: throw IllegalArgumentException("Não foi possível processar a foto.")
+    val maxSide = maxOf(decoded.width, decoded.height)
+    val bitmap = if (maxSide > 1280) {
+        val scale = 1280f / maxSide
+        Bitmap.createScaledBitmap(decoded, (decoded.width * scale).toInt().coerceAtLeast(1), (decoded.height * scale).toInt().coerceAtLeast(1), true)
+            .also { if (it !== decoded) decoded.recycle() }
+    } else decoded
+    val output = java.io.ByteArrayOutputStream()
+    bitmap.compress(Bitmap.CompressFormat.JPEG, 82, output)
+    bitmap.recycle()
+    if (output.size() > 1_450_000) throw IllegalArgumentException("A foto ficou muito grande. Escolha uma imagem menor.")
+    return GarciaAttachment(
+        type = "image",
+        name = displayName(context, uri, "foto.jpg").take(120),
+        mimeType = "image/jpeg",
+        base64 = Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+    )
+}
+
+private fun readTextAttachment(context: Context, uri: Uri): GarciaAttachment {
     val resolver = context.contentResolver
     val mime = resolver.getType(uri)?.lowercase().orEmpty()
     val allowed = mime.startsWith("text/") || mime in setOf("application/json", "application/xml")
     if (!allowed) throw IllegalArgumentException("Por enquanto, anexe arquivos de texto, Markdown, CSV, JSON ou XML.")
-    val name = resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-        if (cursor.moveToFirst()) cursor.getString(0) else null
-    } ?: "arquivo.txt"
+    val name = displayName(context, uri, "arquivo.txt")
     val output = java.io.ByteArrayOutputStream()
     resolver.openInputStream(uri)?.use { stream ->
         val buffer = ByteArray(8192)
@@ -72,7 +115,7 @@ private fun readTextAttachment(context: Context, uri: Uri): Pair<String, String>
     val content = output.toString(Charsets.UTF_8.name())
     if (content.isBlank()) throw IllegalArgumentException("O arquivo está vazio.")
     if (content.length > 1_000) throw IllegalArgumentException("O texto do arquivo deve ter no máximo 1.000 caracteres para respeitar o limite gratuito do chat.")
-    return name.take(120) to content
+    return GarciaAttachment(type = "file", name = name.take(120), text = content)
 }
 
 class MainActivity : ComponentActivity() {
@@ -117,10 +160,16 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var currentChatId by remember { mutableStateOf(chats.first().id) }
     val history = remember { mutableStateListOf<Pair<String, String>>().apply { addAll(chats.first().messages) } }
     var input by remember { mutableStateOf("") }
-    var attachment by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var attachment by remember { mutableStateOf<GarciaAttachment?>(null) }
+    var showAttachmentOptions by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Verificando conexão…") }
     var error by remember { mutableStateOf("") }
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) runCatching { readImageAttachment(context, uri) }
+            .onSuccess { attachment = it; error = "" }
+            .onFailure { error = it.message ?: "Não foi possível anexar a foto." }
+    }
     val attachmentPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching { readTextAttachment(context, uri) }
             .onSuccess { attachment = it; error = "" }
@@ -219,20 +268,31 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         val text = input.trim()
         val selectedAttachment = attachment
         if ((text.isEmpty() && selectedAttachment == null) || busy || !connected) return
-        val message = buildString {
-            if (selectedAttachment != null) {
-                append("Arquivo anexado: ").append(selectedAttachment.first).append("\n\n")
-                append("<conteudo_do_arquivo>\n").append(selectedAttachment.second).append("\n</conteudo_do_arquivo>")
+        val message = when (selectedAttachment?.type) {
+            "file" -> buildString {
+                append("Arquivo anexado: ").append(selectedAttachment.name).append("\n\n")
+                append("<conteudo_do_arquivo>\n").append(selectedAttachment.text.orEmpty()).append("\n</conteudo_do_arquivo>")
                 if (text.isNotBlank()) append("\n\nPergunta: ").append(text)
-            } else append(text)
+            }
+            "image" -> buildString {
+                append(text.ifBlank { "Analise a foto anexada e descreva o que você consegue identificar." })
+                append("\n[Foto anexada: ").append(selectedAttachment.name).append("]")
+            }
+            else -> text
         }
         if (message.length > 1_500) { error = "A mensagem com o anexo ultrapassa o limite de 1.500 caracteres. Reduza a pergunta ou o conteúdo do arquivo."; return }
+        val imagePayload = JSONArray()
+        if (selectedAttachment?.type == "image") {
+            imagePayload.put(JSONObject()
+                .put("mime_type", selectedAttachment.mimeType)
+                .put("data", selectedAttachment.base64))
+        }
         history.add("user" to message); input = ""; attachment = null; persist(); busy = true; error = ""
         scope.launch {
             try {
                 val snapshot = JSONArray()
                 history.forEach { (role, content) -> snapshot.put(JSONObject().put("role", role).put("content", content)) }
-                val answer = withContext(Dispatchers.IO) { client.chat(snapshot) }
+                val answer = withContext(Dispatchers.IO) { client.chat(snapshot, imagePayload) }
                 history.add("assistant" to answer); persist()
                 GarciaLog.recordEvent(context, "chat", "HTTP 200 · resposta recebida e salva no histórico · ${answer.length} caracteres")
             } catch (e: Exception) { GarciaLog.record(context, "chat", e); error = e.message ?: "Falha ao conversar com a Garcia." }
@@ -308,13 +368,13 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 Column(Modifier.fillMaxWidth().background(Panel).imePadding().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp)) {
                     if (attachment != null) {
                         Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Anexo: ${attachment!!.first}", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                            Text("${if (attachment!!.type == "image") "Foto" else "Arquivo"}: ${attachment!!.name}", color = Muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
                             TextButton(onClick = { attachment = null }) { Text("Remover") }
                         }
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { attachmentPicker.launch(arrayOf("text/*", "application/json", "application/xml")) }, enabled = !busy) {
-                        Icon(Icons.Default.AttachFile, contentDescription = "Anexar arquivo", tint = Blue)
+                    IconButton(onClick = { showAttachmentOptions = true }, enabled = !busy) {
+                        Icon(Icons.Default.AttachFile, contentDescription = "Adicionar foto ou arquivo", tint = Blue)
                     }
                     BasicTextField(value = input, onValueChange = { input = it },
                         modifier = Modifier.weight(1f).background(Color(0xFFF6EDF2), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 12.dp),
@@ -394,6 +454,32 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 }
             }
         }
+    }
+
+    if (showAttachmentOptions) {
+        AlertDialog(
+            onDismissRequest = { showAttachmentOptions = false },
+            title = { Text("Adicionar anexo") },
+            text = {
+                Column {
+                    TextButton(
+                        onClick = {
+                            showAttachmentOptions = false
+                            photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Fotos", modifier = Modifier.fillMaxWidth()) }
+                    TextButton(
+                        onClick = {
+                            showAttachmentOptions = false
+                            attachmentPicker.launch(arrayOf("text/*", "application/json", "application/xml"))
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Arquivos", modifier = Modifier.fillMaxWidth()) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showAttachmentOptions = false }) { Text("Cancelar") } }
+        )
     }
 
     if (showChats) {
