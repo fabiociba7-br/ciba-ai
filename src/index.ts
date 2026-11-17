@@ -2008,6 +2008,7 @@ const handleChat = async (request: Request, env: Env) => {
   }
 
   let facebookContext = "";
+  const chatPhotos: Array<{ url: string; caption: string; link: string }> = [];
   const latestUserText = [...messages].reverse().find((message) => message.role === "user")?.content || "";
   const asksAboutOwnFacebook = /facebook|posts?|publica[cç][aã]o|coment[aá]rio|fotos?|v[ií]deos?|perfil|conta|messenger|mensagem/i.test(latestUserText);
   if (owner && device.app_id === "com.ciba.garcia" && asksAboutOwnFacebook && env.FACEBOOK_APP_SECRET) {
@@ -2058,12 +2059,26 @@ const handleChat = async (request: Request, env: Env) => {
         if (granted.includes("user_photos") || granted.includes("user_posts")) {
           const photoResult = await facebookGraphGet<{ data?: Array<Record<string, unknown>> }>(
             "me/photos", bundle.access_token, {
-              type: "uploaded", fields: "id,name,created_time,link", limit: "8",
+              type: "uploaded", fields: "id,name,created_time,link,images", limit: "8",
             },
           );
           sections.push(`Fotos próprias recentes retornadas: ${(photoResult.data || []).length}.`);
           for (const photo of photoResult.data || []) {
-            sections.push(`Foto ${String(photo.created_time || "")}: ${String(photo.name || "sem descrição").slice(0, 180)} ${String(photo.link || "")}`);
+            const sizes = (Array.isArray(photo.images) ? photo.images : []) as Array<{ source?: unknown; width?: unknown }>;
+            const usable = sizes
+              .filter((size) => typeof size.source === "string" && size.source.startsWith("https://"))
+              .sort((a, b) => Number(a.width || 0) - Number(b.width || 0));
+            const best = usable.find((size) => Number(size.width || 0) >= 600) || usable[usable.length - 1];
+            const caption = String(photo.name || "sem descrição").slice(0, 180);
+            if (best && typeof best.source === "string") {
+              chatPhotos.push({ url: best.source, caption, link: String(photo.link || "") });
+              sections.push(`Foto ${chatPhotos.length} (${String(photo.created_time || "")}): ${caption} ${String(photo.link || "")}`);
+            } else {
+              sections.push(`Foto sem imagem disponível (${String(photo.created_time || "")}): ${caption} ${String(photo.link || "")}`);
+            }
+          }
+          if (chatPhotos.length > 0) {
+            sections.push("Para MOSTRAR uma foto ao proprietário no chat, escreva [[foto:N]] sozinho em uma linha, com N igual ao número da foto listada acima. Nunca escreva endereços de imagem. Só mostre fotos quando o proprietário pedir para ver fotos.");
           }
         }
         sections.push("Limites conhecidos: a Meta pode não devolver comentários publicados por outras pessoas em posts de perfil pessoal; a caixa de entrada pessoal do Messenger não está disponível nesta API. Não invente comentários nem mensagens privadas.");
@@ -2156,9 +2171,22 @@ const handleChat = async (request: Request, env: Env) => {
     "UPDATE devices SET last_seen_at = ? WHERE device_id = ?"
   ).bind(nowIso(), device.device_id).run();
 
+  const shownPhotos: Array<{ url: string; caption: string; link: string }> = [];
+  let responseText = orchestration.text;
+  if (chatPhotos.length > 0) {
+    responseText = responseText.replace(/\[\[foto:\s*(\d{1,2})\s*\]\]/g, (_match, number: string) => {
+      const photo = chatPhotos[Number(number) - 1];
+      if (photo && !shownPhotos.includes(photo) && shownPhotos.length < 6) shownPhotos.push(photo);
+      return "";
+    });
+  }
+  responseText = responseText.replace(/\[\[foto:[^\]]*\]\]/g, "").replace(/\n{3,}/g, "\n\n").trim();
+  if (!responseText && shownPhotos.length > 0) responseText = "Aqui estão as fotos do seu Facebook.";
+
   return json({
     model,
-    response: orchestration.text,
+    response: responseText,
+    ...(shownPhotos.length > 0 ? { photos: shownPhotos } : {}),
     ...(orchestration.toolExecution
       ? { tool_execution: orchestration.toolExecution }
       : {}),
