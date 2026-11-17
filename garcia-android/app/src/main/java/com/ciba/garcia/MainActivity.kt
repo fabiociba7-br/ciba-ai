@@ -569,7 +569,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             try {
                 withContext(Dispatchers.IO) { client.activate(activation.trim(), pairingCode.trim()) }
                 connected = true
-                status = "Conectada ao Ciba AI"
+                status = "Conectada ao serviço da Garcia"
                 activation = ""
                 pairingCode = ""
             } catch (e: Exception) { GarciaLog.record(context, "ativação", e); error = e.message ?: "Não foi possível ativar." }
@@ -637,7 +637,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         GarciaLog.recordEvent(context, "Facebook", "Iniciando fluxo de vinculação.")
         activity.startFacebookLogin { loginResult ->
             loginResult.onSuccess { accessToken ->
-                GarciaLog.recordEvent(context, "Facebook", "Login concluído; enviando solicitação de vínculo ao Ciba AI.")
+                GarciaLog.recordEvent(context, "Facebook", "Login concluído; enviando solicitação de vínculo à Garcia.")
                 scope.launch {
                     try {
                         val result = withContext(Dispatchers.IO) { client.linkFacebook(accessToken) }
@@ -709,8 +709,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     LaunchedEffect(Unit) {
         try {
             val result = withContext(Dispatchers.IO) { client.status() }
-            status = if (result.optString("status") == "ready") "Ciba AI conectado" else "Serviço indisponível"
-        } catch (e: Exception) { GarciaLog.record(context, "conexão", e); status = "Sem conexão com o Ciba AI" }
+            status = if (result.optString("status") == "ready") "Garcia conectada" else "Serviço indisponível"
+        } catch (e: Exception) { GarciaLog.record(context, "conexão", e); status = "Sem conexão com o serviço da Garcia" }
     }
 
     LaunchedEffect(showSettings, connected) {
@@ -1095,7 +1095,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             enabled = voiceAvailable && voiceReplies && whisperModelInfo != null && !busy && !whisperRecording
                         )
                     }
-                    Text("Na conversa contínua, cada fala é transcrita localmente, enviada automaticamente ao Ciba AI, respondida em voz alta e seguida por nova escuta. Nenhum áudio bruto é enviado ao servidor.", color = Muted, fontSize = 11.sp)
+                    Text("Na conversa contínua, cada fala é transcrita localmente, enviada automaticamente à Garcia, respondida em voz alta e seguida por nova escuta. Nenhum áudio bruto é enviado ao servidor.", color = Muted, fontSize = 11.sp)
                     if (connected) {
                         Spacer(Modifier.height(12.dp))
                         Text("Conta Facebook", fontWeight = FontWeight.Bold)
