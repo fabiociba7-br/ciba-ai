@@ -159,7 +159,7 @@ describe("Ciba AI Worker integration", () => {
     ).bind("ai_model", "not-an-allowed-model", new Date().toISOString()).run();
 
     await testDb.prepare(
-      "UPDATE runtime_settings SET setting_value = '2', updated_at = ? WHERE setting_key = 'daily_device_limit'"
+      "UPDATE runtime_settings SET setting_value = '3', updated_at = ? WHERE setting_key = 'daily_device_limit'"
     ).bind(new Date().toISOString()).run();
     // Keep this regression case independent from the per-device minute limiter.
     await testDb.prepare("DELETE FROM minute_usage WHERE device_id = ?")
@@ -239,7 +239,7 @@ describe("Ciba AI Worker integration", () => {
     // deliberately invalid model is rejected. Allow that request plus this
     // assertion, then verify the next request is over quota.
     await testDb.prepare(
-      "UPDATE runtime_settings SET setting_value = '2', updated_at = ? WHERE setting_key = 'daily_device_limit'"
+      "UPDATE runtime_settings SET setting_value = '3', updated_at = ? WHERE setting_key = 'daily_device_limit'"
     ).bind(new Date().toISOString()).run();
 
     const firstChat = await chat();
