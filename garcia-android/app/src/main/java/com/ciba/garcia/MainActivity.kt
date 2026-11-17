@@ -487,12 +487,15 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         scope.launch {
             try {
                 val samples = withContext(Dispatchers.IO) { whisperRecorder.stop() }
-                check(samples.size >= 1600) { "Gravação muito curta. Fale por pelo menos um segundo." }
-                val result = withContext(Dispatchers.Default) {
-                    JSONObject(WhisperNative.nativeTranscribe(samples, "pt", Runtime.getRuntime().availableProcessors().coerceIn(1, 6)))
+                val transcript = try {
+                    check(samples.size >= 1600) { "Gravação muito curta. Fale por pelo menos um segundo." }
+                    val result = withContext(Dispatchers.Default) {
+                        JSONObject(WhisperNative.nativeTranscribe(samples, "pt", Runtime.getRuntime().availableProcessors().coerceIn(1, 6)))
+                    }
+                    result.optString("text").trim()
+                } finally {
+                    samples.fill(0f)
                 }
-                samples.fill(0f)
-                val transcript = result.optString("text").trim()
                 check(transcript.isNotBlank()) { "Não foi possível reconhecer fala nessa gravação." }
                 input = listOf(input.trim(), transcript).filter { it.isNotBlank() }.joinToString(" ")
                 whisperStatus = "Transcrição pronta · revise o texto antes de enviar"
