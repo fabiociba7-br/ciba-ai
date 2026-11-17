@@ -44,6 +44,8 @@ export type GarciaCapabilityToolAuthorizer = CibaToolRegistryOptions["authorize"
 export interface GarciaCapabilityToolOptions {
   /** Trusted application policy; must enforce the caller's read access. */
   authorize: GarciaCapabilityToolAuthorizer;
+  /** Optional owner-scoped Facebook connection status reader supplied by the trusted backend. */
+  getFacebookConnectionStatus?: () => Promise<{ linked: boolean; linkedAt: string | null }>;
 }
 
 /**
@@ -62,7 +64,7 @@ export function createGarciaCapabilityTools(
   }
   const catalog = createNativeCapabilityRegistry();
 
-  return createCibaToolRegistry([
+  const definitions = [
     {
       id: "garcia.capabilities.list",
       description: "Lista capacidades nativas da Garcia com status, licença, runtime e prontidão real do adaptador.",
@@ -92,8 +94,31 @@ export function createGarciaCapabilityTools(
           : { found: false };
       },
     },
-  ], {
-    allowlist: ["garcia.capabilities.list", "garcia.capabilities.get"],
+    ...(options.getFacebookConnectionStatus ? [{
+      id: "facebook.connection.status",
+      description: "Consulta se a conta do proprietário desta sessão está vinculada ao Facebook. Não consulta publicações, mensagens ou páginas.",
+      risk: "read" as const,
+      requiresApproval: false,
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      async execute() {
+        const status = await options.getFacebookConnectionStatus!();
+        return {
+          provider: "facebook",
+          linked: status.linked,
+          linked_at: status.linkedAt,
+          available_operations: ["connection_status"],
+          unavailable_operations: ["profile", "posts", "pages", "messages"],
+          limitation: "O token de acesso do Facebook não é armazenado pelo backend; consultas de dados ainda não estão habilitadas.",
+        };
+      },
+    }] : []),
+  ];
+  return createCibaToolRegistry(definitions, {
+    allowlist: [
+      "garcia.capabilities.list",
+      "garcia.capabilities.get",
+      ...(options.getFacebookConnectionStatus ? ["facebook.connection.status"] : []),
+    ],
     authorize: options.authorize,
     timeoutMs: 5_000,
     maxInputBytes: 2_048,
