@@ -1,6 +1,13 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#82B4FF" android:pathData="M0,0h108v108h-108z"/>
-    <path android:fillColor="#0A1020" android:pathData="M54,17a37,37 0,1 0,0 74a37,37 0,1 0,0 -74M54,29a25,25 0,1 1,0 50a25,25 0,1 1,0 -50"/>
-    <path android:fillColor="#0A1020" android:pathData="M52,48h25v11h-14v8h14v11h-25z"/>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:pathData="M0,0h108v108h-108z"/>
+    <group android:rotation="0" android:pivotX="54" android:pivotY="54"><path android:fillColor="#D96E98" android:pathData="M54,5 C68,5 73,27 73,42 C73,55 65,65 54,70 C43,65 35,55 35,42 C35,27 40,5 54,5 Z"/></group>
+    <group android:rotation="180" android:pivotX="54" android:pivotY="54"><path android:fillColor="#D96E98" android:pathData="M54,5 C68,5 73,27 73,42 C73,55 65,65 54,70 C43,65 35,55 35,42 C35,27 40,5 54,5 Z"/></group>
+    <group android:rotation="60" android:pivotX="54" android:pivotY="54"><path android:fillColor="#F2A58F" android:pathData="M54,5 C68,5 73,27 73,42 C73,55 65,65 54,70 C43,65 35,55 35,42 C35,27 40,5 54,5 Z"/></group>
+    <group android:rotation="120" android:pivotX="54" android:pivotY="54"><path android:fillColor="#B9B3EA" android:pathData="M54,5 C68,5 73,27 73,42 C73,55 65,65 54,70 C43,65 35,55 35,42 C35,27 40,5 54,5 Z"/></group>
+    <group android:rotation="240" android:pivotX="54" android:pivotY="54"><path android:fillColor="#B9B3EA" android:pathData="M54,5 C68,5 73,27 73,42 C73,55 65,65 54,70 C43,65 35,55 35,42 C35,27 40,5 54,5 Z"/></group>
+    <group android:rotation="300" android:pivotX="54" android:pivotY="54"><path android:fillColor="#F2A58F" android:pathData="M54,5 C68,5 73,27 73,42 C73,55 65,65 54,70 C43,65 35,55 35,42 C35,27 40,5 54,5 Z"/></group>
+    <circle android:fillColor="#FFFFFF" android:cx="54" android:cy="54" android:radius="12"/><circle android:fillColor="#D96E98" android:cx="54" android:cy="54" android:radius="6"/>
+    <circle android:fillColor="#D96E98" android:cx="54" android:cy="3" android:radius="3"/><circle android:fillColor="#D96E98" android:cx="54" android:cy="105" android:radius="3"/>
+    <circle android:fillColor="#F2A58F" android:cx="8" android:cy="27" android:radius="3"/><circle android:fillColor="#B9B3EA" android:cx="100" android:cy="27" android:radius="3"/>
+    <circle android:fillColor="#B9B3EA" android:cx="8" android:cy="81" android:radius="3"/><circle android:fillColor="#F2A58F" android:cx="100" android:cy="81" android:radius="3"/>
 </vector>
