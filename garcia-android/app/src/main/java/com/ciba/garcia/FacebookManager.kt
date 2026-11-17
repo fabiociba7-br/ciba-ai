@@ -44,6 +44,9 @@ fun FacebookManagerDialog(client: CibaAiClient, onDismiss: () -> Unit) {
     var videos by remember { mutableStateOf(JSONArray()) }
     var videoNote by remember { mutableStateOf("") }
     var commentsNote by remember { mutableStateOf("A Meta pode limitar a leitura de comentários feitos por outras pessoas em publicações de perfil pessoal.") }
+    var selectedPostId by remember { mutableStateOf("") }
+    var postComments by remember { mutableStateOf(JSONArray()) }
+    var commentsBusy by remember { mutableStateOf(false) }
 
     fun refresh() {
         if (busy) return
@@ -98,6 +101,28 @@ fun FacebookManagerDialog(client: CibaAiClient, onDismiss: () -> Unit) {
                 error = e.message ?: "Não foi possível consultar os dados pessoais do Facebook."
             } finally {
                 busy = false
+            }
+        }
+    }
+
+    fun loadComments(postId: String) {
+        if (postId.isBlank() || commentsBusy) return
+        selectedPostId = postId
+        commentsBusy = true
+        postComments = JSONArray()
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) { client.facebookComments(postId, 30) }
+                postComments = result.optJSONObject("comments")?.optJSONArray("data") ?: JSONArray()
+                commentsNote = if (postComments.length() == 0) {
+                    "A Meta não disponibilizou os comentários de outras pessoas para esta publicação usando o token pessoal. A consulta foi realizada, mas não retornou comentários."
+                } else {
+                    "A Meta retornou ${postComments.length()} comentário(s) visíveis para este aplicativo."
+                }
+            } catch (e: Exception) {
+                commentsNote = e.message ?: "A leitura de comentários não foi autorizada pela Meta."
+            } finally {
+                commentsBusy = false
             }
         }
     }
@@ -157,6 +182,19 @@ fun FacebookManagerDialog(client: CibaAiClient, onDismiss: () -> Unit) {
                         }.joinToString(" · ")
                         if (metrics.isNotBlank()) Text(metrics, fontSize = 10.sp)
                         post.optString("permalink_url").takeIf { it.isNotBlank() }?.let { Text(it, fontSize = 10.sp) }
+                        TextButton(onClick = { loadComments(post.optString("id")) }, enabled = !commentsBusy && post.optString("id").isNotBlank()) {
+                            Text(if (selectedPostId == post.optString("id") && commentsBusy) "Consultando comentários…" else "Tentar ler comentários")
+                        }
+                        if (selectedPostId == post.optString("id")) {
+                            if (postComments.length() == 0 && !commentsBusy) {
+                                Text(commentsNote, fontSize = 11.sp)
+                            } else {
+                                for (commentIndex in 0 until minOf(postComments.length(), 10)) {
+                                    val comment = postComments.optJSONObject(commentIndex) ?: continue
+                                    Text(comment.optString("message"), fontSize = 11.sp)
+                                }
+                            }
+                        }
                         Divider()
                     }
                 }
