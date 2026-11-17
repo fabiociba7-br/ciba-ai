@@ -289,6 +289,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var facebookLinked by remember { mutableStateOf(false) }
     var facebookBusy by remember { mutableStateOf(false) }
     var facebookError by remember { mutableStateOf("") }
+    var showFacebookErrorDialog by remember { mutableStateOf(false) }
     var facebookStatusLoaded by remember { mutableStateOf(false) }
     var showFacebookManager by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(store.get("device_token") != null) }
@@ -461,6 +462,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     } catch (e: Exception) {
                         GarciaLog.record(context, "Facebook", e)
                         facebookError = e.message ?: "Não foi possível vincular o Facebook."
+                        showFacebookErrorDialog = true
                     } finally {
                         facebookBusy = false
                     }
@@ -468,6 +470,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             }.onFailure { e ->
                 GarciaLog.record(context, "Facebook login", e)
                 facebookError = e.message ?: "Falha no login com Facebook."
+                showFacebookErrorDialog = true
                 facebookBusy = false
             }
         }
@@ -796,6 +799,17 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 TextButton(onClick = { logs = GarciaLog.read(context); showSettings = false; showLogs = true }) { Text("Ver logs") }
                 TextButton(onClick = { showSettings = false }) { Text("Fechar") }
             } }
+        )
+    }
+
+    if (showFacebookErrorDialog && facebookError.isNotBlank()) {
+        AlertDialog(
+            onDismissRequest = { showFacebookErrorDialog = false },
+            title = { Text("Não foi possível conectar ao Facebook") },
+            text = { Text(facebookError) },
+            confirmButton = {
+                TextButton(onClick = { showFacebookErrorDialog = false }) { Text("Entendi") }
+            }
         )
     }
 
