@@ -15,7 +15,7 @@ internal object WhisperNative {
     external fun nativeLoadModel(modelPath: String): Boolean
     external fun nativeTranscribe(
         audioSamples16KhzMono: FloatArray,
-        language: String = "pt",
+        language: String,
         threads: Int
     ): String
     external fun nativeCancel()
