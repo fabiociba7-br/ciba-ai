@@ -54,9 +54,12 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - Gate: reprodução pt-BR inteligível, interrupção confiável, sem rede e sem bloquear o chat.
 
 ### Etapa 6 — conversação por voz
-**Estado: primeira fatia implementada — detecção de fim de fala e interrupção do TTS ao iniciar nova captura. Ainda não existe envio automático nem loop completo.**
-- Disponibilizar modo push-to-talk e modo contínuo selecionável.
-- Implementar máquina de estados ouvir → transcrever → enviar → aguardar → falar → ouvir novamente.
+**Estado: modo contínuo opt-in integrado ao ciclo de resposta — após o TTS local terminar, a captura recomeça; a transcrição fica no campo para revisão e exige envio manual. CI pendente; validação em aparelho ainda necessária.**
+- Disponibilizar modo push-to-talk e modo contínuo selecionável nas Configurações; o modo contínuo inicia desligado e exige ativação explícita.
+- No modo contínuo, retomar a captura somente no callback de conclusão do TTS local; nunca gravar enquanto a Garcia fala.
+- Transcrever após silêncio, preencher o campo editável e aguardar o toque manual em Enviar. Não sobrescrever texto/anexos pendentes nem enviar automaticamente.
+- Cancelar retomadas pendentes ao desligar o modo, trocar/iniciar conversa, editar texto ou iniciar captura manual; nova captura interrompe o TTS imediatamente.
+- A conversação contínua depende de Whisper instalado, permissão de microfone e TTS offline em português. Sem resposta falada, não há retomada automática.
 - Incluir detecção de fim de fala, cancelamento, interrupção por usuário, prevenção de eco/autoescuta e tratamento de chamadas/áudio focado.
 - Gate: sessões completas e longas sem loops, envio duplicado, captura da própria voz da Garcia ou perda de controle.
 
@@ -73,5 +76,6 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - A transcrição preenche o campo de texto para revisão antes do envio; não encaminha áudio ao servidor.
 - A síntese usa Android TextToSpeech e só seleciona voz em português que não exige rede. A leitura automática pode ser desligada nas Configurações.
 - O detector de atividade de voz encerra a captura após 1,1 s de silêncio; sem fala, cancela após 10 s. A transcrição continua editável e exige toque em Enviar.
+- O modo contínuo é opt-in, persistente e só retoma a escuta após o término da fala TTS; texto/anexos pendentes bloqueiam nova captura. Desativar a leitura automática também desativa o modo contínuo.
 - O workflow executa testes unitários do detector e compilação nativa/Kotlin; teste de áudio e TTS ainda exige aparelho real.
 - Não foi gerado APK.
