@@ -5,12 +5,18 @@ Aplicativo Android independente da Garcia. O projeto não depende do GEIVIA nem 
 ## O que está incluído
 
 - Interface nativa em Jetpack Compose, adaptada para celular.
+- Identidade visual baseada na logo oficial: rosa, coral, lilás, branco e cinza.
+- Ícone Android com o símbolo floral da marca e Splash Screen própria com nome e assinatura Garcia.
 - Conversa com o Ciba AI Worker publicado.
 - Histórico local de conversas criptografado com chave mantida no Android Keystore.
 - Token de dispositivo protegido com AES-GCM e Android Keystore.
 - Consulta de status e consumo.
 - Sem cadastro de usuário, senha ou conta própria.
 - Sem ferramentas externas, ações automáticas ou permissões de outros aplicativos nesta primeira versão.
+
+## Identidade visual
+
+A paleta oficial está centralizada em `app/src/main/res/values/colors.xml`. O ícone floral vetorial está em `app/src/main/res/drawable/ic_garcia.xml`; a abertura personalizada é implementada em `SplashActivity` e exibe a assinatura `GARCIA — ASSISTENTE DE IA` em fundo branco.
 
 ## Identidade
 
