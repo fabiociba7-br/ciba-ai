@@ -34,6 +34,8 @@ import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Archive
@@ -279,6 +281,12 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     val history = remember { mutableStateListOf<Pair<String, String>>().apply { addAll(chats.first().messages) } }
     var input by remember { mutableStateOf("") }
     var attachment by remember { mutableStateOf<GarciaAttachment?>(null) }
+    val whisperModelStore = remember { WhisperModelStore(context) }
+    val whisperRecorder = remember { WhisperAudioRecorder() }
+    var whisperModelInfo by remember { mutableStateOf<WhisperModelStore.ModelInfo?>(null) }
+    var whisperStatus by remember { mutableStateOf("Modelo de voz não instalado") }
+    var whisperRecording by remember { mutableStateOf(false) }
+    var whisperBusy by remember { mutableStateOf(false) }
     var showAttachmentOptions by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Verificando conexão…") }
@@ -298,9 +306,55 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             .onSuccess { attachment = it; error = "" }
             .onFailure { error = it.message ?: "Não foi possível capturar a foto." }
     }
+    val whisperModelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            whisperBusy = true
+            whisperStatus = "Importando e verificando modelo…"
+            try {
+                val info = withContext(Dispatchers.IO) {
+                    val imported = whisperModelStore.importModel(uri)
+                    check(WhisperNative.nativeLoadModel(imported.file.absolutePath)) { "O Whisper não conseguiu carregar esse modelo." }
+                    imported
+                }
+                whisperModelInfo = info
+                whisperStatus = "Whisper pronto · SHA-256 ${info.sha256.take(12)}…"
+                GarciaLog.recordEvent(context, "Voz", "Modelo Whisper importado e carregado localmente; SHA-256 ${info.sha256}")
+            } catch (e: Exception) {
+                whisperModelInfo = null
+                whisperStatus = e.message ?: "Não foi possível instalar o modelo."
+                GarciaLog.record(context, "Whisper modelo", e)
+            } finally { whisperBusy = false }
+        }
+    }
+    val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            if (whisperModelInfo == null) error = "Instale um modelo Whisper em Configurações antes de gravar."
+            else scope.launch {
+                try {
+                    withContext(Dispatchers.IO) { whisperRecorder.start() }
+                    whisperRecording = true
+                    whisperStatus = "Gravando… toque em parar quando terminar"
+                    scope.launch(Dispatchers.IO) { while (whisperRecorder.readChunk()) { /* capture locally */ } }
+                } catch (e: Exception) { error = e.message ?: "Não foi possível iniciar a gravação."; whisperRecording = false }
+            }
+        } else error = "A permissão do microfone foi negada. Ative-a nas configurações do Android para transcrever voz."
+    }
     val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) cameraPicker.launch(null)
         else error = "A permissão da câmera foi negada. Ative-a nas configurações do Android para fotografar."
+    }
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                whisperModelStore.loadSavedModel()?.also { info ->
+                    check(WhisperNative.nativeLoadModel(info.file.absolutePath)) { "O Whisper não conseguiu carregar o modelo salvo." }
+                    info
+                }
+            }.onSuccess { info ->
+                whisperModelInfo = info
+                whisperStatus = if (info != null) "Whisper pronto · SHA-256 ${info.sha256.take(12)}…" else "Modelo de voz não instalado"
+            }.onFailure { whisperStatus = it.message ?: "Modelo salvo inválido"; GarciaLog.record(context, "Whisper inicialização", it) }
+        }
     }
     var activation by remember { mutableStateOf("") }
     var pairingCode by remember { mutableStateOf("") }
@@ -417,6 +471,31 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 pairingCode = ""
             } catch (e: Exception) { GarciaLog.record(context, "ativação", e); error = e.message ?: "Não foi possível ativar." }
             finally { busy = false }
+        }
+    }
+
+    fun stopAndTranscribe() {
+        if (!whisperRecording || whisperBusy) return
+        whisperRecording = false
+        whisperBusy = true
+        whisperStatus = "Transcrevendo localmente…"
+        scope.launch {
+            try {
+                val samples = withContext(Dispatchers.IO) { whisperRecorder.stop() }
+                check(samples.size >= 1600) { "Gravação muito curta. Fale por pelo menos um segundo." }
+                val result = withContext(Dispatchers.Default) {
+                    JSONObject(WhisperNative.nativeTranscribe(samples, "pt", Runtime.getRuntime().availableProcessors().coerceIn(1, 6)))
+                }
+                samples.fill(0f)
+                val transcript = result.optString("text").trim()
+                check(transcript.isNotBlank()) { "Não foi possível reconhecer fala nessa gravação." }
+                input = listOf(input.trim(), transcript).filter { it.isNotBlank() }.joinToString(" ")
+                whisperStatus = "Transcrição pronta · revise o texto antes de enviar"
+                GarciaLog.recordEvent(context, "Voz", "Transcrição local concluída · ${transcript.length} caracteres")
+            } catch (e: Exception) {
+                whisperStatus = e.message ?: "Falha na transcrição local"
+                GarciaLog.record(context, "Whisper transcrição", e)
+            } finally { whisperBusy = false }
         }
     }
 
@@ -637,6 +716,14 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         minLines = 1, maxLines = 5,
                         decorationBox = { inner -> Box { if (input.isBlank()) Text("Converse com a Garcia…", color = Muted); inner() } })
                     Spacer(Modifier.width(7.dp))
+                    IconButton(onClick = {
+                        if (whisperRecording) stopAndTranscribe()
+                        else if (!whisperBusy) microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                    }, enabled = !busy && !whisperBusy && whisperModelInfo != null || whisperRecording,
+                        modifier = Modifier.size(44.dp).background(Color(0xFFF1E8ED), CircleShape)) {
+                        Icon(if (whisperRecording) Icons.Default.Stop else Icons.Default.Mic,
+                            contentDescription = if (whisperRecording) "Parar e transcrever" else "Gravar voz", tint = Blue)
+                    }
                     IconButton(onClick = { send() }, enabled = !busy && (input.isNotBlank() || attachment != null),
                         modifier = Modifier.size(48.dp).background(Blue, CircleShape)) {
                         Icon(Icons.Default.ArrowUpward, "Enviar", tint = Color.White)
