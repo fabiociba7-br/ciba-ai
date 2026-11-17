@@ -11,7 +11,8 @@ import java.util.Locale
  */
 internal class LocalSpeechOutput(
     context: Context,
-    private val onAvailabilityChanged: (Boolean, String) -> Unit
+    private val onAvailabilityChanged: (Boolean, String) -> Unit,
+    private val onUtteranceDone: () -> Unit = {}
 ) {
     private var engine: TextToSpeech? = null
     private var ready = false
@@ -45,7 +46,9 @@ internal class LocalSpeechOutput(
             tts.voice = localVoice
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) = Unit
-                override fun onDone(utteranceId: String?) = Unit
+                override fun onDone(utteranceId: String?) {
+                    if (!closed) onUtteranceDone()
+                }
                 override fun onError(utteranceId: String?) {
                     onAvailabilityChanged(false, "Falha na reprodução da resposta por voz.")
                 }
