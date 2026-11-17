@@ -560,36 +560,54 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
   if (existingOwnerLink) return json({ error: "facebook_already_linked" }, 409);
 
   // Obtain a real app access token through Meta's OAuth client-credentials
-  // flow instead of constructing "app_id|app_secret" locally. This lets us
-  // distinguish an App Secret/configuration failure from a user-token failure.
+  // flow. Prefer the current versioned endpoint, then try the unversioned
+  // OAuth endpoint only when Meta reports API Unknown (code 1).
   let appAccessToken = "";
   try {
-    const appTokenUrl = new URL("https://graph.facebook.com/v27.0/oauth/access_token");
-    appTokenUrl.searchParams.set("client_id", "1395601549081486");
-    appTokenUrl.searchParams.set("client_secret", env.FACEBOOK_APP_SECRET);
-    appTokenUrl.searchParams.set("grant_type", "client_credentials");
-    // Meta documents oauth/access_token as a GET endpoint for client credentials.
-    const appTokenResponse = await fetch(appTokenUrl.toString(), {
-      method: "GET",
-      headers: { "accept": "application/json" },
-    });
-    const appTokenBody = await appTokenResponse.json().catch(() => null) as {
-      access_token?: string;
-      error?: { code?: number; error_subcode?: number; type?: string };
-    } | null;
-    if (!appTokenResponse.ok || typeof appTokenBody?.access_token !== "string" || !appTokenBody.access_token) {
-      const graphError = appTokenBody?.error;
+    const buildAppTokenUrl = (path: string) => {
+      const url = new URL(path);
+      url.searchParams.set("client_id", "1395601549081486");
+      url.searchParams.set("client_secret", env.FACEBOOK_APP_SECRET!);
+      url.searchParams.set("grant_type", "client_credentials");
+      return url;
+    };
+    const requestAppToken = async (url: URL) => {
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        headers: { "accept": "application/json" },
+      });
+      const body = await response.json().catch(() => null) as {
+        access_token?: string;
+        error?: { code?: number; error_subcode?: number; type?: string };
+      } | null;
+      return { response, body };
+    };
+
+    let tokenResult = await requestAppToken(
+      buildAppTokenUrl("https://graph.facebook.com/v27.0/oauth/access_token")
+    );
+    let endpoint = "versioned";
+    if (!tokenResult.response.ok && tokenResult.body?.error?.code === 1) {
+      tokenResult = await requestAppToken(
+        buildAppTokenUrl("https://graph.facebook.com/oauth/access_token")
+      );
+      endpoint = "unversioned_fallback";
+    }
+
+    if (!tokenResult.response.ok || typeof tokenResult.body?.access_token !== "string" || !tokenResult.body.access_token) {
+      const graphError = tokenResult.body?.error;
       return json({
         error: "facebook_app_access_token_failed",
         facebook_graph_error: {
-          http_status: appTokenResponse.status,
+          http_status: tokenResult.response.status,
           code: typeof graphError?.code === "number" ? graphError.code : null,
           subcode: typeof graphError?.error_subcode === "number" ? graphError.error_subcode : null,
           type: typeof graphError?.type === "string" ? graphError.type.slice(0, 80) : null,
+          endpoint,
         },
       }, 502);
     }
-    appAccessToken = appTokenBody.access_token;
+    appAccessToken = tokenResult.body.access_token;
   } catch {
     return json({ error: "facebook_app_token_service_unavailable" }, 502);
   }
