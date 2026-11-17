@@ -1,10 +1,10 @@
 # Ciba AI
 
-Gateway privado de IA compartilhada para aplicativos da família Ciba.
+Repositório e infraestrutura de servidor para a assistente de IA Garcia e futuras integrações.
 
 ## Objetivos
 
-- Um único backend compartilhado por Zupi, GEIVIA e futuros aplicativos Ciba.
+- Backend independente que fornece inferência e APIs à assistente Garcia; integrações com outros aplicativos serão adicionadas futuramente.
 - Acesso controlado por convites e tokens individuais de dispositivo.
 - Núcleo Ciba Core com roteamento por especialidade e identidade unificada.
 - Provider atual Cloudflare Workers AI e adapter preparado para endpoints OpenAI-compatible auto-hospedados.
@@ -22,7 +22,7 @@ A franquia gratuita documentada pela Cloudflare é de 10.000 Neurons por dia. No
 
 ## Estado do projeto
 
-O Worker Ciba AI está publicado em `https://ciba-ai.fabiociba7.workers.dev`, com D1 conectado, migrations aplicadas, autenticação por dispositivo e limites de uso. O endpoint `/v1/status` confirmou o serviço pronto e a IA habilitada; uma inferência real ainda deverá ser validada na rodada final com o aplicativo. O projeto Android independente da Garcia está em [garcia-android/](garcia-android/), com interface nativa, conversa, histórico local criptografado e conexão com a API. A rota de pareamento do cliente corresponde a `POST /v1/owner/pair`. Após publicar a configuração que permite `com.ciba.garcia`, execute o workflow manual `Provision Garcia Device` para criar o proprietário privado e emitir os códigos únicos de ativação. O workflow de CI não gera APK nem faz deploy automático. O registro de ferramentas permanece opt-in e ainda não está conectado ao orquestrador ou à chamada do modelo.
+A assistente se chama **Garcia**. **Ciba AI** é somente o nome deste repositório e da infraestrutura de servidor Cloudflare que fornece a API. A Garcia é o produto de IA com identidade e aplicativo próprios. O Worker Ciba AI está publicado em `https://ciba-ai.fabiociba7.workers.dev`, com D1 conectado, migrations aplicadas, autenticação por dispositivo e limites de uso. O endpoint `/v1/status` confirmou o serviço pronto e a IA habilitada; uma inferência real ainda deverá ser validada na rodada final com o aplicativo. O projeto Android independente da Garcia está em [garcia-android/](garcia-android/), com interface nativa, conversa, histórico local criptografado e conexão com a API. A rota de pareamento do cliente corresponde a `POST /v1/owner/pair`. Após publicar a configuração que permite `com.ciba.garcia`, execute uma única vez o workflow `Provision Garcia Device`, confirmando a operação, para criar o proprietário privado e emitir os códigos únicos de ativação. O workflow `Ciba AI Deploy` publica automaticamente mudanças de backend na branch `main`, aplica migrations e verifica a saúde do Worker. Mudanças exclusivas no app Android ou na documentação não disparam deploy do servidor. O registro de ferramentas permanece opt-in e ainda não está conectado ao orquestrador ou à chamada do modelo.
 
 ## Arquitetura
 
@@ -57,7 +57,7 @@ npm run check
 npx wrangler d1 create ciba-ai-db
 ```
 
-Copie o ID retornado para `wrangler.toml`. Substitua `ALLOWED_APP_IDS` pelos package IDs Android reais dos aplicativos Ciba (a lista está vazia de propósito até essa confirmação), aplique a migration e configure os segredos:
+Copie o ID retornado para `wrangler.toml`. Confirme os package IDs Android permitidos em `ALLOWED_APP_IDS` (a Garcia usa `com.ciba.garcia`), aplique as migrations e configure os segredos:
 
 ```bash
 npx wrangler d1 migrations apply ciba-ai-db --remote
@@ -96,7 +96,7 @@ O nome do modelo é configurado em `AI_MODEL`. Antes de produção, confirme no 
 - `GET /v1/admin/settings`
 - `POST /v1/admin/settings`
 
-Consulte [TOOLS.md](docs/TOOLS.md) para ativar ferramentas com autorização explícita e conhecer os limites do registro. Consulte [PROVISIONING.md](docs/PROVISIONING.md) para o roteiro de ativação sem provisionamento automático. Consulte [TESTING.md](docs/TESTING.md) para executar os testes locais sem credenciais Cloudflare. Consulte [APP_INTEGRATION.md](docs/APP_INTEGRATION.md) para o contrato de integração dos clientes. Consulte [SECURITY.md](docs/SECURITY.md) antes de disponibilizar convites ou distribuir os aplicativos. A futura tela Configurações deve usar a API descrita em [SETTINGS.md](docs/SETTINGS.md); segredos de infraestrutura nunca devem ser enviados ao cliente.
+Consulte [TOOLS.md](docs/TOOLS.md) para ativar ferramentas com autorização explícita e conhecer os limites do registro. Consulte [PROVISIONING.md](docs/PROVISIONING.md) e o workflow `Provision Garcia Device` para o provisionamento privado do dispositivo. Consulte [TESTING.md](docs/TESTING.md) para executar os testes locais sem credenciais Cloudflare. Consulte [APP_INTEGRATION.md](docs/APP_INTEGRATION.md) para o contrato de integração dos clientes. Consulte [SECURITY.md](docs/SECURITY.md) antes de disponibilizar convites ou distribuir os aplicativos. A futura tela Configurações deve usar a API descrita em [SETTINGS.md](docs/SETTINGS.md); segredos de infraestrutura nunca devem ser enviados ao cliente.
 
 
 ## Proteções de uso
