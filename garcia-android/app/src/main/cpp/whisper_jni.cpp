@@ -2,8 +2,8 @@
 #include <android/log.h>
 #include <whisper.h>
 
+#include <algorithm>
 #include <atomic>
-#include <cmath>
 #include <mutex>
 #include <sstream>
 #include <string>
