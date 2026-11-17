@@ -34,7 +34,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.2.12479018 cmake;3.22.1"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -42,4 +42,4 @@ jobs:
           gradle-version: "8.13"
 
       - name: Compile debug Kotlin sources
-        run: gradle --no-daemon :app:compileDebugKotlin
+        run: gradle --no-daemon :app:externalNativeBuildDebug :app:compileDebugKotlin
