@@ -19,7 +19,7 @@ binding = "AI"
 [[d1_databases]]
 binding = "DB"
 database_name = "ciba-ai-db"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "570aa451-25c5-40a5-8d1b-e9b7cd401c13"
 migrations_dir = "migrations"
 
 [triggers]
