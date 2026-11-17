@@ -87,8 +87,7 @@ Java_com_ciba_garcia_WhisperNative_nativeTranscribe(
 
     const char * languageCode = env->GetStringUTFChars(language, nullptr);
     if (languageCode == nullptr) return nullptr;
-    jboolean copied = JNI_FALSE;
-    jfloat * samples = env->GetFloatArrayElements(audio, &copied);
+    jfloat * samples = env->GetFloatArrayElements(audio, nullptr);
     if (samples == nullptr) {
         env->ReleaseStringUTFChars(language, languageCode);
         return nullptr;
@@ -126,8 +125,8 @@ Java_com_ciba_garcia_WhisperNative_nativeTranscribe(
         const int segments = whisper_full_n_segments(g_context);
         const char * detected = whisper_lang_str(whisper_full_lang_id(g_context));
         std::ostringstream out;
-        out << "{\\"engine\\":\\"whisper.cpp\\",\\"language\\":\\""
-            << escapeJson(detected) << "\\",\\"segments\\":[";
+        out << "{\"engine\":\"whisper.cpp\",\"language\":\""
+            << escapeJson(detected) << "\",\"segments\":[";
         std::string fullText;
         for (int i = 0; i < segments; ++i) {
             const char * rawText = whisper_full_get_segment_text(g_context, i);
@@ -138,12 +137,12 @@ Java_com_ciba_garcia_WhisperNative_nativeTranscribe(
             }
             const auto startMs = whisper_full_get_segment_t0(g_context, i) * 10;
             const auto endMs = whisper_full_get_segment_t1(g_context, i) * 10;
-            out << "{\\"startMs\\":" << startMs
-                << ",\\"endMs\\":" << endMs
-                << ",\\"text\\":\\"" << escapeJson(segment.c_str()) << "\\"}";
+            out << "{\"startMs\":" << startMs
+                << ",\"endMs\":" << endMs
+                << ",\"text\":\"" << escapeJson(segment.c_str()) << "\"}";
             fullText += segment;
         }
-        out << "],\\"text\\":\\"" << escapeJson(fullText.c_str()) << "\\"}";
+        out << "],\"text\":\"" << escapeJson(fullText.c_str()) << "\"}";
         json = out.str();
     }
 
