@@ -41,5 +41,5 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Compile debug Kotlin sources
-        run: gradle --no-daemon :app:externalNativeBuildDebug :app:compileDebugKotlin
+      - name: Run voice activity unit tests and compile Android sources
+        run: gradle --no-daemon :app:testDebugUnitTest :app:externalNativeBuildDebug :app:compileDebugKotlin
