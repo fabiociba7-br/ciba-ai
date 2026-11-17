@@ -415,7 +415,11 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     }
                 } catch (e: Exception) { error = e.message ?: "Não foi possível iniciar a gravação."; whisperRecording = false }
             }
-        } else error = "A permissão do microfone foi negada. Ative-a nas configurações do Android para transcrever voz."
+        } else {
+        continuousVoice = false
+        context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
+        error = "A permissão do microfone foi negada. Ative-a nas configurações do Android para conversar por voz."
+    }
     }
     LaunchedEffect(autoListenPending, continuousVoice, voiceReplies, input, attachment, busy, whisperBusy, whisperRecording) {
         if (!autoListenPending) return@LaunchedEffect
@@ -1022,7 +1026,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 try {
                                     val info = withContext(Dispatchers.IO) {
                                         whisperModelStore.downloadModel { downloaded, total ->
-                                            whisperDownloadProgress = ((downloaded * 100) / total).toInt().coerceIn(0, 100)
+                                            whisperDownloadProgress = if (total > 0L) ((downloaded * 100) / total).toInt().coerceIn(0, 100) else 0
                                         }.also { check(WhisperNative.nativeLoadModel(it.file.absolutePath)) { "O Whisper baixou o modelo, mas não conseguiu carregá-lo." } }
                                     }
                                     whisperModelInfo = info
