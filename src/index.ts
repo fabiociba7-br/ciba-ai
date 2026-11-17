@@ -8,14 +8,11 @@ export interface Env {
   FACEBOOK_APP_SECRET?: string;
   AI_MODEL?: string;
   ALLOWED_APP_IDS?: string;
-  DAILY_GLOBAL_LIMIT?: string;
-  DAILY_APP_LIMIT?: string;
-  DAILY_DEVICE_LIMIT?: string;
   MAX_OUTPUT_TOKENS?: string;
   ALLOWED_ORIGINS?: string;
 }
 
-import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_REQUESTS_PER_MINUTE, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_DAILY_GLOBAL_LIMIT, MAX_DAILY_APP_LIMIT, MAX_DAILY_DEVICE_LIMIT, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "./policy";
+import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "./policy";
 import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents } from "./core";
 import { validateCuratedMemory } from "./core/memory";
 import { prepareMemoryCandidate } from "./core/memory-candidates";
@@ -63,11 +60,6 @@ const sha256 = async (value: string): Promise<string> => {
 
 const nowIso = () => new Date().toISOString();
 const utcDay = () => new Date().toISOString().slice(0, 10);
-const secondsUntilUtcDayReset = () => {
-  const now = new Date();
-  const nextDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
-  return Math.max(1, Math.ceil((nextDay - now.getTime()) / 1000));
-};
 
 const allowedApps = (env: Env) =>
   new Set((env.ALLOWED_APP_IDS || "").split(",").map((s) => s.trim()).filter(Boolean));
@@ -151,8 +143,7 @@ const readRuntimeSettings = async (env: Env): Promise<Record<string, string>> =>
 };
 
 const CONFIG_KEYS = new Set([
-  "ai_enabled", "ai_model", "daily_global_limit", "daily_app_limit",
-  "daily_device_limit", "max_output_tokens", "maintenance_mode",
+  "ai_enabled", "ai_model", "max_output_tokens", "maintenance_mode",
 ]);
 
 const publicConfig = (settings: Record<string, string>, env: Env) => ({
@@ -161,9 +152,8 @@ const publicConfig = (settings: Record<string, string>, env: Env) => ({
   model: resolveModel(settings.ai_model, env.AI_MODEL),
   maintenance_mode: settings.maintenance_mode === "true",
   limits: {
-    global_daily: Math.min(getLimit(settings.daily_global_limit || env.DAILY_GLOBAL_LIMIT, MAX_DAILY_GLOBAL_LIMIT), MAX_DAILY_GLOBAL_LIMIT),
-    app_daily: Math.min(getLimit(settings.daily_app_limit || env.DAILY_APP_LIMIT, MAX_DAILY_APP_LIMIT), MAX_DAILY_APP_LIMIT),
-    device_daily: Math.min(getLimit(settings.daily_device_limit || env.DAILY_DEVICE_LIMIT, MAX_DAILY_DEVICE_LIMIT), MAX_DAILY_DEVICE_LIMIT),
+    daily_requests: null,
+    requests_per_minute: null,
     max_output_tokens: Math.min(getLimit(settings.max_output_tokens || env.MAX_OUTPUT_TOKENS, MAX_OUTPUT_TOKENS), MAX_OUTPUT_TOKENS),
   },
 });
@@ -262,45 +252,6 @@ const authenticateDevice = async (request: Request, env: Env) => {
   return env.DB.prepare(
     "SELECT device_id, app_id, owner_id FROM devices WHERE token_hash = ? AND revoked_at IS NULL"
   ).bind(tokenHash).first<{ device_id: string; app_id: string; owner_id: string | null }>();
-};
-
-const reserveQuota = async (env: Env, appId: string, deviceId: string) => {
-  const day = utcDay();
-  const timestamp = nowIso();
-  const settings = await readRuntimeSettings(env);
-  const globalLimit = Math.min(getLimit(settings.daily_global_limit || env.DAILY_GLOBAL_LIMIT, MAX_DAILY_GLOBAL_LIMIT), MAX_DAILY_GLOBAL_LIMIT);
-  const appLimit = Math.min(getLimit(settings.daily_app_limit || env.DAILY_APP_LIMIT, MAX_DAILY_APP_LIMIT), MAX_DAILY_APP_LIMIT);
-  const deviceLimit = Math.min(getLimit(settings.daily_device_limit || env.DAILY_DEVICE_LIMIT, MAX_DAILY_DEVICE_LIMIT), MAX_DAILY_DEVICE_LIMIT);
-
-  // One multi-row UPSERT is atomic. The trigger aborts the whole statement
-  // if any of the three buckets would exceed its limit.
-  await env.DB.prepare(`
-    INSERT INTO daily_usage(day, scope_key, requests, request_limit, updated_at)
-    VALUES
-      (?, 'global', 1, ?, ?),
-      (?, ?, 1, ?, ?),
-      (?, ?, 1, ?, ?)
-    ON CONFLICT(day, scope_key) DO UPDATE SET
-      requests = daily_usage.requests + 1,
-      request_limit = excluded.request_limit,
-      updated_at = excluded.updated_at
-  `).bind(
-    day, globalLimit, timestamp,
-    day, `app:${appId}`, appLimit, timestamp,
-    day, `device:${deviceId}`, deviceLimit, timestamp
-  ).run();
-};
-
-const reserveMinuteRateLimit = async (env: Env, deviceId: string) => {
-  const minute = new Date().toISOString().slice(0, 16);
-  await env.DB.prepare(`
-    INSERT INTO minute_usage(minute, device_id, requests, request_limit, updated_at)
-    VALUES(?, ?, 1, ?, ?)
-    ON CONFLICT(minute, device_id) DO UPDATE SET
-      requests = minute_usage.requests + 1,
-      request_limit = excluded.request_limit,
-      updated_at = excluded.updated_at
-  `).bind(minute, deviceId, MAX_REQUESTS_PER_MINUTE, nowIso()).run();
 };
 
 const usageFor = async (env: Env, appId: string, deviceId: string) => {
@@ -1775,16 +1726,6 @@ const handleChat = async (request: Request, env: Env) => {
   if (resourceAccess) return resourceAccess;
 
 
-  try {
-    await reserveMinuteRateLimit(env, device.device_id);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : "";
-    if (reason.includes("request_rate_exceeded")) {
-      return json({ error: "rate_limit_exceeded", retry_after_seconds: 60 }, 429, { "retry-after": "60" });
-    }
-    throw error;
-  }
-
   const settings = await readRuntimeSettings(env);
   if (settings.maintenance_mode === "true") return json({ error: "maintenance_mode" }, 503);
   if (settings.ai_enabled === "false") return json({ error: "ai_disabled" }, 503);
@@ -1826,17 +1767,6 @@ const handleChat = async (request: Request, env: Env) => {
   const imageMessages = messages.filter((message) => message.images && message.images.length > 0);
   if (imageMessages.length > 1) return json({ error: "images_must_be_attached_to_one_message" }, 400);
   if (totalChars > MAX_TOTAL_INPUT_CHARS) return json({ error: "prompt_too_large", max_input_chars: MAX_TOTAL_INPUT_CHARS }, 413);
-
-  try {
-    await reserveQuota(env, device.app_id, device.device_id);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "";
-    if (message.includes("quota_exceeded")) {
-      const retryAfter = secondsUntilUtcDayReset();
-      return json({ error: "daily_quota_exceeded", retry_after_seconds: retryAfter }, 429, { "retry-after": String(retryAfter) });
-    }
-    throw error;
-  }
 
   const model = resolveModel(settings.ai_model, env.AI_MODEL);
   if (!model) return json({ error: "ai_model_not_available" }, 503);
@@ -2157,9 +2087,6 @@ const handleAdminSettings = async (request: Request, env: Env) => {
       return json({ error: "invalid_ai_model" }, 400);
     }
     const settingCeilings: Record<string, number> = {
-      daily_global_limit: MAX_DAILY_GLOBAL_LIMIT,
-      daily_app_limit: MAX_DAILY_APP_LIMIT,
-      daily_device_limit: MAX_DAILY_DEVICE_LIMIT,
       max_output_tokens: MAX_OUTPUT_TOKENS,
     };
     if (key in settingCeilings) {
@@ -2786,32 +2713,11 @@ const handleTaskSynthesis = async (request: Request, env: Env) => {
   const synthesisRequest = buildTaskSynthesisRequest(taskId, results as TaskResultRecord[]);
   if (!synthesisRequest) return json({ error: "no_usable_task_results" }, 409);
 
-  try {
-    await reserveMinuteRateLimit(env, device.device_id);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : "";
-    if (reason.includes("request_rate_exceeded")) {
-      return json({ error: "rate_limit_exceeded", retry_after_seconds: 60 }, 429, { "retry-after": "60" });
-    }
-    throw error;
-  }
-
   const settings = await readRuntimeSettings(env);
   if (settings.maintenance_mode === "true") return json({ error: "maintenance_mode" }, 503);
   if (settings.ai_enabled === "false") return json({ error: "ai_disabled" }, 503);
   const model = resolveModel(settings.ai_model, env.AI_MODEL);
   if (!model || !ZERO_COST_MODELS.has(model)) return json({ error: "ai_model_not_available" }, 503);
-
-  try {
-    await reserveQuota(env, device.app_id, device.device_id);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : "";
-    if (reason.includes("quota_exceeded")) {
-      const retryAfter = secondsUntilUtcDayReset();
-      return json({ error: "daily_quota_exceeded", retry_after_seconds: retryAfter }, 429, { "retry-after": String(retryAfter) });
-    }
-    throw error;
-  }
 
   const registry = createRuntimeProviderRegistry(env, model, MAX_TASK_SYNTHESIS_OUTPUT_TOKENS);
   const registeredModel = registry.select("general", "cloudflare-workers-ai");
