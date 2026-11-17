@@ -103,5 +103,24 @@ class CibaAiClient(private val store: SecureStore) {
         JSONObject().put("access_token", accessToken), authenticated = true
     )
 
+    fun facebookProfile(): JSONObject = request("/v1/owner/facebook/profile", "GET", authenticated = true)
+
+    fun facebookPermissions(): JSONObject = request("/v1/owner/facebook/permissions", "GET", authenticated = true)
+
+    fun facebookPages(): JSONObject = request("/v1/owner/facebook/pages", "GET", authenticated = true)
+
+    fun facebookPosts(pageId: String, limit: Int = 25): JSONObject =
+        request("/v1/owner/facebook/posts?page_id=${android.net.Uri.encode(pageId)}&limit=${limit.coerceIn(1, 50)}", "GET", authenticated = true)
+
+    fun facebookConversations(pageId: String): JSONObject =
+        request("/v1/owner/facebook/conversations?page_id=${android.net.Uri.encode(pageId)}", "GET", authenticated = true)
+
+    fun facebookMessages(pageId: String, conversationId: String, limit: Int = 25): JSONObject =
+        request(
+            "/v1/owner/facebook/messages?page_id=${android.net.Uri.encode(pageId)}&conversation_id=${android.net.Uri.encode(conversationId)}&limit=${limit.coerceIn(1, 50)}",
+            "GET",
+            authenticated = true
+        )
+
     fun usage(): JSONObject = request("/v1/usage", "GET", authenticated = true)
 }
