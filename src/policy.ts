@@ -5,9 +5,9 @@ export const MAX_REQUESTS_PER_MINUTE = 12;
 export const MAX_ADMIN_AUTH_FAILURES_PER_MINUTE = 10;
 
 // Hard ceilings: administrative settings may lower these values, never raise them.
-export const MAX_DAILY_GLOBAL_LIMIT = 50;
-export const MAX_DAILY_APP_LIMIT = 25;
-export const MAX_DAILY_DEVICE_LIMIT = 10;
+export const MAX_DAILY_GLOBAL_LIMIT = 2_000;
+export const MAX_DAILY_APP_LIMIT = 1_000;
+export const MAX_DAILY_DEVICE_LIMIT = 300;
 export const MAX_OUTPUT_TOKENS = 512;
 export const MAX_MESSAGE_CHARS = 1_500;
 export const MAX_TOTAL_INPUT_CHARS = 3_000;
