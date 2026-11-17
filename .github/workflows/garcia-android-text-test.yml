@@ -63,17 +63,19 @@ jobs:
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/garcia-release.jks" >> "$GITHUB_ENV"
       - name: Build signed text-chat APK
         shell: bash
-        env:
-          VERSION_CODE: ${{ github.run_number }}
         run: |
           set -euo pipefail
+          VERSION_CODE="$(git rev-list --count HEAD)"
+          test "$VERSION_CODE" -gt 2
+          echo "Building versionCode=$VERSION_CODE"
           gradle --no-daemon :app:assembleRelease -PVERSION_CODE="$VERSION_CODE" -PVERSION_NAME=1.0.2
-      - name: Verify APK and calculate checksum
+      - name: Verify APK signature and calculate checksum
         shell: bash
         run: |
           set -euo pipefail
           APK=$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)
           test -n "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
           sha256sum "$APK" > "$RUNNER_TEMP/garcia-apk-sha256.txt"
           cat "$RUNNER_TEMP/garcia-apk-sha256.txt"
       - name: Upload signed APK
