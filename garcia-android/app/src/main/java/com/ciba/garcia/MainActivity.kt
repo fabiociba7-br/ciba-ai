@@ -287,6 +287,11 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var whisperStatus by remember { mutableStateOf("Modelo de voz não instalado") }
     var whisperRecording by remember { mutableStateOf(false) }
     var whisperBusy by remember { mutableStateOf(false) }
+    var voiceAvailable by remember { mutableStateOf(false) }
+    var voiceStatus by remember { mutableStateOf("Verificando voz offline…") }
+    var voiceReplies by remember { mutableStateOf(context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).getBoolean("enabled", true)) }
+    val voiceOutput = remember { LocalSpeechOutput(context) { available, message -> voiceAvailable = available; voiceStatus = message } }
+    DisposableEffect(voiceOutput) { onDispose { voiceOutput.shutdown() } }
     var showAttachmentOptions by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Verificando conexão…") }
@@ -529,6 +534,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 history.forEach { (role, content) -> snapshot.put(JSONObject().put("role", role).put("content", content)) }
                 val answer = withContext(Dispatchers.IO) { client.chat(snapshot, imagePayload) }
                 history.add("assistant" to answer); persist()
+                if (voiceReplies && voiceAvailable) voiceOutput.speak(answer)
                 GarciaLog.recordEvent(context, "chat", "HTTP 200 · resposta recebida e salva no histórico · ${answer.length} caracteres")
             } catch (e: Exception) { GarciaLog.record(context, "chat", e); error = e.message ?: "Falha ao conversar com a Garcia." }
             finally { busy = false }
