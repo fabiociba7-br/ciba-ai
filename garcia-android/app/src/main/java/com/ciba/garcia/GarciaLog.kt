@@ -14,8 +14,8 @@ object GarciaLog {
     private const val LIMIT = 150
 
     @Synchronized
-    fun record(context: Context, area: String, error: Throwable) {
-        val message = (error.message ?: error.javaClass.simpleName)
+    private fun append(context: Context, area: String, type: String, rawMessage: String) {
+        val message = rawMessage
             .replace(Regex("(?i)bearer\\s+\\S+"), "Bearer [redigido]")
             .replace(Regex("[A-Za-z0-9_-]{28,}")) { match ->
                 val value = match.value
@@ -25,7 +25,7 @@ object GarciaLog {
         val entry = JSONObject()
             .put("time", SimpleDateFormat("dd/MM HH:mm:ss", Locale("pt", "BR")).format(Date()))
             .put("area", area.take(40))
-            .put("type", error.javaClass.simpleName.take(80))
+            .put("type", type.take(80))
             .put("message", message)
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val old = runCatching { JSONArray(prefs.getString(KEY, "[]")) }.getOrElse { JSONArray() }
@@ -33,14 +33,23 @@ object GarciaLog {
         for (i in maxOf(0, old.length() - LIMIT + 1) until old.length()) next.put(old.getJSONObject(i))
         next.put(entry)
         prefs.edit().putString(KEY, next.toString()).apply()
-        Log.e("GarciaDiagnostics", area + ": " + error.javaClass.simpleName + ": " + message)
+        Log.i("GarciaDiagnostics", area + ": " + type + ": " + message)
+    }
+
+    fun record(context: Context, area: String, error: Throwable) {
+        append(context, area, error.javaClass.simpleName, error.message ?: error.javaClass.simpleName)
+        Log.e("GarciaDiagnostics", area + ": " + error.javaClass.simpleName, error)
+    }
+
+    fun recordEvent(context: Context, area: String, message: String) {
+        append(context, area, "INFO", message)
     }
 
     fun read(context: Context): String {
         val array = runCatching {
             JSONArray(context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, "[]"))
         }.getOrElse { JSONArray() }
-        if (array.length() == 0) return "Nenhum erro registrado."
+        if (array.length() == 0) return "Nenhum evento registrado."
         return buildString {
             for (i in 0 until array.length()) {
                 val item = array.getJSONObject(i)
