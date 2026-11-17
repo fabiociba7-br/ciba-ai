@@ -293,6 +293,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var voiceAvailable by remember { mutableStateOf(false) }
     var voiceStatus by remember { mutableStateOf("Verificando voz offline…") }
     var voiceReplies by remember { mutableStateOf(context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).getBoolean("enabled", true)) }
+    var voiceSpeaking by remember { mutableStateOf(false) }
     var continuousVoice by remember { mutableStateOf(context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).getBoolean("continuous", false)) }
     var autoListenPending by remember { mutableStateOf(false) }
     var awaitingTranscriptReview by remember { mutableStateOf(false) }
@@ -300,7 +301,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         LocalSpeechOutput(
             context,
             { available, message -> voiceAvailable = available; voiceStatus = message },
-            { if (continuousVoice && voiceReplies && !awaitingTranscriptReview && input.isBlank()) autoListenPending = true }
+            { voiceSpeaking = false; if (continuousVoice && voiceReplies && !awaitingTranscriptReview && input.isBlank()) autoListenPending = true },
+            { voiceSpeaking = true }
         )
     }
     DisposableEffect(voiceOutput) { onDispose { voiceOutput.shutdown(); whisperRecorder.cancel() } }
@@ -911,6 +913,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         when {
                             whisperRecording -> "Estou ouvindo você"
                             whisperBusy -> "Estou entendendo o que você disse…"
+                            voiceSpeaking -> "A Garcia está falando"
                             busy -> "A Garcia está pensando…"
                             autoListenPending -> "Preparando para ouvir…"
                             else -> "Conversa por voz ativa"
@@ -922,6 +925,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         when {
                             whisperRecording -> "Pode falar naturalmente. Vou detectar sua pausa, entender a mensagem e responder em voz alta."
                             whisperBusy -> "Sua fala está sendo transcrita no próprio aparelho."
+                            voiceSpeaking -> "Estou respondendo em voz alta. Quando terminar, volto a ouvir você automaticamente."
                             busy -> "Já estou preparando minha resposta. Depois volto a ouvir você automaticamente."
                             autoListenPending -> "Vou reabrir o microfone assim que terminar minha resposta."
                             else -> "Fale comigo normalmente. Não é necessário tocar no microfone a cada mensagem."
