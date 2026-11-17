@@ -3,6 +3,8 @@ package com.ciba.garcia
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -16,6 +18,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -25,6 +28,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Menu
@@ -35,6 +41,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Alignment
@@ -102,6 +109,15 @@ private fun readImageAttachment(context: Context, uri: Uri): GarciaAttachment {
         mimeType = "image/jpeg",
         base64 = Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
     )
+}
+
+private fun readCapturedImage(bitmap: Bitmap): GarciaAttachment {
+    val output = java.io.ByteArrayOutputStream()
+    bitmap.compress(Bitmap.CompressFormat.JPEG, 88, output)
+    bitmap.recycle()
+    if (output.size() > 1_450_000) throw IllegalArgumentException("A foto capturada ficou muito grande.")
+    return GarciaAttachment(type = "image", name = "foto-camera.jpg", mimeType = "image/jpeg",
+        base64 = Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP))
 }
 
 private fun readTextAttachment(context: Context, uri: Uri): GarciaAttachment {
@@ -270,6 +286,15 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         if (uri != null) runCatching { readTextAttachment(context, uri) }
             .onSuccess { attachment = it; error = "" }
             .onFailure { error = it.message ?: "Não foi possível anexar o arquivo." }
+    }
+    val cameraPicker = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+        if (bitmap != null) runCatching { readCapturedImage(bitmap) }
+            .onSuccess { attachment = it; error = "" }
+            .onFailure { error = it.message ?: "Não foi possível capturar a foto." }
+    }
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) cameraPicker.launch(null)
+        else error = "A permissão da câmera foi negada. Ative-a nas configurações do Android para fotografar."
     }
     var activation by remember { mutableStateOf("") }
     var pairingCode by remember { mutableStateOf("") }
@@ -596,7 +621,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         }
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { showAttachmentOptions = true }, enabled = !busy) {
+                    IconButton(onClick = { showAttachmentOptions = true }, enabled = !busy,
+                        modifier = Modifier.size(44.dp).background(Color(0xFFF1E8ED), CircleShape)) {
                         Icon(Icons.Default.AttachFile, contentDescription = "Adicionar foto ou arquivo", tint = Blue)
                     }
                     BasicTextField(value = input, onValueChange = { input = it },
@@ -688,29 +714,45 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     }
 
     if (showAttachmentOptions) {
-        AlertDialog(
+        ModalBottomSheet(
             onDismissRequest = { showAttachmentOptions = false },
-            title = { Text("Adicionar anexo") },
-            text = {
-                Column {
-                    TextButton(
-                        onClick = {
-                            showAttachmentOptions = false
-                            photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Fotos", modifier = Modifier.fillMaxWidth()) }
-                    TextButton(
-                        onClick = {
-                            showAttachmentOptions = false
-                            attachmentPicker.launch(arrayOf("text/*", "application/json", "application/xml"))
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Arquivos", modifier = Modifier.fillMaxWidth()) }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showAttachmentOptions = false }) { Text("Cancelar") } }
-        )
+            containerColor = Color(0xFFFFFBFD),
+            dragHandle = { BottomSheetDefaults.DragHandle(color = Color(0xFFD8C8D0)) }
+        ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp).padding(bottom = 24.dp)) {
+                Text("Adicionar à conversa", fontSize = 19.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 8.dp, bottom = 10.dp))
+                ListItem(
+                    headlineContent = { Text("Câmera", fontWeight = FontWeight.SemiBold) },
+                    supportingContent = { Text("Tirar uma foto agora") },
+                    leadingContent = { Icon(Icons.Default.CameraAlt, null, tint = Blue, modifier = Modifier.size(24.dp)) },
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable {
+                        showAttachmentOptions = false
+                        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                        if (granted) cameraPicker.launch(null) else cameraPermission.launch(Manifest.permission.CAMERA)
+                    }
+                )
+                ListItem(
+                    headlineContent = { Text("Fotos", fontWeight = FontWeight.SemiBold) },
+                    supportingContent = { Text("Escolher uma imagem da galeria") },
+                    leadingContent = { Icon(Icons.Default.PhotoLibrary, null, tint = Blue, modifier = Modifier.size(24.dp)) },
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable {
+                        showAttachmentOptions = false
+                        photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }
+                )
+                ListItem(
+                    headlineContent = { Text("Arquivos", fontWeight = FontWeight.SemiBold) },
+                    supportingContent = { Text("Anexar documentos de texto, CSV, JSON ou XML") },
+                    leadingContent = { Icon(Icons.Default.InsertDriveFile, null, tint = Blue, modifier = Modifier.size(24.dp)) },
+                    modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).clickable {
+                        showAttachmentOptions = false
+                        attachmentPicker.launch(arrayOf("text/*", "application/json", "application/xml"))
+                    }
+                )
+                TextButton(onClick = { showAttachmentOptions = false }, modifier = Modifier.align(Alignment.End)) { Text("Cancelar") }
+            }
+        }
     }
 
     if (showChats) {
