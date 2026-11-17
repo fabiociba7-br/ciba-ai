@@ -2028,7 +2028,7 @@ const handleChat = async (request: Request, env: Env) => {
         if (granted.includes("user_posts")) {
           const result = await facebookGraphGet<{ data?: Array<Record<string, unknown>> }>(
             "me/posts", bundle.access_token, {
-              fields: "id,message,story,created_time,permalink_url,likes.summary(true),comments.summary(true)",
+              fields: "id,message,story,created_time,permalink_url,attachments{media_type,type,url,title,target},likes.summary(true),comments.summary(true)",
               limit: "8",
             },
           );
@@ -2042,6 +2042,7 @@ const handleChat = async (request: Request, env: Env) => {
               likes?.summary?.total_count !== undefined ? `reações: ${likes.summary.total_count}` : "",
               comments?.summary?.total_count !== undefined ? `comentários indicados: ${comments.summary.total_count}` : "",
               post.permalink_url ? `link: ${String(post.permalink_url)}` : "",
+              Array.isArray(post.attachments) ? `anexos: ${JSON.stringify(post.attachments).slice(0, 500)}` : "",
             ].filter(Boolean).join(" | "));
           }
         } else {
