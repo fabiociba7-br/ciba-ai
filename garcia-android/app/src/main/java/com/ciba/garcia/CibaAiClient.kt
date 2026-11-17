@@ -66,7 +66,7 @@ class CibaAiClient(private val store: SecureStore) {
             val role = item.getString("role")
             val content = item.getString("content")
             val perMessageLimit = if (role == "user") 1_500 else 3_000
-            if (content.length > perMessageLimit || totalChars + content.length > 3_000) continue
+            if (content.length > perMessageLimit || totalChars + content.length > 3_000) break
             selected.add(JSONObject().put("role", role).put("content", content))
             totalChars += content.length
         }
