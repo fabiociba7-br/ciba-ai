@@ -27,6 +27,11 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
@@ -56,7 +61,7 @@ private val Panel = Color(0xFFFFF8FB)
 private val Blue = Color(0xFFD96E98)
 private val Muted = Color(0xFF777777)
 
-private data class GarciaChat(val id: String, val title: String, val messages: List<Pair<String, String>>)
+private data class GarciaChat(val id: String, val title: String, val messages: List<Pair<String, String>>, val archived: Boolean = false)
 private data class GarciaAttachment(
     val type: String,
     val name: String,
@@ -175,7 +180,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     val message = messagesJson.getJSONObject(j)
                     messages.add(message.getString("role") to message.getString("content"))
                 }
-                add(GarciaChat(item.getString("id"), item.optString("title", "Nova conversa"), messages))
+                add(GarciaChat(item.getString("id"), item.optString("title", "Nova conversa"), messages, item.optBoolean("archived", false)))
             }
             if (isEmpty()) {
                 val legacy = store.loadHistory()
@@ -211,6 +216,11 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var showSettings by remember { mutableStateOf(false) }
     var showLogs by remember { mutableStateOf(false) }
     var showChats by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    var showArchived by remember { mutableStateOf(false) }
+    var menuChatId by remember { mutableStateOf<String?>(null) }
+    var renameChatId by remember { mutableStateOf<String?>(null) }
+    var renameTitle by remember { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf(false) }
     var logs by remember { mutableStateOf("") }
     var usage by remember { mutableStateOf("") }
@@ -235,13 +245,14 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         val index = chats.indexOfFirst { it.id == currentChatId }
         val firstUser = history.firstOrNull { it.first == "user" }?.second.orEmpty()
         val title = firstUser.replace("\\s+".toRegex(), " ").take(42).ifBlank { "Nova conversa" }
-        val current = GarciaChat(currentChatId, title, history.toList())
+        val old = chats.getOrNull(index)
+        val current = GarciaChat(currentChatId, old?.title?.takeIf { it != "Nova conversa" } ?: title, history.toList(), old?.archived ?: false)
         if (index >= 0) chats[index] = current else chats.add(current)
         val array = JSONArray()
         chats.forEach { chat ->
             val messages = JSONArray()
             chat.messages.forEach { (role, content) -> messages.put(JSONObject().put("role", role).put("content", content)) }
-            array.put(JSONObject().put("id", chat.id).put("title", chat.title).put("messages", messages))
+            array.put(JSONObject().put("id", chat.id).put("title", chat.title).put("archived", chat.archived).put("messages", messages))
         }
         store.saveChats(array)
         store.saveHistory(JSONArray().apply {
@@ -269,6 +280,23 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         history.clear()
         input = ""
         error = ""
+        persist()
+    }
+
+    fun deleteChat(chat: GarciaChat) {
+        if (busy) return
+        chats.removeAll { it.id == chat.id }
+        if (currentChatId == chat.id) {
+            val next = chats.lastOrNull { !it.archived } ?: GarciaChat(UUID.randomUUID().toString(), "Nova conversa", emptyList()).also { chats.add(it) }
+            currentChatId = next.id
+            history.clear(); history.addAll(next.messages); input = ""; error = ""
+        }
+        persist()
+    }
+
+    fun renameChat(chat: GarciaChat, title: String) {
+        val index = chats.indexOfFirst { it.id == chat.id }
+        if (index >= 0 && title.isNotBlank()) chats[index] = chat.copy(title = title.trim().take(60))
         persist()
     }
 
@@ -429,6 +457,44 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         primary = Blue, background = Ink, surface = Color.White, onBackground = Color(0xFF303030),
         onSurface = Color(0xFF303030), secondary = Muted
     )) {
+      ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = connected && !busy,
+        drawerContent = {
+          ModalDrawerSheet(Modifier.width(310.dp), drawerContainerColor = Color(0xFFF8F7F5)) {
+            Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
+              Row(Modifier.fillMaxWidth().padding(vertical = 18.dp), verticalAlignment = Alignment.CenterVertically) {
+                Image(painterResource(R.drawable.ic_garcia), null, Modifier.size(34.dp))
+                Spacer(Modifier.width(10.dp)); Text("Garcia", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+              }
+              Button(onClick = { newChat(); scope.launch { drawerState.close() } }, modifier = Modifier.fillMaxWidth(), enabled = !busy) { Text("+ Nova conversa") }
+              Spacer(Modifier.height(12.dp))
+              Text("Conversas", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 6.dp))
+              LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                items(chats.filter { it.archived == showArchived }.asReversed(), key = { it.id }) { chat ->
+                  Row(Modifier.fillMaxWidth().background(if (chat.id == currentChatId) Color(0xFFECE9E5) else Color.Transparent, RoundedCornerShape(10.dp)).padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { selectChat(chat); scope.launch { drawerState.close() } }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(vertical = 8.dp, horizontal = 2.dp)) {
+                      Text(chat.title, maxLines = 1, color = Color(0xFF292929), modifier = Modifier.fillMaxWidth())
+                    }
+                    Box {
+                      IconButton(onClick = { menuChatId = if (menuChatId == chat.id) null else chat.id }) { Icon(Icons.Default.MoreVert, "Opções da conversa") }
+                      DropdownMenu(expanded = menuChatId == chat.id, onDismissRequest = { menuChatId = null }) {
+                        DropdownMenuItem(text = { Text("Editar nome") }, leadingIcon = { Icon(Icons.Default.Edit, null) }, onClick = { renameChatId = chat.id; renameTitle = chat.title; menuChatId = null })
+                        DropdownMenuItem(text = { Text(if (chat.archived) "Desarquivar" else "Arquivar") }, leadingIcon = { Icon(Icons.Default.Archive, null) }, onClick = { val i = chats.indexOfFirst { it.id == chat.id }; if (i >= 0) chats[i] = chat.copy(archived = !chat.archived); persist(); menuChatId = null; if (chat.id == currentChatId && !chat.archived) { val next = chats.lastOrNull { !it.archived }; if (next != null) selectChat(next) } })
+                        DropdownMenuItem(text = { Text("Excluir", color = Color(0xFFB3261E)) }, leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color(0xFFB3261E)) }, onClick = { deleteChat(chat); menuChatId = null })
+                      }
+                    }
+                  }
+                }
+                if (chats.none { it.archived == showArchived }) item { Text(if (showArchived) "Nenhuma conversa arquivada" else "Nenhuma conversa ainda", color = Muted, modifier = Modifier.padding(12.dp)) }
+              }
+              TextButton(onClick = { showArchived = !showArchived }, modifier = Modifier.fillMaxWidth()) { Text(if (showArchived) "← Voltar às conversas" else "Conversas arquivadas") }
+              HorizontalDivider()
+              TextButton(onClick = { showSettings = true; scope.launch { drawerState.close() } }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Default.Settings, null); Spacer(Modifier.width(8.dp)); Text("Configurações") }
+            }
+          }
+        }
+      ) {
         Scaffold(containerColor = Ink, topBar = {
             TopAppBar(
                 title = {
@@ -441,14 +507,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         }
                     }
                 },
-                actions = {
-                    if (connected) {
-                        TextButton(onClick = { showChats = true }) { Text("Conversas") }
-                        TextButton(onClick = { newChat() }, enabled = !busy) { Text("Novo") }
-                        TextButton(onClick = { confirmDelete = true }, enabled = !busy) { Text("Excluir") }
-                    }
-                    IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, "Configurações") }
-                },
+                navigationIcon = { if (connected) IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, "Abrir menu") } },
+                actions = { if (connected) IconButton(onClick = { newChat() }, enabled = !busy) { Icon(Icons.Default.Edit, "Nova conversa") } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Ink)
             )
         }, bottomBar = {
@@ -542,6 +602,14 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 }
             }
         }
+      }
+    }
+
+    if (renameChatId != null) {
+        AlertDialog(onDismissRequest = { renameChatId = null }, title = { Text("Editar nome da conversa") },
+            text = { OutlinedTextField(value = renameTitle, onValueChange = { renameTitle = it }, singleLine = true, label = { Text("Nome") }) },
+            confirmButton = { TextButton(onClick = { chats.firstOrNull { it.id == renameChatId }?.let { renameChat(it, renameTitle) }; renameChatId = null }) { Text("Salvar") } },
+            dismissButton = { TextButton(onClick = { renameChatId = null }) { Text("Cancelar") } })
     }
 
     if (showAttachmentOptions) {
