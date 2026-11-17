@@ -1,4 +1,5 @@
 import { GARCIA_DASHBOARD_HTML } from "./dashboard";
+import { encryptFacebookToken, decryptFacebookToken, facebookGraphGet } from "./facebook";
 export interface Env {
   DB: D1Database;
   AI: {
@@ -486,9 +487,24 @@ const handleOwnerFacebookStatus = async (request: Request, env: Env) => {
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
   const link = await env.DB.prepare(
-    "SELECT facebook_user_id, linked_at FROM owner_facebook_links WHERE owner_id = ?"
-  ).bind(owner.owner_id).first<{ facebook_user_id: string; linked_at: string }>();
-  return json({ linked: Boolean(link), linked_at: link?.linked_at || null });
+    "SELECT facebook_user_id, linked_at, token_expires_at, permissions_json, profile_json, token_ciphertext FROM owner_facebook_links WHERE owner_id = ?"
+  ).bind(owner.owner_id).first<{
+    facebook_user_id: string; linked_at: string; token_expires_at: string | null;
+    permissions_json: string; profile_json: string; token_ciphertext: string | null;
+  }>();
+  let permissions: string[] = [];
+  let profile: Record<string, unknown> = {};
+  try { permissions = JSON.parse(link?.permissions_json || "[]"); } catch { permissions = []; }
+  try { profile = JSON.parse(link?.profile_json || "{}"); } catch { profile = {}; }
+  return json({
+    linked: Boolean(link),
+    linked_at: link?.linked_at || null,
+    token_stored: Boolean(link?.token_ciphertext),
+    token_expires_at: link?.token_expires_at || null,
+    permissions,
+    profile,
+    requires_reconnect: Boolean(link && !link.token_ciphertext),
+  });
 };
 
 const handleOwnerFacebookLink = async (request: Request, env: Env) => {
@@ -504,74 +520,23 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
   if (accessToken.length < 20 || accessToken.length > 4_000) {
     return json({ error: "invalid_facebook_access_token" }, 400);
   }
-
   const existingOwnerLink = await env.DB.prepare(
     "SELECT facebook_user_id FROM owner_facebook_links WHERE owner_id = ?"
   ).bind(owner.owner_id).first<{ facebook_user_id: string }>();
   if (existingOwnerLink) return json({ error: "facebook_already_linked" }, 409);
 
-  // Obtain a real app access token through Meta's OAuth client-credentials
-  // flow. Prefer the current versioned endpoint, then try the unversioned
-  // OAuth endpoint only when Meta reports API Unknown (code 1).
   let appAccessToken = "";
   try {
-    const buildAppTokenUrl = (path: string) => {
-      const url = new URL(path);
-      url.searchParams.set("client_id", "1395601549081486");
-      // Remove accidental leading/trailing whitespace from the Cloudflare secret.
-      url.searchParams.set("client_secret", env.FACEBOOK_APP_SECRET!.trim());
-      url.searchParams.set("grant_type", "client_credentials");
-      return url;
-    };
-    const requestAppToken = async (url: URL) => {
-      const response = await fetch(url.toString(), {
-        method: "GET",
-        headers: { "accept": "application/json" },
-      });
-      const body = await response.json().catch(() => null) as {
-        access_token?: string;
-        error?: { code?: number; error_subcode?: number; type?: string; message?: string; fbtrace_id?: string };
-      } | null;
-      return { response, body };
-    };
-
-    let tokenResult = await requestAppToken(
-      buildAppTokenUrl("https://graph.facebook.com/v27.0/oauth/access_token")
-    );
-    let endpoint = "versioned";
-    if (!tokenResult.response.ok && tokenResult.body?.error?.code === 1) {
-      tokenResult = await requestAppToken(
-        buildAppTokenUrl("https://graph.facebook.com/oauth/access_token")
-      );
-      endpoint = "unversioned_fallback";
+    const appTokenUrl = new URL("https://graph.facebook.com/v27.0/oauth/access_token");
+    appTokenUrl.searchParams.set("client_id", "1395601549081486");
+    appTokenUrl.searchParams.set("client_secret", env.FACEBOOK_APP_SECRET.trim());
+    appTokenUrl.searchParams.set("grant_type", "client_credentials");
+    const appTokenResponse = await fetch(appTokenUrl);
+    const appTokenBody = await appTokenResponse.json().catch(() => null) as { access_token?: string } | null;
+    if (!appTokenResponse.ok || !appTokenBody?.access_token) {
+      return json({ error: "facebook_app_access_token_failed" }, 502);
     }
-
-    if (!tokenResult.response.ok || typeof tokenResult.body?.access_token !== "string" || !tokenResult.body.access_token) {
-      const graphError = tokenResult.body?.error;
-      const safeMetaMessage = typeof graphError?.message === "string"
-        ? graphError.message.slice(0, 240)
-            .replaceAll(env.FACEBOOK_APP_SECRET!, "[redacted]")
-            .replaceAll(accessToken, "[redacted]")
-        : "";
-      const traceId = typeof graphError?.fbtrace_id === "string"
-        ? graphError.fbtrace_id.slice(0, 64)
-        : null;
-      return json({
-        error: "facebook_app_access_token_failed" +
-          " [endpoint: " + endpoint + "]" +
-          (safeMetaMessage ? " · Meta: " + safeMetaMessage : "") +
-          (traceId ? " · fbtrace: " + traceId : ""),
-        facebook_graph_error: {
-          http_status: tokenResult.response.status,
-          code: typeof graphError?.code === "number" ? graphError.code : null,
-          subcode: typeof graphError?.error_subcode === "number" ? graphError.error_subcode : null,
-          type: typeof graphError?.type === "string" ? graphError.type.slice(0, 80) : null,
-          endpoint,
-          fbtrace_id: traceId,
-        },
-      }, 502);
-    }
-    appAccessToken = tokenResult.body.access_token;
+    appAccessToken = appTokenBody.access_token;
   } catch {
     return json({ error: "facebook_app_token_service_unavailable" }, 502);
   }
@@ -579,45 +544,54 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
   const debugUrl = new URL("https://graph.facebook.com/v27.0/debug_token");
   debugUrl.searchParams.set("input_token", accessToken);
   debugUrl.searchParams.set("access_token", appAccessToken);
-
-  let verification: { data?: { app_id?: string; type?: string; application?: string; is_valid?: boolean; user_id?: string; expires_at?: number; data_access_expires_at?: number } };
+  let tokenData: { app_id?: string; is_valid?: boolean; user_id?: string; expires_at?: number; data_access_expires_at?: number };
   try {
-    const response = await fetch(debugUrl.toString(), {
-      method: "GET",
-      headers: { "accept": "application/json" },
-    });
-    if (!response.ok) {
-      const graphBody = await response.json().catch(() => null) as {
-        error?: { code?: number; error_subcode?: number; type?: string };
-      } | null;
-      const graphError = graphBody?.error;
-      // Expose only Meta's non-secret diagnostic identifiers. Never return
-      // the submitted access token, app access token, or App Secret.
-      return json({
-        error: "facebook_token_verification_failed",
-        facebook_graph_error: {
-          http_status: response.status,
-          code: typeof graphError?.code === "number" ? graphError.code : null,
-          subcode: typeof graphError?.error_subcode === "number" ? graphError.error_subcode : null,
-          type: typeof graphError?.type === "string" ? graphError.type.slice(0, 80) : null,
-        },
-      }, 401);
-    }
-    verification = await response.json() as typeof verification;
+    const response = await fetch(debugUrl);
+    const result = await response.json().catch(() => null) as { data?: typeof tokenData } | null;
+    if (!response.ok || !result?.data) return json({ error: "facebook_token_verification_failed" }, 401);
+    tokenData = result.data;
   } catch {
     return json({ error: "facebook_verification_unavailable" }, 502);
   }
-
-  const tokenData = verification.data;
-  const expiresAt = Number(tokenData?.expires_at || 0);
-  if (
-    tokenData?.is_valid !== true ||
-    tokenData.app_id !== "1395601549081486" ||
-    typeof tokenData.user_id !== "string" ||
-    !/^\d{5,32}$/.test(tokenData.user_id) ||
-    (expiresAt > 0 && expiresAt <= Math.floor(Date.now() / 1000))
-  ) {
+  if (tokenData.is_valid !== true || tokenData.app_id !== "1395601549081486" ||
+      typeof tokenData.user_id !== "string" || !/^\\d{5,32}$/.test(tokenData.user_id) ||
+      (tokenData.expires_at && tokenData.expires_at <= Math.floor(Date.now() / 1000))) {
     return json({ error: "invalid_facebook_access_token" }, 401);
+  }
+
+  // Exchange short-lived user tokens for long-lived tokens where Meta permits it.
+  let storedToken = accessToken;
+  let expiresAt = Number(tokenData.expires_at || 0) || null;
+  try {
+    const exchangeUrl = new URL("https://graph.facebook.com/v27.0/oauth/access_token");
+    exchangeUrl.searchParams.set("grant_type", "fb_exchange_token");
+    exchangeUrl.searchParams.set("client_id", "1395601549081486");
+    exchangeUrl.searchParams.set("client_secret", env.FACEBOOK_APP_SECRET.trim());
+    exchangeUrl.searchParams.set("fb_exchange_token", accessToken);
+    const exchangeResponse = await fetch(exchangeUrl);
+    const exchanged = await exchangeResponse.json().catch(() => null) as { access_token?: string; expires_in?: number } | null;
+    if (exchangeResponse.ok && exchanged?.access_token) {
+      storedToken = exchanged.access_token;
+      expiresAt = typeof exchanged.expires_in === "number"
+        ? Math.floor(Date.now() / 1000) + exchanged.expires_in : expiresAt;
+    }
+  } catch {
+    // Keep the verified original token; status exposes its actual expiry.
+  }
+
+  let profile: Record<string, unknown>;
+  let permissions: string[];
+  try {
+    profile = await facebookGraphGet<Record<string, unknown>>("me", storedToken, { fields: "id,name" });
+    const permissionResult = await facebookGraphGet<{ data?: Array<{ permission?: string; status?: string }> }>(
+      "me/permissions", storedToken,
+    );
+    permissions = (permissionResult.data || [])
+      .filter((item) => item.status === "granted" && typeof item.permission === "string")
+      .map((item) => item.permission!);
+    if (profile.id !== tokenData.user_id) return json({ error: "facebook_identity_mismatch" }, 401);
+  } catch {
+    return json({ error: "facebook_profile_verification_failed" }, 502);
   }
 
   const alreadyLinked = await env.DB.prepare(
@@ -627,15 +601,116 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
     return json({ error: "facebook_account_already_linked" }, 409);
   }
 
+  const encrypted = await encryptFacebookToken({ access_token: storedToken, expires_at: expiresAt }, env.FACEBOOK_APP_SECRET);
   const linkedAt = nowIso();
   try {
-    await env.DB.prepare(
-      "INSERT INTO owner_facebook_links(owner_id, facebook_user_id, linked_at) VALUES(?, ?, ?)"
-    ).bind(owner.owner_id, tokenData.user_id, linkedAt).run();
+    await env.DB.prepare(`
+      INSERT INTO owner_facebook_links(
+        owner_id, facebook_user_id, linked_at, token_ciphertext, token_iv, token_salt,
+        token_expires_at, permissions_json, profile_json
+      ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      owner.owner_id, tokenData.user_id, linkedAt,
+      encrypted.ciphertext, encrypted.iv, encrypted.salt,
+      expiresAt ? new Date(expiresAt * 1000).toISOString() : null,
+      JSON.stringify(permissions), JSON.stringify(profile),
+    ).run();
   } catch {
     return json({ error: "facebook_link_conflict" }, 409);
   }
-  return json({ linked: true, linked_at: linkedAt });
+  return json({
+    linked: true, linked_at: linkedAt, token_stored: true,
+    token_expires_at: expiresAt ? new Date(expiresAt * 1000).toISOString() : null,
+    profile, permissions,
+  });
+};
+
+const handleOwnerFacebookData = async (request: Request, env: Env, url: URL) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  if (device.app_id !== "com.ciba.garcia") return json({ error: "garcia_app_required" }, 403);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  if (!env.FACEBOOK_APP_SECRET) return json({ error: "facebook_server_not_configured" }, 503);
+  const link = await env.DB.prepare(`
+    SELECT token_ciphertext, token_iv, token_salt, token_expires_at
+    FROM owner_facebook_links WHERE owner_id = ?
+  `).bind(owner.owner_id).first<{
+    token_ciphertext: string | null; token_iv: string | null; token_salt: string | null;
+    token_expires_at: string | null;
+  }>();
+  if (!link) return json({ error: "facebook_not_linked" }, 404);
+  if (!link.token_ciphertext || !link.token_iv || !link.token_salt) {
+    return json({ error: "facebook_reconnect_required" }, 409);
+  }
+  if (link.token_expires_at && Date.parse(link.token_expires_at) <= Date.now()) {
+    return json({ error: "facebook_token_expired", reconnect_required: true }, 401);
+  }
+  let token: string;
+  try {
+    const bundle = await decryptFacebookToken({
+      token_ciphertext: link.token_ciphertext, token_iv: link.token_iv, token_salt: link.token_salt,
+    }, env.FACEBOOK_APP_SECRET);
+    token = bundle.access_token;
+  } catch {
+    return json({ error: "facebook_token_decryption_failed", reconnect_required: true }, 503);
+  }
+
+  try {
+    const path = url.pathname.split("/").pop() || "";
+    if (path === "profile") {
+      const profile = await facebookGraphGet("me", token, { fields: "id,name" });
+      return json({ profile });
+    }
+    if (path === "permissions") {
+      const permissions = await facebookGraphGet("me/permissions", token);
+      return json(permissions);
+    }
+    if (path === "pages" || path === "posts" || path === "conversations" || path === "messages") {
+      const pages = await facebookGraphGet<{ data?: Array<{ id: string; name: string; access_token: string; category?: string; tasks?: string[] }> }>(
+        "me/accounts", token, { fields: "id,name,access_token,category,tasks", limit: "100" },
+      );
+      const pageId = url.searchParams.get("page_id") || "";
+      if (path === "pages") {
+        return json({ pages: (pages.data || []).map(({ id, name, category, tasks }) => ({ id, name, category: category || null, tasks: tasks || [] })) });
+      }
+      if (!/^\\d{5,32}$/.test(pageId)) return json({ error: "valid_page_id_required" }, 400);
+      const page = (pages.data || []).find((item) => item.id === pageId);
+      if (!page?.access_token) return json({ error: "facebook_page_not_accessible" }, 403);
+      if (path === "posts") {
+        const posts = await facebookGraphGet(`${pageId}/published_posts`, page.access_token, {
+          fields: "id,message,created_time,permalink_url,attachments{media_type,url}",
+          limit: String(Math.min(Math.max(Number(url.searchParams.get("limit") || 25), 1), 50)),
+        });
+        return json({ page: { id: page.id, name: page.name }, posts });
+      }
+      if (path === "conversations") {
+        const conversations = await facebookGraphGet(`${pageId}/conversations`, page.access_token, {
+          platform: "messenger", fields: "id,updated_time,participants", limit: "25",
+        });
+        return json({ page: { id: page.id, name: page.name }, conversations });
+      }
+      const conversationId = url.searchParams.get("conversation_id") || "";
+      if (!/^\\d{5,32}_[\\d]{5,32}$/.test(conversationId) && !/^\\d{10,40}$/.test(conversationId)) {
+        return json({ error: "valid_conversation_id_required" }, 400);
+      }
+      const messages = await facebookGraphGet(`${conversationId}/messages`, page.access_token, {
+        fields: "id,created_time,from,to,message",
+        limit: String(Math.min(Math.max(Number(url.searchParams.get("limit") || 25), 1), 50)),
+      });
+      return json({ page: { id: page.id, name: page.name }, messages });
+    }
+    return json({ error: "unsupported_facebook_resource" }, 404);
+  } catch (error) {
+    const details = error as Error & { status?: number; code?: number; subcode?: number; type?: string };
+    return json({
+      error: "facebook_graph_request_failed",
+      facebook_graph_error: {
+        http_status: details.status || null, code: details.code ?? null,
+        subcode: details.subcode ?? null, type: details.type || null,
+      },
+    }, 502);
+  }
 };
 
 const getActiveOwnerForDevice = async (env: Env, ownerId: string | null) => {
@@ -3173,6 +3248,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/owner/facebook/link" && request.method === "POST") {
     return handleOwnerFacebookLink(request, env);
+  }
+  if (url.pathname.startsWith("/v1/owner/facebook/") && request.method === "GET") {
+    return handleOwnerFacebookData(request, env, url);
   }
   if (url.pathname === "/v1/owner/available-apps" && request.method === "GET") {
     return handleOwnerAvailableApps(request, env);
