@@ -1,4 +1,22 @@
 -- Garcia is a private, single-owner assistant for Ciba.
+-- Keep the device proven to be paired with Ciba's newly provisioned owner.
+-- The earlier active registration belongs to a superseded owner and is revoked.
+UPDATE devices
+SET revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE app_id = 'com.ciba.garcia'
+  AND device_id <> 'df47814f-de22-431e-be79-abd1eba54420'
+  AND revoked_at IS NULL;
+
+UPDATE owners
+SET status = 'revoked',
+    revoked_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+WHERE owner_id <> '48d9b765-5eb0-46f7-a50b-32480912eac5'
+  AND status = 'active'
+  AND EXISTS (
+    SELECT 1 FROM owner_pairing_invitations i
+    WHERE i.owner_id = owners.owner_id AND i.app_id = 'com.ciba.garcia'
+  );
+
 -- Database-level backstop: only one active Garcia installation can exist.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_garcia_single_active_device
   ON devices(app_id)
