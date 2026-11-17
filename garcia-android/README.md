@@ -8,6 +8,8 @@ Aplicativo Android da assistente de IA **Garcia**. Ciba AI é apenas o nome do r
 - Identidade visual baseada na logo oficial: rosa, coral, lilás, branco e cinza.
 - Ícone Android com o símbolo floral da marca e Splash Screen própria com nome e assinatura Garcia.
 - Conversa com a assistente Garcia por meio da API hospedada no Ciba AI Worker.
+- Seleção e cópia de respostas, entrada multilinha e anexos de texto (TXT, Markdown, CSV, JSON e XML) limitados a 8 KB / 1.000 caracteres.
+- Anexos são incorporados ao texto da mensagem e enviados pelo contrato textual atual; fotos, PDFs e documentos binários ainda não são suportados.
 - Histórico local de conversas criptografado com chave mantida no Android Keystore.
 - Token de dispositivo protegido com AES-GCM e Android Keystore.
 - Consulta de status e consumo.
