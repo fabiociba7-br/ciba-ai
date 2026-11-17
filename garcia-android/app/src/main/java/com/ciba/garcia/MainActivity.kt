@@ -1,20 +1,12 @@
 package com.ciba.garcia
 
-import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Bundle
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -32,7 +24,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.core.content.ContextCompat
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -82,24 +73,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var showSettings by remember { mutableStateOf(false) }
     var showLogs by remember { mutableStateOf(false) }
     var logs by remember { mutableStateOf("") }
-    var speakReplies by remember { mutableStateOf(false) }
     var usage by remember { mutableStateOf("") }
     var connected by remember { mutableStateOf(store.get("device_token") != null) }
-
-    val tts = remember(context) { TextToSpeech(context) {} }
-    DisposableEffect(tts) { onDispose { tts.stop(); tts.shutdown() } }
-    val speechLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
-        if (!spoken.isNullOrBlank()) input = listOf(input.trim(), spoken.trim()).filter { it.isNotBlank() }.joinToString(" ")
-    }
-    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) launchSpeech(context, speechLauncher) else error = "Permita o acesso ao microfone para falar com a Garcia."
-    }
-    fun startVoice() {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            launchSpeech(context, speechLauncher)
-        } else micPermission.launch(Manifest.permission.RECORD_AUDIO)
-    }
 
     fun persist() {
         val array = JSONArray()
@@ -130,7 +105,6 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 history.forEach { (role, content) -> snapshot.put(JSONObject().put("role", role).put("content", content)) }
                 val answer = withContext(Dispatchers.IO) { client.chat(snapshot) }
                 history.add("assistant" to answer); persist()
-                if (speakReplies) tts.speak(answer, TextToSpeech.QUEUE_FLUSH, null, "garcia-reply")
             } catch (e: Exception) { GarciaLog.record(context, "chat", e); error = e.message ?: "Falha ao conversar com a Garcia." }
             finally { busy = false }
         }
@@ -165,10 +139,6 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         }, bottomBar = {
             if (connected) {
                 Row(Modifier.fillMaxWidth().background(Panel).imePadding().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = { startVoice() }, enabled = !busy, modifier = Modifier.size(44.dp).background(Color(0xFFF6EDF2), CircleShape)) {
-                        Icon(Icons.Default.Mic, "Falar com a Garcia", tint = Blue)
-                    }
-                    Spacer(Modifier.width(7.dp))
                     BasicTextField(value = input, onValueChange = { input = it },
                         modifier = Modifier.weight(1f).background(Color(0xFFF6EDF2), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 14.dp),
                         textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF303030), fontSize = 15.sp),
@@ -232,10 +202,6 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     Text(status, color = Muted)
                     Spacer(Modifier.height(8.dp))
                     Text(if (connected) "Dispositivo ativado e token protegido pelo Android Keystore." else "Dispositivo ainda não ativado.")
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = speakReplies, onCheckedChange = { speakReplies = it })
-                        Text("Leitura automática das respostas")
-                    }
                     if (usage.isNotBlank()) Text(usage, color = Muted)
                 }
             },
@@ -270,13 +236,3 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     }
 }
 
-private fun launchSpeech(context: Context, launcher: androidx.activity.result.ActivityResultLauncher<Intent>) {
-    if (!SpeechRecognizer.isRecognitionAvailable(context)) return
-    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-        .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-        .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
-        .putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "pt-BR")
-        .putExtra(RecognizerIntent.EXTRA_PROMPT, "Fale com a Garcia")
-        .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-    runCatching { launcher.launch(intent) }
-}
