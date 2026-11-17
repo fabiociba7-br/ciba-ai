@@ -37,13 +37,19 @@ class CibaAiClient(private val store: SecureStore) {
     }
 
     fun status() = request("/v1/status", "GET")
-    fun activate(invitation: String): JSONObject {
+    fun activate(registrationCode: String, pairingCode: String): JSONObject {
         val result = request("/v1/auth/register", "POST",
-            JSONObject().put("app_id", APP_ID).put("invitation_code", invitation))
+            JSONObject().put("app_id", APP_ID).put("invitation_code", registrationCode))
         val token = result.optString("access_token")
         if (token.isBlank()) error("O servidor não retornou o token do dispositivo.")
         store.put("device_token", token)
-        store.remove("activation_code")
+        try {
+            request("/v1/auth/pair-owner", "POST",
+                JSONObject().put("pairing_invitation_code", pairingCode), authenticated = true)
+        } catch (error: Exception) {
+            store.remove("device_token")
+            throw error
+        }
         return result
     }
 
