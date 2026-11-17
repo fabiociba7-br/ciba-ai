@@ -21,6 +21,10 @@ android {
         versionCode = providers.gradleProperty("VERSION_CODE").orElse("1").get().toInt()
         versionName = providers.gradleProperty("VERSION_NAME").orElse("1.0.0").get()
         manifestPlaceholders["facebookClientToken"] = facebookClientToken
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        externalNativeBuild {
+            cmake { cppFlags += listOf("-std=c++17") }
+        }
     }
 
     signingConfigs {
@@ -43,6 +47,14 @@ android {
             }
         }
         debug { }
+    }
+
+    ndkVersion = "27.2.12479018"
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     buildFeatures { compose = true }
