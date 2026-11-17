@@ -65,7 +65,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          VERSION_CODE="$(git rev-list --count HEAD)"
+          VERSION_CODE="$((1000 + GITHUB_RUN_NUMBER))"
           test "$VERSION_CODE" -gt 2
           echo "Building versionCode=$VERSION_CODE"
           gradle --no-daemon :app:assembleRelease -PVERSION_CODE="$VERSION_CODE" -PVERSION_NAME=1.0.2
