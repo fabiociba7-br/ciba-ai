@@ -836,6 +836,14 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         modifier = Modifier.size(44.dp).background(Color(0xFFF1E8ED), CircleShape)) {
                         Icon(Icons.Default.AttachFile, contentDescription = "Adicionar foto ou arquivo", tint = Blue)
                     }
+                    IconButton(
+                        onClick = {
+                            if (whisperModelInfo == null) error = "Instale o modelo Whisper nas Configurações para ditar mensagens."
+                            else if (!whisperBusy && !busy && !continuousVoice) microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                        },
+                        enabled = !busy && !whisperBusy && !continuousVoice && whisperModelInfo != null,
+                        modifier = Modifier.size(44.dp).background(Color(0xFFE8EEF8), CircleShape)
+                    ) { Icon(Icons.Default.Mic, contentDescription = "Falar para digitar", tint = Blue) }
                     BasicTextField(value = input, onValueChange = { input = it; if (it.isNotBlank()) autoListenPending = false },
                         modifier = Modifier.weight(1f).background(Color(0xFFF6EDF2), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 12.dp),
                         textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF303030), fontSize = 15.sp, lineHeight = 21.sp),
@@ -866,6 +874,95 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     }
                     if (error.isNotBlank()) Text(error, color = Color(0xFFB94F7C), modifier = Modifier.padding(top = 12.dp))
                     Text("Não existe cadastro de usuário ou senha. O vínculo é feito uma única vez neste aparelho e associa a Garcia ao seu proprietário.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 18.dp))
+                }
+            } else if (continuousVoice) {
+                Column(
+                    Modifier.fillMaxSize().padding(padding).padding(horizontal = 28.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        Modifier.size(176.dp).background(
+                            when {
+                                whisperRecording -> Color(0xFFE5F0E9)
+                                busy || whisperBusy -> Color(0xFFE8EEF8)
+                                else -> Color(0xFFF3E8EF)
+                            }, CircleShape
+                        ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            when {
+                                whisperRecording -> Icons.Default.Mic
+                                busy || whisperBusy -> Icons.Default.GraphicEq
+                                else -> Icons.Default.Mic
+                            },
+                            contentDescription = null,
+                            tint = when {
+                                whisperRecording -> Color(0xFF24845A)
+                                busy || whisperBusy -> Blue
+                                else -> Color(0xFFB94F7C)
+                            },
+                            modifier = Modifier.size(76.dp)
+                        )
+                    }
+                    Spacer(Modifier.height(30.dp))
+                    Text(
+                        when {
+                            whisperRecording -> "Estou ouvindo você"
+                            whisperBusy -> "Estou entendendo o que você disse…"
+                            busy -> "A Garcia está pensando…"
+                            autoListenPending -> "Preparando para ouvir…"
+                            else -> "Conversa por voz ativa"
+                        },
+                        fontSize = 23.sp, fontWeight = FontWeight.Bold, color = Color(0xFF303030)
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        when {
+                            whisperRecording -> "Pode falar naturalmente. Vou detectar sua pausa, entender a mensagem e responder em voz alta."
+                            whisperBusy -> "Sua fala está sendo transcrita no próprio aparelho."
+                            busy -> "Já estou preparando minha resposta. Depois volto a ouvir você automaticamente."
+                            autoListenPending -> "Vou reabrir o microfone assim que terminar minha resposta."
+                            else -> "Fale comigo normalmente. Não é necessário tocar no microfone a cada mensagem."
+                        },
+                        color = Muted, fontSize = 15.sp, lineHeight = 22.sp,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                    if (error.isNotBlank()) {
+                        Spacer(Modifier.height(12.dp))
+                        Text(error, color = Color(0xFFB94F7C), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    }
+                    Spacer(Modifier.height(36.dp))
+                    OutlinedButton(
+                        onClick = {
+                            continuousVoice = false
+                            context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
+                            autoListenPending = false
+                            voiceAutoSendPending = false
+                            awaitingTranscriptReview = false
+                            voiceOutput.stop()
+                            if (whisperRecording) scope.launch(Dispatchers.IO) { whisperRecorder.cancel() }
+                            whisperRecording = false
+                            whisperStatus = "Conversa por voz encerrada"
+                        },
+                        enabled = !busy,
+                        modifier = Modifier.fillMaxWidth().height(54.dp)
+                    ) {
+                        Icon(Icons.Default.Stop, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Encerrar conversa por voz")
+                    }
+                    TextButton(
+                        onClick = {
+                            voiceOutput.stop()
+                            autoListenPending = false
+                            if (whisperRecording) { whisperRecording = false; scope.launch(Dispatchers.IO) { whisperRecorder.cancel() } }
+                            continuousVoice = false
+                            context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
+                        },
+                        enabled = busy
+                    ) { Text("Parar resposta atual e sair") }
                 }
             } else if (history.isEmpty()) {
                 Column(Modifier.fillMaxSize().padding(padding).padding(26.dp), verticalArrangement = Arrangement.Center) {
