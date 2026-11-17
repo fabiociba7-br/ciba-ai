@@ -319,6 +319,12 @@ const handleRegister = async (request: Request, env: Env) => {
     return json({ error: "app_not_allowed" }, 403);
   }
   if (invite.length < 20 || invite.length > 256) return json({ error: "invalid_invitation" }, 400);
+  if (appId === "com.ciba.garcia") {
+    const existingDevice = await env.DB.prepare(
+      "SELECT device_id FROM devices WHERE app_id = ? AND revoked_at IS NULL LIMIT 1"
+    ).bind(appId).first<{ device_id: string }>();
+    if (existingDevice) return json({ error: "private_device_already_registered" }, 409);
+  }
 
   const deviceId = crypto.randomUUID();
   const deviceToken = randomToken(36);
@@ -358,6 +364,16 @@ const handleCreateInvitation = async (request: Request, env: Env) => {
   const body = await readJson(request, 4_000);
   const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
   if (!isValidAppId(appId) || !(await isAppAllowed(env, appId))) return json({ error: "app_not_allowed" }, 400);
+  if (appId === "com.ciba.garcia") {
+    const [device, pending] = await Promise.all([
+      env.DB.prepare("SELECT device_id FROM devices WHERE app_id = ? AND revoked_at IS NULL LIMIT 1")
+        .bind(appId).first<{ device_id: string }>(),
+      env.DB.prepare("SELECT code_hash FROM invitations WHERE app_id = ? AND used_at IS NULL AND expires_at > ? LIMIT 1")
+        .bind(appId, nowIso()).first<{ code_hash: string }>(),
+    ]);
+    if (device) return json({ error: "private_device_already_registered" }, 409);
+    if (pending) return json({ error: "private_invitation_already_pending" }, 409);
+  }
 
   const hours = typeof body.valid_hours === "number" && Number.isInteger(body.valid_hours)
     ? Math.min(Math.max(body.valid_hours, 1), 168) : 24;
@@ -378,6 +394,12 @@ const handleCreateOwner = async (request: Request, env: Env) => {
   const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
   if (!isValidAppId(appId) || !(await isAppAllowed(env, appId))) {
     return json({ error: "app_not_allowed" }, 400);
+  }
+  if (appId === "com.ciba.garcia") {
+    const existing = await env.DB.prepare(
+      "SELECT o.owner_id FROM owners o INNER JOIN owner_pairing_invitations i ON i.owner_id = o.owner_id WHERE o.status = 'active' AND i.app_id = ? LIMIT 1"
+    ).bind(appId).first<{ owner_id: string }>();
+    if (existing) return json({ error: "private_owner_already_configured" }, 409);
   }
 
   const ownerId = crypto.randomUUID();
@@ -414,6 +436,16 @@ const handleCreateOwnerInvitation = async (request: Request, env: Env) => {
   const appId = typeof body.app_id === "string" ? body.app_id.trim() : "";
   if (!ownerId || ownerId.length > 100 || !isValidAppId(appId) || !(await isAppAllowed(env, appId))) {
     return json({ error: "invalid_owner_or_app" }, 400);
+  }
+  if (appId === "com.ciba.garcia") {
+    const paired = await env.DB.prepare(
+      "SELECT device_id FROM devices WHERE app_id = ? AND owner_id = ? AND revoked_at IS NULL LIMIT 1"
+    ).bind(appId, ownerId).first<{ device_id: string }>();
+    if (paired) return json({ error: "private_owner_device_already_paired" }, 409);
+    const pending = await env.DB.prepare(
+      "SELECT code_hash FROM owner_pairing_invitations WHERE owner_id = ? AND app_id = ? AND consumed_at IS NULL AND expires_at > ? LIMIT 1"
+    ).bind(ownerId, appId, nowIso()).first<{ code_hash: string }>();
+    if (pending) return json({ error: "private_owner_invitation_already_pending" }, 409);
   }
 
   const code = randomToken(24);
