@@ -65,12 +65,13 @@ private fun readTextAttachment(context: Context, uri: Uri): Pair<String, String>
             val count = stream.read(buffer)
             if (count < 0) break
             total += count
-            if (total > 64 * 1024) throw IllegalArgumentException("O arquivo deve ter no máximo 64 KB.")
+            if (total > 8 * 1024) throw IllegalArgumentException("O arquivo deve ter no máximo 8 KB.")
             output.write(buffer, 0, count)
         }
     } ?: throw IllegalArgumentException("Não foi possível abrir o arquivo.")
     val content = output.toString(Charsets.UTF_8.name())
     if (content.isBlank()) throw IllegalArgumentException("O arquivo está vazio.")
+    if (content.length > 1_000) throw IllegalArgumentException("O texto do arquivo deve ter no máximo 1.000 caracteres para respeitar o limite gratuito do chat.")
     return name.take(120) to content
 }
 
@@ -225,6 +226,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 if (text.isNotBlank()) append("\n\nPergunta: ").append(text)
             } else append(text)
         }
+        if (message.length > 1_500) { error = "A mensagem com o anexo ultrapassa o limite de 1.500 caracteres. Reduza a pergunta ou o conteúdo do arquivo."; return }
         history.add("user" to message); input = ""; attachment = null; persist(); busy = true; error = ""
         scope.launch {
             try {
