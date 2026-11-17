@@ -105,6 +105,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 history.forEach { (role, content) -> snapshot.put(JSONObject().put("role", role).put("content", content)) }
                 val answer = withContext(Dispatchers.IO) { client.chat(snapshot) }
                 history.add("assistant" to answer); persist()
+                GarciaLog.recordEvent(context, "chat", "HTTP 200 · resposta recebida e salva no histórico · ${answer.length} caracteres")
             } catch (e: Exception) { GarciaLog.record(context, "chat", e); error = e.message ?: "Falha ao conversar com a Garcia." }
             finally { busy = false }
         }
