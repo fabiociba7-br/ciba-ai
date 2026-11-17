@@ -559,8 +559,41 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
   ).bind(owner.owner_id).first<{ facebook_user_id: string }>();
   if (existingOwnerLink) return json({ error: "facebook_already_linked" }, 409);
 
-  const appAccessToken = "1395601549081486|" + env.FACEBOOK_APP_SECRET;
-  const debugUrl = new URL("https://graph.facebook.com/debug_token");
+  // Obtain a real app access token through Meta's OAuth client-credentials
+  // flow instead of constructing "app_id|app_secret" locally. This lets us
+  // distinguish an App Secret/configuration failure from a user-token failure.
+  let appAccessToken = "";
+  try {
+    const appTokenUrl = new URL("https://graph.facebook.com/v27.0/oauth/access_token");
+    appTokenUrl.searchParams.set("client_id", "1395601549081486");
+    appTokenUrl.searchParams.set("client_secret", env.FACEBOOK_APP_SECRET);
+    appTokenUrl.searchParams.set("grant_type", "client_credentials");
+    const appTokenResponse = await fetch(appTokenUrl.toString(), {
+      method: "GET",
+      headers: { "accept": "application/json" },
+    });
+    const appTokenBody = await appTokenResponse.json().catch(() => null) as {
+      access_token?: string;
+      error?: { code?: number; error_subcode?: number; type?: string };
+    } | null;
+    if (!appTokenResponse.ok || typeof appTokenBody?.access_token !== "string" || !appTokenBody.access_token) {
+      const graphError = appTokenBody?.error;
+      return json({
+        error: "facebook_app_access_token_failed",
+        facebook_graph_error: {
+          http_status: appTokenResponse.status,
+          code: typeof graphError?.code === "number" ? graphError.code : null,
+          subcode: typeof graphError?.error_subcode === "number" ? graphError.error_subcode : null,
+          type: typeof graphError?.type === "string" ? graphError.type.slice(0, 80) : null,
+        },
+      }, 502);
+    }
+    appAccessToken = appTokenBody.access_token;
+  } catch {
+    return json({ error: "facebook_app_token_service_unavailable" }, 502);
+  }
+
+  const debugUrl = new URL("https://graph.facebook.com/v27.0/debug_token");
   debugUrl.searchParams.set("input_token", accessToken);
   debugUrl.searchParams.set("access_token", appAccessToken);
 
