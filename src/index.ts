@@ -2180,7 +2180,32 @@ const handleChat = async (request: Request, env: Env) => {
       return "";
     });
   }
+
+  // Do not depend on the language model remembering to emit an internal photo marker.
+  // When the owner explicitly asks to see a Facebook photo, attach it deterministically.
+  const asksToDisplayFacebookPhoto =
+    /\b(?:mostr(?:a|e|ar|em)|exib(?:a|e|ir|am)|ver|visualiz(?:a|e|ar)|apresent(?:a|e|ar)|mand(?:a|e|ar)|envia(?:r)?|abr(?:e|ir|a))\b[\s\S]{0,60}\b(?:foto|imagem)(?:s)?\b|\b(?:foto|imagem)(?:s)?\b[\s\S]{0,60}\b(?:no chat|aqui|na conversa)\b/i.test(latestUserText);
+  let automaticallyAttachedPhotos = false;
+  if (asksToDisplayFacebookPhoto && chatPhotos.length > 0 && shownPhotos.length === 0) {
+    const requestedNumber = latestUserText.match(/\b(?:foto|imagem)\s*(?:n[ºo.]?\s*)?(\d{1,2})\b/i);
+    const multiple = /\b(?:fotos|imagens|todas|algumas)\b/i.test(latestUserText);
+    const startIndex = requestedNumber ? Number(requestedNumber[1]) - 1 : 0;
+    const count = multiple ? 6 : 1;
+    for (let index = startIndex; index < chatPhotos.length && shownPhotos.length < count; index += 1) {
+      if (index >= 0) shownPhotos.push(chatPhotos[index]);
+    }
+    automaticallyAttachedPhotos = shownPhotos.length > 0;
+  }
+
   responseText = responseText.replace(/\[\[foto:[^\]]*\]\]/g, "").replace(/\n{3,}/g, "\n\n").trim();
+  if (automaticallyAttachedPhotos) {
+    const requestedNumber = latestUserText.match(/\b(?:foto|imagem)\s*(?:n[ºo.]?\s*)?(\d{1,2})\b/i);
+    responseText = requestedNumber
+      ? `Aqui está a foto ${Number(requestedNumber[1])} do seu Facebook.`
+      : shownPhotos.length > 1
+        ? "Aqui estão as fotos mais recentes do seu Facebook."
+        : "Aqui está a foto mais recente do seu Facebook.";
+  }
   if (!responseText && shownPhotos.length > 0) responseText = "Aqui estão as fotos do seu Facebook.";
 
   return json({
