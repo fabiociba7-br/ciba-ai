@@ -45,6 +45,11 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import com.facebook.CallbackManager
+import com.facebook.FacebookCallback
+import com.facebook.FacebookException
+import com.facebook.login.LoginManager
+import com.facebook.login.LoginResult
 
 private val Ink = Color(0xFFFFFFFF)
 private val Panel = Color(0xFFFFF8FB)
@@ -119,6 +124,29 @@ private fun readTextAttachment(context: Context, uri: Uri): GarciaAttachment {
 }
 
 class MainActivity : ComponentActivity() {
+    private val facebookCallbackManager: CallbackManager = CallbackManager.Factory.create()
+
+    fun startFacebookLogin(onResult: (Result<String>) -> Unit) {
+        LoginManager.getInstance().registerCallback(facebookCallbackManager, object : FacebookCallback<LoginResult> {
+            override fun onSuccess(result: LoginResult) {
+                onResult(Result.success(result.accessToken.token))
+            }
+            override fun onCancel() {
+                onResult(Result.failure(IllegalStateException("Login com Facebook cancelado.")))
+            }
+            override fun onError(error: FacebookException) {
+                onResult(Result.failure(error))
+            }
+        })
+        LoginManager.getInstance().logInWithReadPermissions(this, listOf("public_profile"))
+    }
+
+    @Deprecated("Facebook SDK callback bridge")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        facebookCallbackManager.onActivityResult(requestCode, resultCode, data)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
@@ -185,6 +213,10 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var usage by remember { mutableStateOf("") }
     var usageError by remember { mutableStateOf("") }
     var loadingUsage by remember { mutableStateOf(false) }
+    var facebookLinked by remember { mutableStateOf(false) }
+    var facebookBusy by remember { mutableStateOf(false) }
+    var facebookError by remember { mutableStateOf("") }
+    var facebookStatusLoaded by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(store.get("device_token") != null) }
     val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
 
@@ -300,6 +332,35 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         }
     }
 
+    fun connectFacebook() {
+        if (facebookBusy || !connected) return
+        val activity = context as? MainActivity
+        if (activity == null) {
+            facebookError = "Não foi possível iniciar o login com Facebook nesta tela."
+            return
+        }
+        facebookBusy = true
+        facebookError = ""
+        activity.startFacebookLogin { loginResult ->
+            loginResult.onSuccess { accessToken ->
+                scope.launch {
+                    try {
+                        val result = withContext(Dispatchers.IO) { client.linkFacebook(accessToken) }
+                        facebookLinked = result.optBoolean("linked", false)
+                        if (!facebookLinked) facebookError = "O servidor não confirmou o vínculo."
+                    } catch (e: Exception) {
+                        facebookError = e.message ?: "Não foi possível vincular o Facebook."
+                    } finally {
+                        facebookBusy = false
+                    }
+                }
+            }.onFailure { e ->
+                facebookError = e.message ?: "Falha no login com Facebook."
+                facebookBusy = false
+            }
+        }
+    }
+
     fun loadUsage() {
         if (loadingUsage || !connected) return
         loadingUsage = true
@@ -335,6 +396,18 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             val result = withContext(Dispatchers.IO) { client.status() }
             status = if (result.optString("status") == "ready") "Ciba AI conectado" else "Serviço indisponível"
         } catch (e: Exception) { GarciaLog.record(context, "conexão", e); status = "Sem conexão com o Ciba AI" }
+    }
+
+    LaunchedEffect(showSettings, connected) {
+        if (showSettings && connected && !facebookStatusLoaded) {
+            try {
+                val result = withContext(Dispatchers.IO) { client.facebookStatus() }
+                facebookLinked = result.optBoolean("linked", false)
+                facebookStatusLoaded = true
+            } catch (e: Exception) {
+                facebookError = e.message ?: "Não foi possível consultar o vínculo Facebook."
+            }
+        }
     }
 
     MaterialTheme(colorScheme = lightColorScheme(
@@ -515,6 +588,30 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     Text(status, color = Muted)
                     Spacer(Modifier.height(8.dp))
                     Text(if (connected) "Dispositivo ativado e token protegido pelo Android Keystore." else "Dispositivo ainda não ativado.")
+                    if (connected) {
+                        Spacer(Modifier.height(12.dp))
+                        Text("Conta Facebook", fontWeight = FontWeight.Bold)
+                        Text(
+                            if (facebookLinked) "Facebook vinculado a esta conta proprietária."
+                            else "Não vinculado. O Facebook não substitui os códigos privados de ativação.",
+                            color = Muted, fontSize = 13.sp
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Button(
+                            onClick = { connectFacebook() },
+                            enabled = !facebookBusy && !facebookLinked,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(when {
+                                facebookBusy -> "Conectando Facebook…"
+                                facebookLinked -> "Facebook vinculado"
+                                else -> "Vincular Facebook"
+                            })
+                        }
+                        if (facebookError.isNotBlank()) {
+                            Text(facebookError, color = Color(0xFFB94F7C), fontSize = 12.sp)
+                        }
+                    }
                     if (loadingUsage) { Spacer(Modifier.height(10.dp)); CircularProgressIndicator() }
                     if (usage.isNotBlank()) {
                         Spacer(Modifier.height(10.dp))
