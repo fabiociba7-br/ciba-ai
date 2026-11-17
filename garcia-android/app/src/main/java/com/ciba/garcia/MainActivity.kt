@@ -896,7 +896,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         Icon(
                             when {
                                 whisperRecording -> Icons.Default.Mic
-                                busy || whisperBusy -> Icons.Default.GraphicEq
+                                busy || whisperBusy -> Icons.Default.Mic
                                 else -> Icons.Default.Mic
                             },
                             contentDescription = null,
