@@ -41,6 +41,9 @@ internal class WhisperModelStore(context: Context) {
             require(total >= MIN_MODEL_BYTES) { "O arquivo selecionado é pequeno demais para ser um modelo Whisper." }
             val digest = sha256(temporary)
             require(hasWhisperMagic(temporary)) { "O arquivo não parece ser um modelo compatível com whisper.cpp." }
+            require(digest == APPROVED_TINY_Q5_1_SHA256) {
+                "Modelo não aprovado. Nesta etapa, importe somente ggml-tiny-q5_1.bin da origem oficial documentada."
+            }
             if (!temporary.renameTo(destination)) {
                 temporary.copyTo(destination, overwrite = true)
                 temporary.delete()
@@ -89,6 +92,7 @@ internal class WhisperModelStore(context: Context) {
         }
 
     companion object {
+        private const val APPROVED_TINY_Q5_1_SHA256 = "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7"
         private const val MIN_MODEL_BYTES = 10L * 1024 * 1024
         private const val MAX_MODEL_BYTES = 2L * 1024 * 1024 * 1024
     }
