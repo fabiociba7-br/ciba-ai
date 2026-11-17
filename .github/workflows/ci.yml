@@ -1,19 +1,15 @@
 name: Ciba AI CI
 
+# CI is deliberately manual. Publishing commits must not silently run tests.
+# Dispatch this workflow only when the owner explicitly requests validation.
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ciba-ai-ci-${{ github.workflow }}-${{ github.ref }}
+  group: ciba-ai-ci-manual
   cancel-in-progress: true
 
 jobs:
