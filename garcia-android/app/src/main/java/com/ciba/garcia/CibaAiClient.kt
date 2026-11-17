@@ -44,7 +44,7 @@ class CibaAiClient(private val store: SecureStore) {
         if (token.isBlank()) error("O servidor não retornou o token do dispositivo.")
         store.put("device_token", token)
         try {
-            request("/v1/auth/pair-owner", "POST",
+            request("/v1/owner/pair", "POST",
                 JSONObject().put("pairing_invitation_code", pairingCode), authenticated = true)
         } catch (error: Exception) {
             store.remove("device_token")
