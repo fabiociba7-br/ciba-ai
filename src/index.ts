@@ -483,9 +483,11 @@ const handlePairOwner = async (request: Request, env: Env) => {
 
 const facebookCapabilities = (permissions: string[]) => ({
   profile: permissions.includes("public_profile"),
-  pages: permissions.includes("pages_show_list"),
-  page_posts: permissions.includes("pages_read_engagement"),
-  page_inbox: permissions.includes("pages_messaging"),
+  personal_posts: permissions.includes("user_posts"),
+  personal_photos: permissions.includes("user_photos") || permissions.includes("user_posts"),
+  personal_videos: permissions.includes("user_videos"),
+  page_features: false,
+  personal_messenger_inbox: false,
 });
 
 const handleOwnerFacebookStatus = async (request: Request, env: Env) => {
@@ -681,11 +683,11 @@ const handleOwnerFacebookData = async (request: Request, env: Env, url: URL) => 
   if (!owner) return json({ error: "active_owner_required" }, 403);
   if (!env.FACEBOOK_APP_SECRET) return json({ error: "facebook_server_not_configured" }, 503);
   const link = await env.DB.prepare(`
-    SELECT token_ciphertext, token_iv, token_salt, token_expires_at
+    SELECT token_ciphertext, token_iv, token_salt, token_expires_at, permissions_json
     FROM owner_facebook_links WHERE owner_id = ?
   `).bind(owner.owner_id).first<{
     token_ciphertext: string | null; token_iv: string | null; token_salt: string | null;
-    token_expires_at: string | null;
+    token_expires_at: string | null; permissions_json: string | null;
   }>();
   if (!link) return json({ error: "facebook_not_linked" }, 404);
   if (!link.token_ciphertext || !link.token_iv || !link.token_salt) {
@@ -694,6 +696,8 @@ const handleOwnerFacebookData = async (request: Request, env: Env, url: URL) => 
   if (link.token_expires_at && Date.parse(link.token_expires_at) <= Date.now()) {
     return json({ error: "facebook_token_expired", reconnect_required: true }, 401);
   }
+  let permissions: string[] = [];
+  try { permissions = JSON.parse(link.permissions_json || "[]"); } catch { permissions = []; }
   let token: string;
   try {
     const bundle = await decryptFacebookToken({
@@ -704,60 +708,116 @@ const handleOwnerFacebookData = async (request: Request, env: Env, url: URL) => 
     return json({ error: "facebook_token_decryption_failed", reconnect_required: true }, 503);
   }
 
+  const path = url.pathname.split("/").pop() || "";
+  const limit = String(Math.min(Math.max(Number(url.searchParams.get("limit") || 25), 1), 50));
+  const diagnostic = (error: unknown) => {
+    const failure = error as { status?: number; code?: number; subcode?: number; type?: string };
+    return {
+      http_status: typeof failure?.status === "number" ? failure.status : null,
+      code: typeof failure?.code === "number" ? failure.code : null,
+      subcode: typeof failure?.subcode === "number" ? failure.subcode : null,
+      type: typeof failure?.type === "string" ? failure.type : null,
+    };
+  };
+  const needs = (permission: string) => permissions.includes(permission);
   try {
-    const path = url.pathname.split("/").pop() || "";
     if (path === "profile") {
-      const profile = await facebookGraphGet("me", token, { fields: "id,name" });
-      return json({ profile });
+      const fields = ["id", "name", "picture"];
+      if (needs("email")) fields.push("email");
+      if (needs("user_birthday")) fields.push("birthday");
+      if (needs("user_age_range")) fields.push("age_range");
+      if (needs("user_gender")) fields.push("gender");
+      if (needs("user_hometown")) fields.push("hometown");
+      if (needs("user_location")) fields.push("location");
+      if (needs("user_link")) fields.push("link");
+      const profile = await facebookGraphGet("me", token, { fields: fields.join(",") });
+      return json({ profile, source: "facebook_graph_api", checked_at: nowIso() });
     }
     if (path === "permissions") {
-      const permissions = await facebookGraphGet("me/permissions", token);
-      return json(permissions);
+      const current = await facebookGraphGet<{ data?: Array<{ permission?: string; status?: string }> }>("me/permissions", token);
+      const granted = (current.data || []).filter(item => item.status === "granted");
+      return json({ data: current.data || [], granted, capabilities: facebookCapabilities(granted.map(item => item.permission || "")) });
     }
-    if (path === "pages" || path === "posts" || path === "conversations" || path === "messages") {
-      const pages = await facebookGraphGet<{ data?: Array<{ id: string; name: string; access_token: string; category?: string; tasks?: string[] }> }>(
-        "me/accounts", token, { fields: "id,name,access_token,category,tasks", limit: "100" },
-      );
-      const pageId = url.searchParams.get("page_id") || "";
-      if (path === "pages") {
-        return json({ pages: (pages.data || []).map(({ id, name, category, tasks }) => ({ id, name, category: category || null, tasks: tasks || [] })) });
-      }
-      if (!/^\d{5,32}$/.test(pageId)) return json({ error: "valid_page_id_required" }, 400);
-      const page = (pages.data || []).find((item) => item.id === pageId);
-      if (!page?.access_token) return json({ error: "facebook_page_not_accessible" }, 403);
-      if (path === "posts") {
-        const posts = await facebookGraphGet(`${pageId}/published_posts`, page.access_token, {
-          fields: "id,message,created_time,permalink_url,attachments{media_type,url}",
-          limit: String(Math.min(Math.max(Number(url.searchParams.get("limit") || 25), 1), 50)),
-        });
-        return json({ page: { id: page.id, name: page.name }, posts });
-      }
-      if (path === "conversations") {
-        const conversations = await facebookGraphGet(`${pageId}/conversations`, page.access_token, {
-          platform: "messenger", fields: "id,updated_time,participants", limit: "25",
-        });
-        return json({ page: { id: page.id, name: page.name }, conversations });
-      }
-      const conversationId = url.searchParams.get("conversation_id") || "";
-      if (!/^\d{5,32}_[\d]{5,32}$/.test(conversationId) && !/^\d{10,40}$/.test(conversationId)) {
-        return json({ error: "valid_conversation_id_required" }, 400);
-      }
-      const messages = await facebookGraphGet(`${conversationId}/messages`, page.access_token, {
-        fields: "id,created_time,from,to,message",
-        limit: String(Math.min(Math.max(Number(url.searchParams.get("limit") || 25), 1), 50)),
+    if (path === "posts") {
+      if (!needs("user_posts")) return json({ error: "facebook_permission_missing", permission: "user_posts" }, 403);
+      const posts = await facebookGraphGet("me/posts", token, {
+        fields: "id,message,story,created_time,updated_time,permalink_url,full_picture,attachments{media_type,type,url,title,target,subattachments},likes.summary(true),comments.summary(true)",
+        limit,
       });
-      return json({ page: { id: page.id, name: page.name }, messages });
+      return json({ posts, source: "facebook_graph_api", checked_at: nowIso() });
+    }
+    if (path === "photos") {
+      if (!needs("user_photos") && !needs("user_posts")) {
+        return json({ error: "facebook_permission_missing", permission: "user_photos" }, 403);
+      }
+      const photos = await facebookGraphGet("me/photos", token, {
+        type: "uploaded",
+        fields: "id,name,created_time,updated_time,link,images,album",
+        limit,
+      });
+      return json({ photos, source: "facebook_graph_api", checked_at: nowIso() });
+    }
+    if (path === "videos") {
+      if (!needs("user_videos")) return json({ error: "facebook_permission_missing", permission: "user_videos" }, 403);
+      // Meta's current User Videos reference does not expose a read operation.
+      // Attempt the edge anyway so the account's actual API response is recorded;
+      // posts can still expose video attachments through /me/posts.
+      try {
+        const videos = await facebookGraphGet("me/videos", token, {
+          fields: "id,description,created_time,updated_time,picture,permalink_url",
+          limit,
+        });
+        return json({ videos, source: "facebook_graph_api", checked_at: nowIso(), availability: "available" });
+      } catch (error) {
+        return json({
+          videos: { data: [] }, availability: "not_supported_by_current_user_videos_edge",
+          note: "A API atual não oferece leitura direta pela borda /me/videos. Vídeos que apareçam como anexos das publicações podem ser identificados em /posts.",
+          diagnostic: diagnostic(error), checked_at: nowIso(),
+        });
+      }
+    }
+    if (path === "comments") {
+      const postId = url.searchParams.get("post_id") || "";
+      if (!/^\d{5,32}_\d{5,40}$/.test(postId) && !/^\d{10,40}$/.test(postId)) {
+        return json({ error: "valid_post_id_required" }, 400);
+      }
+      if (!needs("user_posts")) return json({ error: "facebook_permission_missing", permission: "user_posts" }, 403);
+      const comments = await facebookGraphGet(`${postId}/comments`, token, {
+        fields: "id,message,created_time,from,comment_count,like_count",
+        summary: "true", filter: "stream", limit,
+      });
+      return json({
+        comments, availability: (comments as { data?: unknown[] }).data?.length
+          ? "some_comments_returned" : "meta_user_token_comment_visibility_limited",
+        note: "A Meta limita a leitura de comentários e dados de outros usuários em publicações de perfil pessoal.",
+        checked_at: nowIso(),
+      });
+    }
+    if (path === "summary") {
+      const profile = await facebookGraphGet("me", token, { fields: "id,name,picture" });
+      const [posts, photos] = await Promise.all([
+        needs("user_posts")
+          ? facebookGraphGet("me/posts", token, { fields: "id,message,story,created_time,permalink_url,comments.summary(true),likes.summary(true)", limit: "10" }).catch(error => ({ error: "posts_unavailable", diagnostic: diagnostic(error) }))
+          : Promise.resolve({ error: "permission_not_granted", permission: "user_posts" }),
+        (needs("user_photos") || needs("user_posts"))
+          ? facebookGraphGet("me/photos", token, { type: "uploaded", fields: "id,name,created_time,link", limit: "10" }).catch(error => ({ error: "photos_unavailable", diagnostic: diagnostic(error) }))
+          : Promise.resolve({ error: "permission_not_granted", permission: "user_photos" }),
+      ]);
+      return json({
+        profile, posts, photos,
+        permissions,
+        capabilities: facebookCapabilities(permissions),
+        limitations: {
+          comments: "A Meta pode ocultar comentários feitos por outras pessoas em posts de perfil pessoal.",
+          messenger: "A API documentada não oferece acesso à caixa de entrada pessoal do Messenger.",
+          videos: "A borda atual /me/videos não oferece leitura direta; anexos de vídeo podem aparecer nos posts.",
+        },
+        checked_at: nowIso(),
+      });
     }
     return json({ error: "unsupported_facebook_resource" }, 404);
   } catch (error) {
-    const details = error as Error & { status?: number; code?: number; subcode?: number; type?: string };
-    return json({
-      error: "facebook_graph_request_failed",
-      facebook_graph_error: {
-        http_status: details.status || null, code: details.code ?? null,
-        subcode: details.subcode ?? null, type: details.type || null,
-      },
-    }, 502);
+    return json({ error: "facebook_graph_request_failed", facebook_graph_error: diagnostic(error) }, 502);
   }
 };
 
