@@ -12,7 +12,7 @@ on:
         description: "Versão pública do aplicativo"
         required: false
         type: string
-        default: "1.1.0"
+        default: "1.1.2"
 
 permissions:
   contents: read
@@ -30,7 +30,7 @@ jobs:
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       FACEBOOK_CLIENT_TOKEN: ${{ secrets.FACEBOOK_CLIENT_TOKEN }}
-      VERSION_NAME: ${{ inputs.version_name || '1.1.0' }}
+      VERSION_NAME: ${{ inputs.version_name || '' }}
     defaults:
       run:
         working-directory: garcia-android
@@ -40,6 +40,16 @@ jobs:
         with:
           ref: ${{ github.ref }}
           fetch-depth: 1
+
+      - name: Resolve release version
+        id: resolve-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_NAME="${VERSION_NAME:-$(sed -n 's/^VERSION_NAME=//p' gradle.properties | head -n 1)}"
+          [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo "::error::Invalid or missing release version"; exit 1; }
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Validate signing and Facebook secrets
         shell: bash
@@ -112,7 +122,7 @@ jobs:
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: Garcia-${{ env.VERSION_NAME }}-run-${{ github.run_number }}
+          name: Garcia-${{ steps.resolve-version.outputs.version_name }}-run-${{ github.run_number }}
           path: |
             garcia-android/app/build/outputs/apk/release/*.apk
             ${{ runner.temp }}/garcia-apk-sha256.txt
