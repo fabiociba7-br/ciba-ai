@@ -20,6 +20,39 @@ function serializeWithinLimit(value: unknown, limit: number, errorCode: string):
   return serialized;
 }
 
+function extractAssistantText(raw: unknown): string {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("provider_invalid_response");
+  }
+
+  const result = raw as {
+    response?: unknown;
+    choices?: unknown;
+  };
+
+  // Cloudflare Workers AI native text-generation response.
+  if (typeof result.response === "string") {
+    if (result.response.length === 0) throw new Error("provider_empty_response");
+    return result.response;
+  }
+
+  // OpenAI-compatible Chat Completions response (Gemma 4 and other chat models).
+  if (Array.isArray(result.choices) && result.choices.length > 0) {
+    const first = result.choices[0];
+    if (first !== null && typeof first === "object" && !Array.isArray(first)) {
+      const message = (first as { message?: unknown }).message;
+      if (message !== null && typeof message === "object" && !Array.isArray(message)) {
+        const content = (message as { content?: unknown }).content;
+        if (typeof content === "string" && content.trim().length > 0) return content;
+      }
+    }
+  }
+
+  // Never serialize the provider envelope: it may contain reasoning, token IDs,
+  // usage metadata, routing information, or other non-user-facing fields.
+  throw new Error("provider_invalid_response");
+}
+
 function validateRequest(request: InferenceRequest): void {
   if (!request || typeof request !== "object" ||
       typeof request.model !== "string" || request.model.trim().length === 0 ||
@@ -64,15 +97,9 @@ export class CloudflareWorkersAIProvider implements ModelProvider {
       max_completion_tokens: request.maxOutputTokens
     });
 
-    let text: string;
-    if (raw !== null && typeof raw === "object" &&
-        typeof (raw as { response?: unknown }).response === "string") {
-      text = (raw as { response: string }).response;
-      if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) {
-        throw new Error("provider_response_too_large");
-      }
-    } else {
-      text = serializeWithinLimit(raw, MAX_RESPONSE_BYTES, "provider_response_too_large");
+    const text = extractAssistantText(raw);
+    if (new TextEncoder().encode(text).byteLength > MAX_RESPONSE_BYTES) {
+      throw new Error("provider_response_too_large");
     }
 
     return { text, raw, provider: this.id, model: request.model };
