@@ -158,6 +158,23 @@ describe("Ciba AI Worker integration", () => {
       "INSERT INTO runtime_settings(setting_key, setting_value, updated_at) VALUES(?, ?, ?) ON CONFLICT(setting_key) DO UPDATE SET setting_value = excluded.setting_value, updated_at = excluded.updated_at"
     ).bind("ai_model", "not-an-allowed-model", new Date().toISOString()).run();
 
+    await testDb.prepare(
+      "UPDATE runtime_settings SET setting_value = '2', updated_at = ? WHERE setting_key = 'daily_device_limit'"
+    ).bind(new Date().toISOString()).run();
+    const assistantHistory = await request("/v1/ai/chat", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${secondDevice.access_token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ messages: [
+        { role: "assistant", content: "x".repeat(1_937) },
+        { role: "user", content: "Quem sou eu?" },
+      ] }),
+    });
+    expect(assistantHistory.status).toBe(503);
+    expect(await assistantHistory.json()).toEqual({ error: "ai_model_not_available" });
+
     const chat = async () => {
       // This test targets daily quota and CibaGenio precedence, not the
       // independent per-device minute limiter. Reset only its test bucket.
