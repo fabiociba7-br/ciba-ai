@@ -737,7 +737,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     )) {
       ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = connected && !busy,
+        gesturesEnabled = connected && !busy && !continuousVoice,
         drawerContent = {
           ModalDrawerSheet(Modifier.width(310.dp), drawerContainerColor = Color(0xFFF8F7F5)) {
             Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
@@ -786,8 +786,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         }
                     }
                 },
-                navigationIcon = { if (connected) IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, "Abrir menu") } },
-                actions = { if (connected) IconButton(onClick = { newChat() }, enabled = !busy) { Icon(Icons.Default.Edit, "Nova conversa") } },
+                navigationIcon = { if (connected && !continuousVoice) IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, "Abrir menu") } },
+                actions = { if (connected && !continuousVoice) IconButton(onClick = { newChat() }, enabled = !busy) { Icon(Icons.Default.Edit, "Nova conversa") } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Ink)
             )
         }, bottomBar = {
