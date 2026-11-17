@@ -71,6 +71,26 @@ fun FacebookManagerDialog(client: CibaAiClient, onDismiss: () -> Unit) {
                 posts = result.optJSONArray("posts") ?: JSONArray()
                 photos = result.optJSONArray("photos") ?: JSONArray()
                 videos = result.optJSONArray("videos") ?: JSONArray()
+                if (videos.length() == 0) {
+                    val extracted = JSONArray()
+                    val postItems = result.optJSONArray("posts") ?: JSONArray()
+                    for (postIndex in 0 until postItems.length()) {
+                        val post = postItems.optJSONObject(postIndex) ?: continue
+                        val attachments = post.optJSONObject("attachments")?.optJSONArray("data") ?: continue
+                        for (attachmentIndex in 0 until attachments.length()) {
+                            val attachment = attachments.optJSONObject(attachmentIndex) ?: continue
+                            val mediaType = attachment.optString("media_type").lowercase()
+                            val type = attachment.optString("type").lowercase()
+                            if (mediaType.contains("video") || type.contains("video")) {
+                                extracted.put(JSONObject()
+                                    .put("description", attachment.optString("title").ifBlank { post.optString("message") })
+                                    .put("created_time", post.optString("created_time"))
+                                    .put("permalink_url", post.optString("permalink_url")))
+                            }
+                        }
+                    }
+                    videos = extracted
+                }
                 videoNote = result.optString("video_note").ifBlank {
                     if (result.optString("video_availability") == "available") "" else "A leitura direta de vídeos não está disponível nesta versão da API."
                 }
