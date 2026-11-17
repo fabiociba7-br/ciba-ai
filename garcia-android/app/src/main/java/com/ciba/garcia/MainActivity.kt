@@ -926,6 +926,11 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     Spacer(Modifier.height(12.dp))
                     Text("Resposta por voz", fontWeight = FontWeight.Bold)
                     Text(voiceStatus, color = Muted, fontSize = 12.sp)
+                    if (!voiceAvailable) {
+                        TextButton(onClick = {
+                            context.startActivity(android.content.Intent(android.speech.tts.TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA))
+                        }) { Text("Instalar/configurar voz offline") }
+                    }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text("Ler respostas automaticamente", modifier = Modifier.weight(1f), fontSize = 13.sp)
                         Switch(checked = voiceReplies, onCheckedChange = { enabled ->
