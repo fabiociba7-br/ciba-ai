@@ -58,3 +58,11 @@ jobs:
       - name: Configure ADMIN_TOKEN as a Worker secret
         shell: bash
         run: printf '%s' "$CIBA_AI_ADMIN_TOKEN" | npx wrangler secret put ADMIN_TOKEN
+
+      - name: Confirm Worker health
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl --fail-with-body --silent --show-error https://ciba-ai.fabiociba7.workers.dev/v1/status)"
+          echo "$status" | jq -e '.status == "ready" and .database == "connected" and .ai_enabled == true' >/dev/null
+          echo "Ciba AI backend is healthy and ready."
