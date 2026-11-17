@@ -138,7 +138,10 @@ class MainActivity : ComponentActivity() {
                 onResult(Result.failure(error))
             }
         })
-        LoginManager.getInstance().logInWithReadPermissions(this, listOf("public_profile"))
+        LoginManager.getInstance().logInWithReadPermissions(
+            this,
+            listOf("public_profile", "pages_show_list", "pages_read_engagement", "pages_messaging")
+        )
     }
 
     @Deprecated("Facebook SDK callback bridge")
@@ -217,6 +220,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var facebookBusy by remember { mutableStateOf(false) }
     var facebookError by remember { mutableStateOf("") }
     var facebookStatusLoaded by remember { mutableStateOf(false) }
+    var showFacebookManager by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(store.get("device_token") != null) }
     val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
 
@@ -350,7 +354,12 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         val result = withContext(Dispatchers.IO) { client.linkFacebook(accessToken) }
                         facebookLinked = result.optBoolean("linked", false)
                         GarciaLog.recordEvent(context, "Facebook", if (facebookLinked) "Vínculo confirmado pelo servidor." else "Servidor respondeu sem confirmar o vínculo.")
-                        if (!facebookLinked) facebookError = "O servidor não confirmou o vínculo."
+                        if (!facebookLinked) {
+                            facebookError = "O servidor não confirmou o vínculo."
+                        } else {
+                            facebookStatusLoaded = false
+                            showFacebookManager = true
+                        }
                     } catch (e: Exception) {
                         GarciaLog.record(context, "Facebook", e)
                         facebookError = e.message ?: "Não foi possível vincular o Facebook."
@@ -604,14 +613,20 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         Spacer(Modifier.height(6.dp))
                         Button(
                             onClick = { connectFacebook() },
-                            enabled = !facebookBusy && !facebookLinked,
+                            enabled = !facebookBusy,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(when {
                                 facebookBusy -> "Conectando Facebook…"
-                                facebookLinked -> "Facebook vinculado"
+                                facebookLinked -> "Reconectar / atualizar permissões"
                                 else -> "Vincular Facebook"
                             })
+                        }
+                        if (facebookLinked) {
+                            OutlinedButton(
+                                onClick = { showFacebookManager = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Abrir dados do Facebook") }
                         }
                         if (facebookError.isNotBlank()) {
                             Text(facebookError, color = Color(0xFFB94F7C), fontSize = 12.sp)
@@ -637,6 +652,10 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 TextButton(onClick = { showSettings = false }) { Text("Fechar") }
             } }
         )
+    }
+
+    if (showFacebookManager) {
+        FacebookManagerDialog(client = client, onDismiss = { showFacebookManager = false })
     }
 
     if (showLogs) {
