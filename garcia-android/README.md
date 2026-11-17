@@ -19,7 +19,7 @@ Aplicativo Android independente da Garcia. O projeto não depende do GEIVIA nem 
 
 ## Ativação de dispositivo único
 
-O backend atual protege a rota de conversa com token de dispositivo e emite esse token por meio de convite de uso único em `POST /v1/auth/register`. Por isso, a primeira instalação apresenta uma tela de ativação técnica, não um cadastro de usuário. O convite precisa ser emitido e o package ID `com.ciba.garcia` habilitado no registry do Ciba AI antes do primeiro uso. O token recebido fica apenas no Android Keystore protegido; não é exibido nem registrado em logs.
+O backend atual protege a conversa com token de dispositivo e vínculo explícito ao proprietário. Por isso, a primeira instalação apresenta uma ativação técnica única, não um cadastro de usuário. São necessários dois códigos de uso único: um convite de registro (`POST /v1/auth/register`) e um convite de pareamento do proprietário (`POST /v1/auth/pair-owner`). Ambos são emitidos pelo fluxo administrativo do Ciba AI, com validade de 24 horas. O package ID `com.ciba.garcia` precisa estar permitido no Worker antes da emissão. O token recebido fica protegido no Android Keystore; não é exibido nem registrado em logs.
 
 O segredo administrativo do Worker nunca deve ser incluído no APK. A ativação é uma etapa de provisionamento do dispositivo e pode ser substituída por pareamento proprietário dedicado em uma evolução do backend.
 
