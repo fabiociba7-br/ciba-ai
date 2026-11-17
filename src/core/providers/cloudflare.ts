@@ -20,6 +20,22 @@ function serializeWithinLimit(value: unknown, limit: number, errorCode: string):
   return serialized;
 }
 
+function extractContentText(content: unknown): string | null {
+  if (typeof content === "string") return content.trim().length > 0 ? content : null;
+  if (!Array.isArray(content)) return null;
+
+  const parts: string[] = [];
+  for (const part of content) {
+    if (part === null || typeof part !== "object" || Array.isArray(part)) continue;
+    const item = part as { type?: unknown; text?: unknown };
+    if (item.type === "text" && typeof item.text === "string" && item.text.length > 0) {
+      parts.push(item.text);
+    }
+  }
+  const combined = parts.join("");
+  return combined.trim().length > 0 ? combined : null;
+}
+
 function extractAssistantText(raw: unknown): string {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     throw new Error("provider_invalid_response");
@@ -30,26 +46,32 @@ function extractAssistantText(raw: unknown): string {
     choices?: unknown;
   };
 
-  // Cloudflare Workers AI native text-generation response.
+  // Native Workers AI text-generation response.
   if (typeof result.response === "string") {
-    if (result.response.length === 0) throw new Error("provider_empty_response");
+    if (result.response.trim().length === 0) throw new Error("provider_empty_response");
     return result.response;
   }
 
-  // OpenAI-compatible Chat Completions response (Gemma 4 and other chat models).
+  // OpenAI-compatible Chat Completions response. Gemma may return text content
+  // either as a string or as an array of typed text parts.
   if (Array.isArray(result.choices) && result.choices.length > 0) {
     const first = result.choices[0];
     if (first !== null && typeof first === "object" && !Array.isArray(first)) {
-      const message = (first as { message?: unknown }).message;
-      if (message !== null && typeof message === "object" && !Array.isArray(message)) {
-        const content = (message as { content?: unknown }).content;
-        if (typeof content === "string" && content.trim().length > 0) return content;
+      const choice = first as { message?: unknown };
+      if (choice.message !== null && typeof choice.message === "object" &&
+          !Array.isArray(choice.message)) {
+        const message = choice.message as { content?: unknown; refusal?: unknown };
+        const contentText = extractContentText(message.content);
+        if (contentText !== null) return contentText;
+        if (typeof message.refusal === "string" && message.refusal.trim().length > 0) {
+          return message.refusal;
+        }
       }
     }
   }
 
   // Never serialize the provider envelope: it may contain reasoning, token IDs,
-  // usage metadata, routing information, or other non-user-facing fields.
+  // usage metadata, routing information, or tool-call arguments.
   throw new Error("provider_invalid_response");
 }
 
@@ -94,7 +116,10 @@ export class CloudflareWorkersAIProvider implements ModelProvider {
     validateRequest(request);
     const raw = await this.binding.run(request.model, {
       messages: request.messages,
-      max_completion_tokens: request.maxOutputTokens
+      max_completion_tokens: request.maxOutputTokens,
+      // Gemma 4 enables thinking by default. Disable it for the text-chat
+      // experience; internal reasoning must never be mistaken for the answer.
+      chat_template_kwargs: { enable_thinking: false }
     });
 
     const text = extractAssistantText(raw);
