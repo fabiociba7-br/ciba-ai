@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: garcia-owner-provisioning
+  cancel-in-progress: false
+
 jobs:
   provision:
     name: Create private owner and one-time Garcia activation codes
@@ -56,7 +60,7 @@ jobs:
             echo "Os códigos abaixo são de uso único. Copie-os para a primeira ativação no aplicativo. Eles não devem ser compartilhados."
             echo
             echo "- **Nome do assistente:** Garcia"
-            echo "- **Backend / infraestrutura:** Ciba AI (Cloudflare Worker e repositório)
+            echo "- **Backend / infraestrutura:** Ciba AI (Cloudflare Worker e repositório)"
             echo "- **App ID:** `$GARCIA_APP_ID`"
             echo "- **Owner ID:** `$owner_id`"
             echo "- **Validade do convite de registro:** `$expires_at`"
