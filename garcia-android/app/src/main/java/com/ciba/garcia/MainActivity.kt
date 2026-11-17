@@ -386,10 +386,19 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 scope.launch {
                     try {
                         val result = withContext(Dispatchers.IO) { client.linkFacebook(accessToken) }
-                        facebookLinked = result.optBoolean("linked", false)
+                        val linkExists = result.optBoolean("linked", false)
+                        val tokenStored = result.optBoolean("token_stored", false)
+                        facebookLinked = linkExists && tokenStored
+                        if (linkExists && !tokenStored) {
+                            facebookError = "O Facebook consta como vinculado, mas o servidor não tem o token de acesso. A conexão está incompleta."
+                            GarciaLog.recordEvent(context, "Facebook", "Vínculo antigo encontrado sem token armazenado.")
+                        } else {
+                            facebookError = ""
+                            GarciaLog.recordEvent(context, "Facebook", "Status verificado · linked=$linkExists · token_stored=$tokenStored")
+                        }
                         GarciaLog.recordEvent(context, "Facebook", if (facebookLinked) "Vínculo confirmado pelo servidor." else "Servidor respondeu sem confirmar o vínculo.")
                         if (!facebookLinked) {
-                            facebookError = "O servidor não confirmou o vínculo."
+                            facebookError = if (linkExists && !tokenStored) "O Facebook foi identificado, mas o servidor não confirmou o armazenamento do token." else "O servidor não confirmou o vínculo completo."
                         } else {
                             facebookStatusLoaded = false
                             showSettings = false
@@ -451,7 +460,10 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         if (showSettings && connected && !facebookStatusLoaded) {
             try {
                 val result = withContext(Dispatchers.IO) { client.facebookStatus() }
-                facebookLinked = result.optBoolean("linked", false)
+                val linkExists = result.optBoolean("linked", false)
+                        val tokenStored = result.optBoolean("token_stored", false)
+                        facebookLinked = linkExists && tokenStored
+                        GarciaLog.recordEvent(context, "Facebook", "Resposta do vínculo · linked=$linkExists · token_stored=$tokenStored")
                 facebookStatusLoaded = true
             } catch (e: Exception) {
                 facebookError = e.message ?: "Não foi possível consultar o vínculo Facebook."
