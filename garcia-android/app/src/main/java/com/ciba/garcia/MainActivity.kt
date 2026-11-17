@@ -145,6 +145,11 @@ private fun readTextAttachment(context: Context, uri: Uri): GarciaAttachment {
     return GarciaAttachment(type = "file", name = name.take(120), text = content)
 }
 
+private val photoMarker = Regex("\\[\\[foto:(https://[^\\]\\s]+)\\]\\]")
+
+private fun splitPhotos(text: String): Pair<String, List<String>> =
+    photoMarker.replace(text, "").trim() to photoMarker.findAll(text).map { it.groupValues[1] }.toList()
+
 class MainActivity : ComponentActivity() {
     private val facebookCallbackManager: CallbackManager = CallbackManager.Factory.create()
     private var pendingFacebookResult: ((Result<String>) -> Unit)? = null
@@ -679,14 +684,26 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             ) {
                                 Text(if (user) "Você" else "Garcia", color = if (user) Color(0xFFB94F7C) else Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.height(5.dp))
-                                androidx.compose.foundation.text.selection.SelectionContainer {
-                                    Text(item.second, fontSize = 15.sp, lineHeight = 23.sp)
+                                val (shownText, photoUrls) = remember(item.second) { splitPhotos(item.second) }
+                                if (shownText.isNotBlank()) {
+                                    androidx.compose.foundation.text.selection.SelectionContainer {
+                                        Text(shownText, fontSize = 15.sp, lineHeight = 23.sp)
+                                    }
+                                }
+                                photoUrls.forEach { photoUrl ->
+                                    Spacer(Modifier.height(8.dp))
+                                    coil.compose.AsyncImage(
+                                        model = photoUrl,
+                                        contentDescription = "Foto do Facebook",
+                                        modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).clip(RoundedCornerShape(12.dp)),
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                                    )
                                 }
                                 if (!user) {
                                     TextButton(
                                         onClick = {
                                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                            clipboard.setPrimaryClip(ClipData.newPlainText("Resposta da Garcia", item.second))
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("Resposta da Garcia", shownText))
                                             GarciaLog.recordEvent(context, "chat", "Resposta copiada · ${item.second.length} caracteres")
                                         },
                                         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
