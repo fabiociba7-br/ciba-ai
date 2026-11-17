@@ -564,13 +564,18 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
   // distinguish an App Secret/configuration failure from a user-token failure.
   let appAccessToken = "";
   try {
-    const appTokenUrl = new URL("https://graph.facebook.com/v27.0/oauth/access_token");
-    appTokenUrl.searchParams.set("client_id", "1395601549081486");
-    appTokenUrl.searchParams.set("client_secret", env.FACEBOOK_APP_SECRET);
-    appTokenUrl.searchParams.set("grant_type", "client_credentials");
-    const appTokenResponse = await fetch(appTokenUrl.toString(), {
-      method: "GET",
-      headers: { "accept": "application/json" },
+    const appTokenUrl = "https://graph.facebook.com/v27.0/oauth/access_token";
+    const appTokenParams = new URLSearchParams();
+    appTokenParams.set("client_id", "1395601549081486");
+    appTokenParams.set("client_secret", env.FACEBOOK_APP_SECRET);
+    appTokenParams.set("grant_type", "client_credentials");
+    const appTokenResponse = await fetch(appTokenUrl, {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: appTokenParams.toString(),
     });
     const appTokenBody = await appTokenResponse.json().catch(() => null) as {
       access_token?: string;
