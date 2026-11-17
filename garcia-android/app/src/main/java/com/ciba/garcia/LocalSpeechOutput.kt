@@ -19,6 +19,7 @@ internal class LocalSpeechOutput(
     private var engine: TextToSpeech? = null
     private var ready = false
     private var closed = false
+    private var activeUtteranceId: String? = null
 
     init {
         engine = TextToSpeech(context.applicationContext) { status ->
@@ -49,7 +50,12 @@ internal class LocalSpeechOutput(
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) = Unit
                 override fun onDone(utteranceId: String?) {
-                    Handler(Looper.getMainLooper()).post { if (!closed) onUtteranceDone() }
+                    Handler(Looper.getMainLooper()).post {
+                        if (!closed && utteranceId != null && activeUtteranceId == utteranceId) {
+                            activeUtteranceId = null
+                            onUtteranceDone()
+                        }
+                    }
                 }
                 override fun onError(utteranceId: String?) {
                     onAvailabilityChanged(false, "Falha na reprodução da resposta por voz.")
@@ -66,16 +72,22 @@ internal class LocalSpeechOutput(
         val tts = engine ?: return false
         if (!ready || closed || text.isBlank()) return false
         val safeText = text.take(MAX_SPOKEN_CHARS)
-        return tts.speak(safeText, TextToSpeech.QUEUE_FLUSH, null, "garcia-" + System.currentTimeMillis()) == TextToSpeech.SUCCESS
+        val utteranceId = "garcia-" + System.nanoTime()
+        activeUtteranceId = utteranceId
+        val result = tts.speak(safeText, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+        if (result != TextToSpeech.SUCCESS) activeUtteranceId = null
+        return result == TextToSpeech.SUCCESS
     }
 
     fun stop() {
+        activeUtteranceId = null
         engine?.stop()
     }
 
     fun shutdown() {
         closed = true
         ready = false
+        activeUtteranceId = null
         engine?.stop()
         engine?.shutdown()
         engine = null
