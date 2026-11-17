@@ -8,6 +8,7 @@ val releaseStoreFile = providers.environmentVariable("ANDROID_KEYSTORE_PATH")
 val releaseStorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD")
 val releaseKeyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS")
 val releaseKeyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD")
+val facebookClientToken = providers.environmentVariable("FACEBOOK_CLIENT_TOKEN").orElse("").get()
 
 android {
     namespace = "com.ciba.garcia"
@@ -19,6 +20,7 @@ android {
         targetSdk = 36
         versionCode = providers.gradleProperty("VERSION_CODE").orElse("1").get().toInt()
         versionName = providers.gradleProperty("VERSION_NAME").orElse("1.0.0").get()
+        manifestPlaceholders["facebookClientToken"] = facebookClientToken
     }
 
     signingConfigs {
