@@ -570,7 +570,23 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
       method: "GET",
       headers: { "accept": "application/json" },
     });
-    if (!response.ok) return json({ error: "facebook_token_verification_failed" }, 401);
+    if (!response.ok) {
+      const graphBody = await response.json().catch(() => null) as {
+        error?: { code?: number; error_subcode?: number; type?: string };
+      } | null;
+      const graphError = graphBody?.error;
+      // Expose only Meta's non-secret diagnostic identifiers. Never return
+      // the submitted access token, app access token, or App Secret.
+      return json({
+        error: "facebook_token_verification_failed",
+        facebook_graph_error: {
+          http_status: response.status,
+          code: typeof graphError?.code === "number" ? graphError.code : null,
+          subcode: typeof graphError?.error_subcode === "number" ? graphError.error_subcode : null,
+          type: typeof graphError?.type === "string" ? graphError.type.slice(0, 80) : null,
+        },
+      }, 401);
+    }
     verification = await response.json() as typeof verification;
   } catch {
     return json({ error: "facebook_verification_unavailable" }, 502);
