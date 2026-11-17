@@ -331,6 +331,35 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             } finally { whisperBusy = false }
         }
     }
+    fun stopAndTranscribe() {
+        if (!whisperRecording || whisperBusy) return
+        whisperRecording = false
+        whisperBusy = true
+        whisperStatus = "Transcrevendo localmente…"
+        scope.launch {
+            try {
+                val samples = withContext(Dispatchers.IO) { whisperRecorder.stop() }
+                val transcript = try {
+                    check(samples.size >= 1600) { "Gravação muito curta. Fale por pelo menos um segundo." }
+                    val result = withContext(Dispatchers.Default) {
+                        JSONObject(WhisperNative.nativeTranscribe(samples, "pt", Runtime.getRuntime().availableProcessors().coerceIn(1, 6)))
+                    }
+                    result.optString("text").trim()
+                } finally {
+                    samples.fill(0f)
+                }
+                check(transcript.isNotBlank()) { "Não foi possível reconhecer fala nessa gravação." }
+                input = listOf(input.trim(), transcript).filter { it.isNotBlank() }.joinToString(" ")
+                whisperStatus = "Transcrição pronta · revise o texto antes de enviar"
+                GarciaLog.recordEvent(context, "Voz", "Transcrição local concluída · ${transcript.length} caracteres")
+            } catch (e: Exception) {
+                whisperStatus = e.message ?: "Falha na transcrição local"
+                GarciaLog.record(context, "Whisper transcrição", e)
+            } finally { whisperBusy = false }
+        }
+    }
+
+
     val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
             if (whisperModelInfo == null) error = "Instale um modelo Whisper em Configurações antes de gravar."
@@ -497,34 +526,6 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 pairingCode = ""
             } catch (e: Exception) { GarciaLog.record(context, "ativação", e); error = e.message ?: "Não foi possível ativar." }
             finally { busy = false }
-        }
-    }
-
-    fun stopAndTranscribe() {
-        if (!whisperRecording || whisperBusy) return
-        whisperRecording = false
-        whisperBusy = true
-        whisperStatus = "Transcrevendo localmente…"
-        scope.launch {
-            try {
-                val samples = withContext(Dispatchers.IO) { whisperRecorder.stop() }
-                val transcript = try {
-                    check(samples.size >= 1600) { "Gravação muito curta. Fale por pelo menos um segundo." }
-                    val result = withContext(Dispatchers.Default) {
-                        JSONObject(WhisperNative.nativeTranscribe(samples, "pt", Runtime.getRuntime().availableProcessors().coerceIn(1, 6)))
-                    }
-                    result.optString("text").trim()
-                } finally {
-                    samples.fill(0f)
-                }
-                check(transcript.isNotBlank()) { "Não foi possível reconhecer fala nessa gravação." }
-                input = listOf(input.trim(), transcript).filter { it.isNotBlank() }.joinToString(" ")
-                whisperStatus = "Transcrição pronta · revise o texto antes de enviar"
-                GarciaLog.recordEvent(context, "Voz", "Transcrição local concluída · ${transcript.length} caracteres")
-            } catch (e: Exception) {
-                whisperStatus = e.message ?: "Falha na transcrição local"
-                GarciaLog.record(context, "Whisper transcrição", e)
-            } finally { whisperBusy = false }
         }
     }
 
