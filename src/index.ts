@@ -567,7 +567,8 @@ const handleOwnerFacebookLink = async (request: Request, env: Env) => {
     const buildAppTokenUrl = (path: string) => {
       const url = new URL(path);
       url.searchParams.set("client_id", "1395601549081486");
-      url.searchParams.set("client_secret", env.FACEBOOK_APP_SECRET!);
+      // Remove accidental leading/trailing whitespace from the Cloudflare secret.
+      url.searchParams.set("client_secret", env.FACEBOOK_APP_SECRET!.trim());
       url.searchParams.set("grant_type", "client_credentials");
       return url;
     };
