@@ -22,7 +22,7 @@ A franquia gratuita documentada pela Cloudflare é de 10.000 Neurons por dia. No
 
 ## Estado do projeto
 
-O Worker Ciba AI está publicado em `https://ciba-ai.fabiociba7.workers.dev`, com D1 conectado, migrations aplicadas, autenticação por dispositivo e limites de uso. O endpoint `/v1/status` confirmou o serviço pronto e a IA habilitada; uma inferência real ainda deverá ser validada na rodada final com o aplicativo. O projeto Android independente da Garcia está em [garcia-android/](garcia-android/), com interface nativa, conversa, histórico local criptografado e conexão com a API. A primeira ativação exige os convites privados de registro e pareamento do proprietário. O workflow de CI não gera APK nem faz deploy automático. O registro de ferramentas permanece opt-in e ainda não está conectado ao orquestrador ou à chamada do modelo.
+O Worker Ciba AI está publicado em `https://ciba-ai.fabiociba7.workers.dev`, com D1 conectado, migrations aplicadas, autenticação por dispositivo e limites de uso. O endpoint `/v1/status` confirmou o serviço pronto e a IA habilitada; uma inferência real ainda deverá ser validada na rodada final com o aplicativo. O projeto Android independente da Garcia está em [garcia-android/](garcia-android/), com interface nativa, conversa, histórico local criptografado e conexão com a API. A rota de pareamento do cliente corresponde a `POST /v1/owner/pair`. Após publicar a configuração que permite `com.ciba.garcia`, execute o workflow manual `Provision Garcia Device` para criar o proprietário privado e emitir os códigos únicos de ativação. O workflow de CI não gera APK nem faz deploy automático. O registro de ferramentas permanece opt-in e ainda não está conectado ao orquestrador ou à chamada do modelo.
 
 ## Arquitetura
 
