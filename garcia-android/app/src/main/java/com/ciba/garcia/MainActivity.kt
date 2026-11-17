@@ -302,7 +302,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             { if (continuousVoice && voiceReplies && !awaitingTranscriptReview && input.isBlank()) autoListenPending = true }
         )
     }
-    DisposableEffect(voiceOutput) { onDispose { voiceOutput.shutdown() } }
+    DisposableEffect(voiceOutput) { onDispose { voiceOutput.shutdown(); whisperRecorder.cancel() } }
     var showAttachmentOptions by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Verificando conexão…") }
@@ -501,6 +501,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         if (busy) return
         autoListenPending = false
         awaitingTranscriptReview = false
+        continuousVoice = false
+        context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
+        if (whisperRecording) { whisperRecording = false; whisperRecorder.cancel() }
         voiceOutput.stop()
         persist()
         currentChatId = chat.id
@@ -515,6 +518,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         if (busy) return
         autoListenPending = false
         awaitingTranscriptReview = false
+        continuousVoice = false
+        context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
+        if (whisperRecording) { whisperRecording = false; whisperRecorder.cancel() }
         voiceOutput.stop()
         persist()
         val chat = GarciaChat(UUID.randomUUID().toString(), "Nova conversa", emptyList())
@@ -1079,8 +1085,11 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", enabled).apply()
                                 autoListenPending = enabled
                                 awaitingTranscriptReview = false
-                                if (!enabled) voiceOutput.stop()
-                                else if (!voiceReplies) error = "Ative também a leitura automática das respostas para usar a conversação contínua."
+                                if (!enabled) {
+                                    voiceOutput.stop()
+                                    if (whisperRecording) { whisperRecording = false; whisperRecorder.cancel() }
+                                    whisperStatus = "Conversa por voz pausada"
+                                } else if (!voiceReplies) error = "Ative também a leitura automática das respostas para usar a conversação contínua."
                                 else if (whisperModelInfo == null) error = "Instale o modelo Whisper antes de usar a conversação contínua."
                             },
                             enabled = voiceAvailable && voiceReplies && whisperModelInfo != null && !busy && !whisperRecording
