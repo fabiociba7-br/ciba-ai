@@ -1,6 +1,6 @@
 # Preparação de provisionamento — Ciba AI
 
-Este roteiro prepara a ativação, mas **não executa criação de recursos, não altera o plano Cloudflare e não faz deploy**. A conta deve permanecer no Workers Free para respeitar a prioridade de custo zero.
+Este roteiro registra o estado real da ativação e as etapas ainda pendentes. A conta deve permanecer no Workers Free para respeitar a prioridade de custo zero.
 
 ## 1. Verificações antes de provisionar
 
@@ -31,9 +31,8 @@ Fontes oficiais:
 
 ## 3. Sequência de ativação (somente após autorização)
 
-1. Criar o banco D1 com `npx wrangler d1 create ciba-ai-db`.
-2. Copiar o ID real retornado para `database_id` em `wrangler.toml`. Não versionar IDs de conta ou tokens secretos se a política da conta exigir sigilo.
-3. Substituir `ALLOWED_APP_IDS` pelos application IDs confirmados. Não inventar IDs.
+1. O banco D1 remoto `ciba-ai-db` já existe; não o recrie. O ID real está em `wrangler.toml`.
+2. Substituir `ALLOWED_APP_IDS` pelos application IDs confirmados. Não inventar IDs.
 4. Configurar `ALLOWED_ORIGINS` somente se existir frontend web e usar origens HTTPS exatas.
 5. Aplicar as migrations com `npm run db:migrate:remote`.
 6. Gerar um `ADMIN_TOKEN` aleatório forte localmente e configurá-lo com `npx wrangler secret put ADMIN_TOKEN`. Não enviar o token ao chat, ao GitHub ou aos apps.
@@ -53,11 +52,12 @@ Fontes oficiais:
 ## 5. Estado atual
 
 - Código e migrations estão no repositório.
-- D1 remoto ainda não foi criado.
-- `database_id` continua como placeholder.
+- D1 remoto `ciba-ai-db` criado; ID real configurado em `wrangler.toml`.
+- Migrations remotas ainda precisam ser aplicadas.
 - `ADMIN_TOKEN` ainda não foi configurado.
 - IDs Android permitidos ainda não foram confirmados.
 - Worker ainda não foi publicado.
+- O workflow atual do GitHub Actions falha antes de iniciar o runner (job sem runner atribuído); ainda não há resultado válido de typecheck/testes nem deploy automático.
 - Nenhuma inferência real foi executada pela conta Cloudflare.
 
-Portanto, o Ciba AI está preparado em código, mas não está online nem pronto para receber usuários.
+Portanto, o Ciba AI está preparado em código e tem o D1 provisionado, mas ainda não está online nem pronto para receber usuários.
