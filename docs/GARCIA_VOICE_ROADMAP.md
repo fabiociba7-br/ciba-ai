@@ -14,13 +14,13 @@ Este roteiro registra a sequência escolhida pelo proprietário em 17/11/2026. C
 
 ## Sequência escolhida
 
-### Etapa 1 — estabilizar a versão de testes atual
-Escopo: logs locais, diagnóstico do backend, fluxo de chat, campo de mensagem, teclado e barras de navegação Android. Não ampliar o escopo de voz nesta etapa.
+### Etapa 1 — fazer a conversa por texto funcionar de ponta a ponta (prioridade atual)
+Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em texto, recebimento e exibição das respostas, e diagnóstico por logs. Nenhum recurso de voz entra nesta etapa.
 - Já existem logs locais em Configurações, cópia e limpeza; o backend devolve identificador de diagnóstico.
 - A janela da Activity usa adjustResize e a barra de composição considera teclado e navegação.
 - Verificação automatizada: compilação Kotlin/Gradle.
 - Gate pendente: instalar uma versão atualizada e testar em aparelho real: abrir Configurações/Logs, copiar e limpar logs; enviar mensagens com teclado aberto e fechado; validar rolagem, botão Enviar e navegação; provocar uma falha e confirmar que o log contém diagnóstico sem segredos.
-- Preferência de fala automática inicia desligada; a reprodução manual por mensagem será implementada na etapa 5.
+- Microfone, permissão de gravação e síntese de voz foram retirados temporariamente da interface de teste. Voz só volta após aprovação da conversa por texto.
 
 ### Etapa 2 — preparar Whisper.cpp no Android
 - Revisar upstream, versão, licença e notices; selecionar variante e modelo multilingue apropriado para pt-BR.
