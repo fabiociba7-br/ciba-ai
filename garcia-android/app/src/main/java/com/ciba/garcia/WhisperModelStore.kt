@@ -4,11 +4,11 @@ import android.content.Context
 import android.net.Uri
 import java.io.File
 import java.security.MessageDigest
+import java.net.URL
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 
-/**
- * Explicit, offline model import. The model is copied into app-private storage,
- * fingerprinted on every load, and never downloaded by the application.
- */
+/** Downloads the approved Whisper model over HTTPS, verifies its SHA-256, and keeps it in app-private storage. */
 internal class WhisperModelStore(context: Context) {
     private val appContext = context.applicationContext
     private val modelDirectory = File(appContext.filesDir, "whisper-models")
@@ -16,6 +16,58 @@ internal class WhisperModelStore(context: Context) {
 
     data class ModelInfo(val file: File, val sha256: String, val sizeBytes: Long) {
         val modelId: String get() = "whisper-$sha256"
+    }
+
+    fun downloadModel(onProgress: (Long, Long) -> Unit = { _, _ -> }): ModelInfo {
+        modelDirectory.mkdirs()
+        val temporary = File(modelDirectory, "model.ggml.download")
+        val destination = File(modelDirectory, "model.ggml")
+        temporary.delete()
+        try {
+            val connection = URL(MODEL_URL).openConnection().apply {
+                connectTimeout = 20_000
+                readTimeout = 30_000
+                useCaches = false
+                setRequestProperty("User-Agent", "Garcia-Android/1.1.5")
+            }
+            connection.connect()
+            val expectedLength = connection.contentLengthLong
+            require(expectedLength in MIN_MODEL_BYTES..MAX_MODEL_BYTES) {
+                "O servidor informou um tamanho inválido para o modelo Whisper."
+            }
+            var total = 0L
+            BufferedInputStream(connection.getInputStream()).use { input ->
+                BufferedOutputStream(temporary.outputStream()).use { output ->
+                    val buffer = ByteArray(256 * 1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        require(total <= MAX_MODEL_BYTES) { "O modelo excedeu o tamanho máximo permitido." }
+                        output.write(buffer, 0, count)
+                        onProgress(total, expectedLength)
+                    }
+                }
+            }
+            require(total == expectedLength && total >= MIN_MODEL_BYTES) {
+                "Download incompleto do modelo Whisper. Tente novamente."
+            }
+            val digest = sha256(temporary)
+            require(digest == APPROVED_TINY_Q5_1_SHA256) {
+                "A verificação de segurança do modelo Whisper falhou. O arquivo foi descartado."
+            }
+            require(hasWhisperMagic(temporary)) { "O arquivo baixado não é um modelo Whisper válido." }
+            if (!temporary.renameTo(destination)) {
+                temporary.copyTo(destination, overwrite = true)
+                temporary.delete()
+            }
+            metadata.edit().putString("model_path", destination.absolutePath)
+                .putString("model_sha256", digest).apply()
+            return ModelInfo(destination, digest, destination.length())
+        } catch (error: Exception) {
+            temporary.delete()
+            throw error
+        }
     }
 
     fun importModel(uri: Uri): ModelInfo {
@@ -92,6 +144,7 @@ internal class WhisperModelStore(context: Context) {
         }
 
     companion object {
+        private const val MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny-q5_1.bin"
         private const val APPROVED_TINY_Q5_1_SHA256 = "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7"
         private const val MIN_MODEL_BYTES = 10L * 1024 * 1024
         private const val MAX_MODEL_BYTES = 2L * 1024 * 1024 * 1024
