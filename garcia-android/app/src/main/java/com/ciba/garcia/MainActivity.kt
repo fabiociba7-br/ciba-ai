@@ -1073,7 +1073,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         Switch(checked = voiceReplies, onCheckedChange = { enabled ->
                             voiceReplies = enabled
                             context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("enabled", enabled).apply()
-                            if (!enabled) { voiceOutput.stop(); continuousVoice = false; context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply() }
+                            if (!enabled) { voiceOutput.stop(); continuousVoice = false; autoListenPending = false; if (whisperRecording) { whisperRecording = false; whisperRecorder.cancel() }; context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply() }
                         }, enabled = voiceAvailable)
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
