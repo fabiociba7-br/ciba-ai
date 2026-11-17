@@ -1,12 +1,7 @@
 name: Ciba AI Deploy
 
+# Production deployment is manual only; repository pushes never deploy.
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'garcia-android/**'
-      - '**/*.md'
-      - 'docs/**'
   workflow_dispatch:
 
 permissions:
