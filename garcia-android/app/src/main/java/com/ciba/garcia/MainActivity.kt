@@ -899,6 +899,34 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     Text(status, color = Muted)
                     Spacer(Modifier.height(8.dp))
                     Text(if (connected) "Dispositivo ativado e token protegido pelo Android Keystore." else "Dispositivo ainda não ativado.")
+                    Spacer(Modifier.height(12.dp))
+                    Text("Transcrição de voz local", fontWeight = FontWeight.Bold)
+                    Text(whisperStatus, color = Muted, fontSize = 12.sp)
+                    Text("Importe um modelo Whisper compatível. O arquivo fica no aparelho e é verificado por SHA-256.", color = Muted, fontSize = 12.sp)
+                    OutlinedButton(
+                        onClick = { whisperModelPicker.launch(arrayOf("application/octet-stream", "application/x-ggml", "application/*", "*/*")) },
+                        enabled = !whisperBusy && !whisperRecording,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text(if (whisperModelInfo == null) "Instalar modelo Whisper" else "Trocar modelo Whisper") }
+                    if (whisperModelInfo != null) {
+                        Text("Modelo: ${whisperModelInfo!!.file.name} · ${whisperModelInfo!!.sizeBytes / (1024 * 1024)} MB", color = Muted, fontSize = 11.sp)
+                        TextButton(onClick = {
+                            scope.launch(Dispatchers.IO) { runCatching { WhisperNative.nativeRelease(); whisperModelStore.forgetModel() } }
+                            whisperModelInfo = null
+                            whisperStatus = "Modelo removido"
+                        }, enabled = !whisperBusy && !whisperRecording) { Text("Remover modelo") }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Text("Resposta por voz", fontWeight = FontWeight.Bold)
+                    Text(voiceStatus, color = Muted, fontSize = 12.sp)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Ler respostas automaticamente", modifier = Modifier.weight(1f), fontSize = 13.sp)
+                        Switch(checked = voiceReplies, onCheckedChange = { enabled ->
+                            voiceReplies = enabled
+                            context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("enabled", enabled).apply()
+                            if (!enabled) voiceOutput.stop()
+                        }, enabled = voiceAvailable)
+                    }
                     if (connected) {
                         Spacer(Modifier.height(12.dp))
                         Text("Conta Facebook", fontWeight = FontWeight.Bold)
