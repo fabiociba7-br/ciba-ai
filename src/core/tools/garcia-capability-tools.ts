@@ -1,3 +1,4 @@
+import type { CibaToolDefinition } from "./contracts";
 import {
   createNativeCapabilityRegistry,
   type NativeCapabilityCategory,
@@ -64,7 +65,7 @@ export function createGarciaCapabilityTools(
   }
   const catalog = createNativeCapabilityRegistry();
 
-  const definitions = [
+  const definitions: CibaToolDefinition[] = [
     {
       id: "garcia.capabilities.list",
       description: "Lista capacidades nativas da Garcia com status, licença, runtime e prontidão real do adaptador.",
