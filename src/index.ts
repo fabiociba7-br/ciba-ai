@@ -167,7 +167,15 @@ const publicConfig = (settings: Record<string, string>, env: Env) => ({
 });
 
 const createRuntimeProviderRegistry = (env: Env, model: string | null, maxOutputTokens: number) => {
-  const provider = new CloudflareWorkersAIProvider(env.AI);
+  const implementation = new CloudflareWorkersAIProvider(env.AI);
+  // The registry intentionally accepts plain data records only. Adapt the
+  // class instance to an own-property record before registering it.
+  const provider = {
+    id: implementation.id,
+    enabled: implementation.enabled,
+    generate: (request: Parameters<typeof implementation.generate>[0]) =>
+      implementation.generate(request),
+  };
   const roles = ["general", "reasoning", "research", "coding", "creative", "verification"] as const;
   return createProviderRegistry([provider], model ? [{
     providerId: provider.id,
