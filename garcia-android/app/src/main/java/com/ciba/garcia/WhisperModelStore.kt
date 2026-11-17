@@ -32,7 +32,7 @@ internal class WhisperModelStore(context: Context) {
             }
             connection.connect()
             val expectedLength = connection.contentLengthLong
-            require(expectedLength in MIN_MODEL_BYTES..MAX_MODEL_BYTES) {
+            require(expectedLength == -1L || expectedLength in MIN_MODEL_BYTES..MAX_MODEL_BYTES) {
                 "O servidor informou um tamanho inválido para o modelo Whisper."
             }
             var total = 0L
@@ -45,11 +45,11 @@ internal class WhisperModelStore(context: Context) {
                         total += count
                         require(total <= MAX_MODEL_BYTES) { "O modelo excedeu o tamanho máximo permitido." }
                         output.write(buffer, 0, count)
-                        onProgress(total, expectedLength)
+                        onProgress(total, expectedLength.coerceAtLeast(0L))
                     }
                 }
             }
-            require(total == expectedLength && total >= MIN_MODEL_BYTES) {
+            require((expectedLength <= 0L || total == expectedLength) && total in MIN_MODEL_BYTES..MAX_MODEL_BYTES) {
                 "Download incompleto do modelo Whisper. Tente novamente."
             }
             val digest = sha256(temporary)
