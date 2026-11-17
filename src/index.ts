@@ -2186,7 +2186,10 @@ const handleChat = async (request: Request, env: Env) => {
   const asksToDisplayFacebookPhoto =
     /\b(?:mostr(?:a|e|ar|em)|exib(?:a|e|ir|am)|ver|visualiz(?:a|e|ar)|apresent(?:a|e|ar)|mand(?:a|e|ar)|envia(?:r)?|abr(?:e|ir|a))\b[\s\S]{0,60}\b(?:foto|imagem)(?:s)?\b|\b(?:foto|imagem)(?:s)?\b[\s\S]{0,60}\b(?:no chat|aqui|na conversa)\b/i.test(latestUserText);
   let automaticallyAttachedPhotos = false;
-  if (asksToDisplayFacebookPhoto && chatPhotos.length > 0 && shownPhotos.length === 0) {
+  if (asksToDisplayFacebookPhoto && chatPhotos.length > 0) {
+    // The user's display request is authoritative: select the requested photo(s)
+    // here instead of relying on the model to choose and emit [[foto:N]].
+    shownPhotos.length = 0;
     const requestedNumber = latestUserText.match(/\b(?:foto|imagem)\s*(?:n[ºo.]?\s*)?(\d{1,2})\b/i);
     const multiple = /\b(?:fotos|imagens|todas|algumas)\b/i.test(latestUserText);
     const startIndex = requestedNumber ? Number(requestedNumber[1]) - 1 : 0;
