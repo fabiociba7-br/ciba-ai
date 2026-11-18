@@ -57,8 +57,8 @@ export async function learnFromResearch(
   const sources = Array.isArray(input.sources) ? input.sources.filter((source) =>
     !!source && typeof source.reference === "string" && !!source.reference.trim() &&
     typeof source.title === "string" && typeof source.publisher === "string" &&
-    validDate(source.accessedAt) &&
-    (source.publishedAt === null || validDate(source.publishedAt)) &&
+    isValidKnowledgeDate(source.accessedAt) &&
+    (source.publishedAt === null || isValidKnowledgeDate(source.publishedAt)) &&
     isTrustedEvidenceKind(source.evidenceKind)).slice(0, MAX_KNOWLEDGE_EVIDENCE) : [];
   const findings = clean(input.findings, 50);
   const newInsights = clean(input.newInsights, 50);
