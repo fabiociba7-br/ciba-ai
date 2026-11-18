@@ -117,7 +117,11 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
         previewRestoreVoiceId = null
         val cleanText = speechFriendlyText(text).take(MAX_SPOKEN_CHARS)
         if (cleanText.isBlank() || closed) return false
-        if (ClonedVoiceRuntime.isReady()) {
+        if (ClonedVoiceRuntime.hasActiveProfile(appContext)) {
+            if (!ClonedVoiceRuntime.isReady() && !ClonedVoiceRuntime.isLoading()) {
+                onAvailabilityChanged(false, "O perfil de voz está salvo, mas o mecanismo Chatterbox ainda não foi preparado.")
+                return false
+            }
             val utteranceId = "garcia-clone-" + System.nanoTime()
             activeUtteranceId = utteranceId
             ClonedVoiceRuntime.speak(
