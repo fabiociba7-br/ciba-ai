@@ -1,19 +1,13 @@
 name: Garcia Android Signed Release (Feature)
 
 on:
-  push:
-    branches:
-      - feature/garcia-android-whisper-native
-    paths:
-      - "garcia-android/**"
-      - ".github/workflows/garcia-android-release-feature.yml"
   workflow_dispatch:
     inputs:
       version_name:
         description: "Versão pública do aplicativo"
         required: true
         type: string
-        default: "1.1.9"
+        default: "1.2.0"
 
 permissions:
   contents: read
@@ -24,14 +18,14 @@ concurrency:
 
 jobs:
   signed-release:
-    name: Build and verify signed Garcia 1.1.9 APK
+    name: Build and verify signed Garcia 1.2.0 APK
     runs-on: ubuntu-latest
     env:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       FACEBOOK_CLIENT_TOKEN: ${{ secrets.FACEBOOK_CLIENT_TOKEN }}
-      VERSION_NAME: ${{ inputs.version_name || '1.1.9' }}
+      VERSION_NAME: ${{ inputs.version_name || '1.2.0' }}
     defaults:
       run:
         working-directory: garcia-android
@@ -124,7 +118,7 @@ jobs:
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: Garcia-1.1.9-signed-run-${{ github.run_number }}
+          name: Garcia-1.2.0-signed-run-${{ github.run_number }}
           path: |
             garcia-android/${{ steps.verify.outputs.apk_path }}
             ${{ runner.temp }}/garcia-apk-sha256.txt
