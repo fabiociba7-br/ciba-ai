@@ -13,7 +13,7 @@ class SpeechFriendlyTextTest {
         """.trimIndent()
 
         assertEquals(
-            "Com base nas informações:. Interesse em Música: Você gosta de Rock N' Roll.. Conexão: Você acompanha a banda Sexofone.",
+            "Com base nas informações. Interesse em Música: Você gosta de Rock N' Roll. Conexão: Você acompanha a banda Sexofone.",
             speechFriendlyText(input)
         )
     }
