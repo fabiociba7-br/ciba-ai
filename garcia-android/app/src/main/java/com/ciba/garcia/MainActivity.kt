@@ -244,6 +244,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        // Voice conversation must always be started explicitly by the user for each app session.
+        getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
         val store = SecureStore(this)
         val client = CibaAiClient(store)
         setContent { GarciaApp(store, client) }
@@ -665,7 +667,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 history.forEach { (role, content) -> snapshot.put(JSONObject().put("role", role).put("content", content)) }
                 val answer = withContext(Dispatchers.IO) { client.chat(snapshot, imagePayload) }
                 history.add("assistant" to answer); persist()
-                if (voiceReplies && voiceAvailable) {
+                if (continuousVoice && voiceReplies && voiceAvailable) {
                     val spoken = voiceOutput.speak(answer)
                     if (!spoken) autoListenPending = false
                 } else autoListenPending = false
@@ -1227,7 +1229,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         TextButton(onClick = { context.startActivity(android.content.Intent(android.speech.tts.TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)) }) { Text("Instalar mais vozes no Android") }
                         Spacer(Modifier.height(8.dp))
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Ler respostas automaticamente", modifier = Modifier.weight(1f), fontSize = 13.sp)
+                            Text("Permitir respostas faladas no modo de voz", modifier = Modifier.weight(1f), fontSize = 13.sp)
                             Switch(checked = voiceReplies, onCheckedChange = { enabled ->
                                 voiceReplies = enabled
                                 context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("enabled", enabled).apply()
@@ -1255,7 +1257,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 else if (whisperModelInfo == null && (!streamingSpeech.isAvailable || streamingUnavailable)) error = "Instale o modelo Whisper ou disponibilize o reconhecimento offline do Android."
                             }, enabled = voiceAvailable && voiceReplies && (whisperModelInfo != null || streamingSpeech.isAvailable) && !busy && !whisperRecording && !streamingListening)
                         }
-                        Text(if (streamingSpeech.isAvailable) "A conversa contínua usa reconhecimento offline do Android e mostra a transcrição enquanto você fala. O áudio não é enviado ao servidor." else "Na conversa contínua, a fala é transcrita localmente pelo Whisper, enviada à Garcia e respondida em voz alta. O áudio bruto não é enviado ao servidor.", color = Muted, fontSize = 11.sp)
+                        Text(if (streamingSpeech.isAvailable) "No modo de conversa por voz, a Garcia responde falando. Fora desse modo, as respostas aparecem somente em texto. O reconhecimento de fala é offline e o áudio não é enviado ao servidor." else "No modo de conversa por voz, a Garcia responde falando. Fora desse modo, as respostas aparecem somente em texto. A fala é transcrita localmente pelo Whisper; o áudio bruto não é enviado ao servidor.", color = Muted, fontSize = 11.sp)
                     } else if (settingsSection == "speech") {
                         Text("Modelo de transcrição local", fontWeight = FontWeight.Bold)
                         Text(whisperStatus, color = Muted, fontSize = 12.sp)
