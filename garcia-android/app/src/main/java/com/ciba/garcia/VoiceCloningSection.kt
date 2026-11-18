@@ -141,7 +141,7 @@ internal fun VoiceCloningSection() {
                 modifier = Modifier.fillMaxWidth()
             ) { Text(if (busy) "Aguarde..." else "Baixar modelos de voz") }
         }
-        if (activeWav != null && modelsReady) {
+        if (activeWav != null && modelsReady && selectedFile == store.currentFile()) {
             OutlinedButton(
                 onClick = {
                     val wav = activeWav
@@ -162,6 +162,21 @@ internal fun VoiceCloningSection() {
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Preparar perfil salvo") }
+        }
+        if (ClonedVoiceRuntime.isReady()) {
+            Button(
+                onClick = {
+                    status = "Gerando uma frase de teste com sua voz..."
+                    ClonedVoiceRuntime.speak(
+                        "Olá! Eu sou a Garcia. Esta é uma demonstração da voz que você escolheu para mim.",
+                        onStarted = {},
+                        onDone = { scope.launch { status = "Teste de voz concluído." } },
+                        onError = { error -> scope.launch { status = "Falha no teste de voz: ${error.message}" } }
+                    )
+                },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Ouvir voz clonada") }
         }
         if (profiles.isNotEmpty()) {
             Text("Perfis de voz salvos", style = MaterialTheme.typography.titleSmall)
