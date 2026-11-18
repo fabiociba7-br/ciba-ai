@@ -22,6 +22,8 @@ internal object VoiceAudioNormalizer {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         val samples = ArrayList<Float>()
+        var rate = 24_000
+        var channels = 1
         try {
             extractor.setDataSource(source.absolutePath)
             var track = -1
@@ -39,8 +41,6 @@ internal object VoiceAudioNormalizer {
             val info = MediaCodec.BufferInfo()
             var inputDone = false
             var outputDone = false
-            var rate = 24_000
-            var channels = 1
             var encoding = android.media.AudioFormat.ENCODING_PCM_16BIT
             while (!outputDone) {
                 if (!inputDone) {
