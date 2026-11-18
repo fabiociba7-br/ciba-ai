@@ -38,6 +38,7 @@ internal fun GarciaBrowserDialog(initialRequest: String? = null, initialTask: St
     var pageError by remember { mutableStateOf("") }
     var task by remember { mutableStateOf("") }
     var initialTaskPending by remember { mutableStateOf(initialTask?.takeIf { it.isNotBlank() }) }
+    var autoReadAfterNavigation by remember { mutableStateOf(false) }
     var taskStatus by remember { mutableStateOf("A Garcia pode pesquisar e interagir com a página aberta.") }
     var webView by remember { mutableStateOf<WebView?>(null) }
 
@@ -88,6 +89,7 @@ internal fun GarciaBrowserDialog(initialRequest: String? = null, initialTask: St
         val fill = Regex("(?i)^preencha\\s+(?:o\\s+)?campo\\s+(.+?)\\s+com\\s+(.+)$").find(command)
         when {
             search != null -> {
+                autoReadAfterNavigation = true
                 val query = search.groupValues[1].trim()
                 val quoted = org.json.JSONObject.quote(query)
                 val script = """(function(){var q=$quoted;var sels=['input[type=search]','input[name*=search i]','input[name*=query i]','input[placeholder*=pesquis i]','input[aria-label*=pesquis i]','input[type=text]'];var el=null;for(var s of sels){el=Array.from(document.querySelectorAll(s)).find(function(x){return x.getClientRects().length&&x.type!=='password'});if(el)break;}if(!el)return 'NO_SEARCH_FIELD';el.focus();var setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;setter.call(el,q);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));var f=el.form;if(f){f.requestSubmit?f.requestSubmit():f.submit();return 'SUBMITTED';}var b=el.closest('form')?.querySelector('button[type=submit],input[type=submit]');if(b){b.click();return 'CLICKED';}return 'FILLED';})()"""
@@ -204,6 +206,10 @@ internal fun GarciaBrowserDialog(initialRequest: String? = null, initialTask: St
                                     initialTaskPending?.let { pending ->
                                         initialTaskPending = null
                                         runTask(pending)
+                                    }
+                                    if (autoReadAfterNavigation) {
+                                        autoReadAfterNavigation = false
+                                        shareCurrentPage("A pesquisa solicitada pelo usuário acabou de carregar. Analise os resultados encontrados, responda com base neles e cite os links disponíveis.")
                                     }
                                 }
                                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
