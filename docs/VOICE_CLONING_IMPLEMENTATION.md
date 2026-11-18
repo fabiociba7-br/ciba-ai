@@ -1,62 +1,58 @@
 # Garcia — on-device voice cloning
 
-Status: implementation design / native-engine integration in progress.
+Status: Android capture, profile management, model download, and native runtime integration are implemented in the feature branch. CI compilation and physical-device inference are still validation gates; do not describe the feature as production-verified until both pass.
 
-## Product behavior
+## User experience
 
 - Ordinary text chat remains text-only.
-- Automatic speech is active only inside an explicitly started voice conversation.
-- A user can import a reference recording, preview the resulting voice, name it, and save it as a local voice profile.
-- The selected profile is used for every spoken Garcia response until the user selects another profile.
-- Importing a new recording creates another profile; it does not overwrite an existing profile.
-- Profiles and reference audio stay in the app's private storage. No voice sample or synthesis request is sent to a cloud API.
-- A profile can only be created from the user's own voice or a recording whose speaker has explicitly authorized cloning.
-- Users can preview, select, rename, and delete profiles. Deleting a profile also deletes its local reference and cached conditioning tensors.
+- Speech output is used only when the user explicitly starts voice conversation.
+- The user can import an audio file or record a sample directly in Garcia.
+- The screen provides a short reading script, playback of the reference sample, profile naming, consent confirmation, and generated-voice preview.
+- Profiles can be selected, renamed, and deleted. A newly saved profile does not overwrite older profiles.
+- The active profile is used by Garcia's voice-only speech output. If a profile is active but its engine is not ready, Garcia does not silently substitute a different voice.
+- Reference audio, normalized WAV, model files, and conditioning cache remain in app-private storage. No recording or synthesis request is uploaded to a cloud API.
+- Profile creation requires the user's own voice or explicit authorization from the recorded speaker.
 
-## Engine research and selection
+## Runtime and native build
 
-### Preferred runtime: chatterbox.cpp
+### Selected engine: chatterbox.cpp
 
 Repository: https://github.com/gianni-cor/chatterbox.cpp
 
-The C++/ggml port provides the full reference-audio conditioning pipeline: VoiceEncoder speaker embedding, S3Tokenizer speech tokens, CAMPPlus embedding, and reference mel features. Its CLI supports the multilingual Chatterbox model, Portuguese (pt), reference-audio conditioning, and saving/reusing the five conditioning tensors through its save-voice / ref-dir options. The README documents Android/Termux OpenCL work and Adreno testing.
+Pinned source commit: `ddca05fb69c2910b0d7b5eae420d360ed98c067b`.
 
-The repository is MIT licensed. The upstream Chatterbox model repository is also MIT licensed but its README now states that the original project is retired research and no longer maintained. Treat the C++ port as a community implementation, pin an exact commit, and validate the runtime before release.
+The Android library module `:chatterbox-runtime` builds this C++ runtime in a separate CMake project. This isolation is intentional: Garcia already builds Whisper.cpp with a different GGML tree, and the Chatterbox fork carries its own pinned GGML revision and patches. Do not merge the two GGML builds into one CMake target graph without a deliberate compatibility review.
 
-### Android ExecuTorch port: reference only
+A Garcia patch extends the persistent public Engine API to support the multilingual T3 path: MTL tokenizer, Portuguese language selection, CFG/min-p/exaggeration parameters, conditional/unconditional logits, and multilingual sampling. It also adds writing and reloading the five cached voice-conditioning tensors. The engine remains resident between utterances; Garcia does not launch the CLI or reload model weights for each sentence.
 
-Repository: https://github.com/acul3/chatterbox-tts-android
+The JNI API exposes model loading, reference conditioning, PCM synthesis, cancellation, and release. Kotlin serializes engine use and plays the returned 24 kHz mono PCM through AudioTrack.
 
-This Android project demonstrates on-device multilingual Chatterbox inference with ExecuTorch, but its current app code loads fixed, precomputed default voice-conditioning tensors. It does not currently expose the complete reference-audio-to-five-conditioning-tensors flow in its Android UI. Do not treat it as a finished voice-cloning implementation.
+### Model files
 
-## Important integration gap
+The app downloads the two Q4_K multilingual GGUF files only after the user taps the download control:
 
-At the selected chatterbox.cpp revision, the public tts_cpp::chatterbox::Engine API rejects multilingual GGUFs and only wires the Turbo T3 path. The CLI does support multilingual T3, including Portuguese and reference-audio conditioning. Garcia must not use the public Engine API for Portuguese until its multilingual inference path is added and tested.
+- `chatterbox-t3-q4_k.gguf`
+- `chatterbox-s3gen-q4_k.gguf`
 
-The native integration therefore needs a Garcia-owned, persistent multilingual engine API (or an equivalent persistent native session) rather than launching the CLI afresh for every sentence. This keeps the model resident, avoids repeatedly loading approximately 1 GB of weights, and lets a selected voice profile be reused efficiently.
+Source: `cstr/chatterbox-GGUF`, pinned revision `c45504bb8d55473a2213db17ec472ed11b69056a`. The listed file sizes are approximately 382 MB and 255 MB. SHA-256 checks are performed against the pinned file hashes before a model is accepted. The app checks available storage, validates GGUF headers, and stores models under app-private files. Models are not bundled into the APK.
 
-## Implementation sequence
+CPU is the current build baseline. OpenCL/Adreno acceleration is not enabled in this Android module yet; do not claim GPU acceleration or real-time performance.
 
-1. Extend the pinned C++ runtime's persistent engine to support the multilingual T3 path already present in its CLI: MTL tokenizer, language selection, CFG/min-p/exaggeration sampling, reference conditioning, and S3Gen synthesis.
-2. Add a stable native API for loading model files, creating a voice profile from a reference WAV, loading a cached profile, synthesizing PCM, cancelling synthesis, and releasing native memory.
-3. Add an Android model manager for the two quantized multilingual GGUF files. Download only after explicit user action, verify file size/hash, support resume/retry, and show storage requirements. Do not bundle multi-hundred-megabyte weights in the APK.
-4. Add a private voice-profile store. A profile contains metadata plus cached conditioning tensors; the original reference audio is retained only as long as needed for profile recreation or user-requested retention.
-5. Add a Compose voice-profile screen: import audio, validate it, name profile, create/cache profile, preview, set active, rename, delete.
-6. Route the existing voice-only TTS path to the active Chatterbox profile. Keep Android TextToSpeech as a fallback when no Chatterbox profile is active or model files are unavailable.
-7. Keep generation serialized per native engine instance, expose progress/cancel/error states, release models on memory pressure, and never block the UI thread.
-8. Add unit tests for profile metadata, file lifecycle, consent confirmation state, and speech text normalization; add Android native compile checks and a physical-device voice-cloning test.
+## Reference audio and profile lifecycle
 
-## Reference audio handling
-
-- Prefer 10–15 seconds of clear, single-speaker speech; reject recordings shorter than the engine's documented minimum.
-- Convert/import to a normalized mono WAV locally. No network upload.
+- Prefer 10–15 seconds of clear, single-speaker speech; the engine requires more than five seconds.
+- Imported audio and microphone recordings are validated locally.
+- Audio is normalized to mono 24 kHz WAV. PCM WAV, M4A/AAC and formats supported by Android MediaExtractor can be decoded locally.
+- The engine extracts speaker embedding, speech tokens, CAMPPlus embedding, prompt tokens, and reference mel features.
+- All five conditioning tensors are cached under the named profile and reused when that profile is selected again.
+- Profile sample, normalized WAV, and conditioning cache live under the app's private `filesDir/voice-profiles/<profile-id>/` directory.
 - Avoid music, overlapping speakers, strong reverberation, clipping, and long silence.
-- Cache the five voice-conditioning tensors once per profile so later synthesis does not need the reference recording again.
-- Keep the audio file and profile cache in app-private storage; do not expose them through public media folders by default.
 
-## Performance and validation gates
+## Validation gates
 
-- The multilingual Q4_0 model pair documented by chatterbox.cpp is approximately 344 MB (T3) + 685 MB (S3Gen), before temporary download files and runtime memory. The app must check available storage and RAM before downloading/loading.
-- CPU inference is the baseline. OpenCL/Adreno acceleration is optional and must be runtime-detected; never assume a device supports the patched OpenCL backend.
-- No claim of usable speed or voice similarity until tested on a physical Android device with the selected models and a consented reference recording.
-- Do not generate an APK in routine CI. Build/test only; create an APK only when explicitly requested or required for device validation.
+- Android unit tests and Kotlin compilation.
+- Separate `:chatterbox-runtime:externalNativeBuildDebug` CMake/NDK build, with no APK task.
+- Confirm the pinned model files load with the pinned C++ engine.
+- Physical-device test: import and record samples, create and reload multiple profiles, synthesize Portuguese, play audio, cancel synthesis, and verify that normal text chat remains silent.
+- Do not claim voice similarity, acceptable latency, or production readiness until the physical-device test passes.
+- Routine CI must not generate APKs. Create an APK only when explicitly requested or required for device validation.
