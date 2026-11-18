@@ -18,6 +18,13 @@ internal object ClonedVoiceRuntime {
 
     fun isReady() = ready.get()
 
+    private fun profileCache(context: Context): File {
+        val prefs = context.getSharedPreferences("garcia_voice_profiles", Context.MODE_PRIVATE)
+        val safeName = prefs.getString("active_name", "voice").orEmpty()
+            .lowercase().replace(Regex("[^a-z0-9_-]"), "-").take(40).ifBlank { "voice" }
+        return File(context.filesDir, "voice-profiles/" + safeName)
+    }
+
     fun activate(context: Context, referenceWav: File, onResult: (Result<Unit>) -> Unit = {}) {
         val models = ChatterboxModelManager.installed(context)
         if (models == null) {
@@ -31,8 +38,9 @@ internal object ClonedVoiceRuntime {
                 synchronized(lock) {
                     ready.set(false)
                     ChatterboxNative.nativeRelease()
+                    val cache = profileCache(context)
                     check(ChatterboxNative.nativeCreate(models.t3.absolutePath, models.s3.absolutePath,
-                        referenceWav.absolutePath, "", "pt")) { "Não foi possível inicializar o Chatterbox." }
+                        referenceWav.absolutePath, cache.absolutePath, "pt")) { "Não foi possível inicializar o Chatterbox." }
                     ready.set(true)
                 }
             }
@@ -44,7 +52,22 @@ internal object ClonedVoiceRuntime {
     fun restore(context: Context) {
         val prefs = context.getSharedPreferences("garcia_voice_profiles", Context.MODE_PRIVATE)
         val wav = prefs.getString("active_wav", null)?.let(::File) ?: return
-        if (wav.isFile && ChatterboxModelManager.installed(context) != null && !ready.get()) activate(context, wav)
+        if (wav.isFile && ChatterboxModelManager.installed(context) != null && !ready.get()) {
+            val models = ChatterboxModelManager.installed(context) ?: return
+            val cache = profileCache(context)
+            if (File(cache, "speaker_emb.npy").isFile && File(cache, "prompt_feat.npy").isFile) {
+                executor.execute {
+                    val result = runCatching {
+                        synchronized(lock) {
+                            check(ChatterboxNative.nativeCreate(models.t3.absolutePath, models.s3.absolutePath,
+                                "", cache.absolutePath, "pt")) { "Não foi possível carregar o perfil de voz salvo." }
+                            ready.set(true)
+                        }
+                    }
+                    if (result.isFailure) ready.set(false)
+                }
+            } else activate(context, wav)
+        }
     }
 
     fun speak(text: String, onStarted: () -> Unit, onDone: () -> Unit, onError: (Throwable) -> Unit) {
