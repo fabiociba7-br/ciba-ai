@@ -149,7 +149,7 @@ internal fun VoiceCloningSection() {
                     if (wav != null) {
                         busy = true
                         status = "Preparando o perfil de voz..."
-                        ClonedVoiceRuntime.activate(context, wav) { result ->
+                        ClonedVoiceRuntime.activate(context, profile.wav) { result ->
                             scope.launch {
                                 busy = false
                                 status = result.fold(
@@ -252,15 +252,15 @@ internal fun VoiceCloningSection() {
                         busy = true
                         status = "Convertendo a amostra para WAV mono..."
                         try {
-                            val wav = withContext(Dispatchers.IO) {
+                            val profile = withContext(Dispatchers.IO) {
                                 val target = File(context.filesDir, "voice-references/profile-${UUID.randomUUID()}.wav")
                                 VoiceAudioNormalizer.toMonoWav(file, target)
                                 store.save(file, profileName, target)
                             }
-                            selectedFile = store.currentFile()
-                            profileName = store.currentName()
+                            selectedFile = profile.sample
+                            profileName = profile.name
                             profiles = store.profiles()
-                            activeWav = wav
+                            activeWav = profile.wav
                             status = "Perfil salvo. A amostra está pronta para o Chatterbox."
                             if (modelsReady) {
                                 status = "Preparando sua voz. Na primeira vez, a análise pode demorar."
