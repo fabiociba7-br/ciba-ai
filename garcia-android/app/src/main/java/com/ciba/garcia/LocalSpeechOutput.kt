@@ -182,8 +182,14 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
         // The chat and the standalone clone test must use the same active
         // profile. Repair a missing legacy selection instead of silently
         // speaking with Android TTS while a clone is saved.
-        val activeClone = VoiceProfileStore(appContext).currentProfile()
-        if (selectedVoice()?.startsWith(CLONE_PREFIX) == true && activeClone != null) {
+        val selectedId = selectedVoice()
+        if (selectedId?.startsWith(CLONE_PREFIX) == true) {
+            val activeClone = VoiceProfileStore(appContext).currentProfile()
+            if (activeClone == null) {
+                onAvailabilityChanged(false, "A voz clonada está selecionada, mas o perfil original não foi encontrado. Reimporte a gravação original; a Garcia não usará outra voz no lugar.")
+                GarciaLog.recordEvent(appContext, "Voz clonada", "Síntese bloqueada: perfil selecionado ausente; nenhuma voz substituta será usada.")
+                return false
+            }
             val expectedId = CLONE_PREFIX + activeClone.id
             if (selectedVoice() != expectedId) {
                 selectedVoiceId = expectedId
