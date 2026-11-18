@@ -1233,7 +1233,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     streamingSpeech.stop(); streamingListening = false
                                     whisperStatus = "Conversa por voz pausada"
                                 } else if (!voiceReplies) error = "Ative também a leitura automática das respostas."
-                                else if (whisperModelInfo == null) error = "Instale o modelo Whisper antes de usar a conversa contínua."
+                                else if (whisperModelInfo == null && !streamingSpeech.isAvailable) error = "Instale o modelo Whisper ou disponibilize o reconhecimento offline do Android."
                             }, enabled = voiceAvailable && voiceReplies && (whisperModelInfo != null || streamingSpeech.isAvailable) && !busy && !whisperRecording && !streamingListening)
                         }
                         Text(if (streamingSpeech.isAvailable) "A conversa contínua usa reconhecimento offline do Android e mostra a transcrição enquanto você fala. O áudio não é enviado ao servidor." else "Na conversa contínua, a fala é transcrita localmente pelo Whisper, enviada à Garcia e respondida em voz alta. O áudio bruto não é enviado ao servidor.", color = Muted, fontSize = 11.sp)
