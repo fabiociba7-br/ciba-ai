@@ -1,0 +1,29 @@
+plugins {
+    id("com.android.library")
+}
+
+android {
+    namespace = "com.ciba.garcia.chatterbox"
+    compileSdk = 36
+
+    defaultConfig {
+        minSdk = 26
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        externalNativeBuild {
+            cmake { cppFlags += listOf("-std=c++17") }
+        }
+    }
+
+    ndkVersion = "27.2.12479018"
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
