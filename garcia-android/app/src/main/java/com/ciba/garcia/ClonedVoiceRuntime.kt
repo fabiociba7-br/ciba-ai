@@ -20,9 +20,8 @@ internal object ClonedVoiceRuntime {
 
     private fun profileCache(context: Context): File {
         val prefs = context.getSharedPreferences("garcia_voice_profiles", Context.MODE_PRIVATE)
-        val safeName = prefs.getString("active_name", "voice").orEmpty()
-            .lowercase().replace(Regex("[^a-z0-9_-]"), "-").take(40).ifBlank { "voice" }
-        return File(context.filesDir, "voice-profiles/" + safeName)
+        val id = prefs.getString("active_profile_id", null) ?: "unassigned"
+        return File(context.filesDir, "voice-profiles/" + id + "/cache")
     }
 
     fun activate(context: Context, referenceWav: File, onResult: (Result<Unit>) -> Unit = {}) {
@@ -39,8 +38,12 @@ internal object ClonedVoiceRuntime {
                     ready.set(false)
                     ChatterboxNative.nativeRelease()
                     val cache = profileCache(context)
+                    val cached = listOf("speaker_emb.npy", "cond_prompt_speech_tokens.npy", "embedding.npy", "prompt_token.npy", "prompt_feat.npy")
+                        .all { File(cache, it).isFile }
                     check(ChatterboxNative.nativeCreate(models.t3.absolutePath, models.s3.absolutePath,
-                        referenceWav.absolutePath, cache.absolutePath, "pt")) { "Não foi possível inicializar o Chatterbox." }
+                        if (cached) "" else referenceWav.absolutePath, cache.absolutePath, "pt")) {
+                        "Não foi possível inicializar o Chatterbox."
+                    }
                     ready.set(true)
                 }
             }
