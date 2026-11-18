@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateKnowledge, isKnowledgeCurrent, recordKnowledgeOutcome, type KnowledgeRecord } from "../src/core/knowledge-learning";
+import { evaluateKnowledge, isKnowledgeCurrent, recordKnowledgeOutcome, learnFromResearch, type ResearchLearningEntry, type ResearchKnowledgeRepository, type KnowledgeRecord } from "../src/core/knowledge-learning";
 
 describe("cumulative knowledge validation", () => {
   it("does not learn a model assertion without evidence", () => {
@@ -46,5 +46,47 @@ describe("cumulative knowledge validation", () => {
     expect(isKnowledgeCurrent(record, "2026-11-18T00:00:00Z")).toBe(true);
     expect(isKnowledgeCurrent(record, "2026-11-20T00:00:00Z")).toBe(false);
     expect(recordKnowledgeOutcome(record, "failure")).toMatchObject({ status: "stale", failureCount: 1 });
+  });
+});
+
+describe("research always creates a cumulative learning record", () => {
+  const source = { reference: "https://docs.example.test/api", title: "Official API docs", publisher: "Example", publishedAt: "2026-11-17T00:00:00Z", accessedAt: "2026-11-18T00:00:00Z", evidenceKind: "official" as const };
+  function repository() {
+    const records: ResearchLearningEntry[] = [];
+    const fingerprints: string[] = [];
+    const store: ResearchKnowledgeRepository = {
+      async findByFingerprint(fingerprint) { return records.find((_, i) => fingerprints[i] === fingerprint) ?? null; },
+      async save(entry, fingerprint) { records.push(entry); fingerprints.push(fingerprint); },
+    };
+    return { store, records };
+  }
+  it("stores a new research result with sources and insights", async () => {
+    const repo = repository();
+    const result = await learnFromResearch({
+      id: "research-1", query: "How does API X work?", topic: "API X",
+      sources: [source], findings: ["Accepts JSON input"], newInsights: ["Can implement a compatible local endpoint"],
+      now: "2026-11-18T12:00:00Z",
+    }, repo.store);
+    expect(result).toMatchObject({ status: "new", confidence: 0.85 });
+    expect(repo.records).toHaveLength(1);
+    expect(repo.records[0].sources[0].reference).toBe(source.reference);
+  });
+  it("retains repeated research events instead of discarding them", async () => {
+    const repo = repository();
+    const input = { id: "research-2", query: "API X", topic: "API X", sources: [source], findings: ["Accepts JSON input"], newInsights: ["Can implement a compatible local endpoint"], now: "2026-11-18T12:00:00Z" };
+    await learnFromResearch(input, repo.store);
+    const repeat = await learnFromResearch({ ...input, id: "research-3" }, repo.store);
+    expect(repeat.status).toBe("duplicate");
+    expect(repo.records).toHaveLength(2);
+  });
+  it("stores uncertain research as a candidate rather than treating it as verified", async () => {
+    const repo = repository();
+    const result = await learnFromResearch({
+      id: "research-4", query: "Community workaround", topic: "Build issue",
+      sources: [{ ...source, evidenceKind: "secondary" }], findings: ["Possible workaround"],
+      newInsights: [], uncertainties: ["Not tested"],
+    }, repo.store);
+    expect(result).toMatchObject({ status: "needs_verification", confidence: 0.45 });
+    expect(repo.records).toHaveLength(1);
   });
 });
