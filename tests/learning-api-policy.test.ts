@@ -50,6 +50,10 @@ describe("API learning internalization", () => {
     expect(evaluateApiInternalization({ ...artifact, derivedKnowledgePermitted: false }))
       .toMatchObject({ status: "blocked", reusableWithoutApi: false });
   });
+  it("blocks assimilation when API terms do not permit derived knowledge", () => {
+    expect(evaluateApiInternalization({ ...artifact, derivedKnowledgePermitted: false }))
+      .toMatchObject({ status: "blocked", reusableWithoutApi: false });
+  });
   it("keeps live-data capabilities marked as external dependencies", () => {
     expect(evaluateApiInternalization({ ...artifact, requiresLiveService: true }))
       .toMatchObject({ status: "external_dependency", reusableWithoutApi: false });
