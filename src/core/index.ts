@@ -56,3 +56,6 @@ export type { KnowledgeDecision, KnowledgeEvidence, KnowledgeEvidenceKind, Knowl
 export { authorizeLearningApiCall, evaluateApiInternalization, evaluateIndependentCapability, validateLearningApiResponse } from "./learning-api-policy";
 export type { LearningApiPricing, LearningApiPolicy, LearningApiUsage, LearningApiDecision, ApiLearningArtifact } from "./learning-api-policy";
 export type { CapabilityBehaviorSpec } from "./learning-api-policy";
+
+export { createD1StorageOutbox } from "./storage-outbox";
+export type { GarciaStorageDestination, StorageOutboxEvent, StorageOutboxInput } from "./storage-outbox";
