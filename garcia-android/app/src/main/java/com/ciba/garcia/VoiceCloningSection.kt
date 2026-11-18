@@ -35,65 +35,11 @@ private fun createVoiceRecorder(context: Context): MediaRecorder =
 
 private const val VOICE_SAMPLE_TEXT = """Olá, meu nome é [seu nome]. Esta é minha voz, falando de forma natural. Hoje o dia está agradável. Gosto de conversar com clareza. Como você está? Que ótima notícia! Agora vou falar um pouco mais devagar e depois no meu ritmo habitual."""
 
-private class VoiceReferenceStore(private val context: Context) {
-    private val directory = File(context.filesDir, "voice-references").apply { mkdirs() }
-    private val prefs = context.getSharedPreferences("garcia_voice_profiles", Context.MODE_PRIVATE)
-
-    fun currentFile(): File? = prefs.getString("active_sample", null)?.let(::File)?.takeIf { it.isFile }
-    fun currentName(): String = prefs.getString("active_name", "").orEmpty()
-    fun currentWav(): File? = prefs.getString("active_wav", null)?.let(::File)?.takeIf { it.isFile }
-
-    fun import(uri: Uri): File {
-        val displayName = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-            if (cursor.moveToFirst()) cursor.getString(0) else null
-        }.orEmpty()
-        val extension = displayName.substringAfterLast(".", "m4a").lowercase().filter { it.isLetterOrDigit() }.take(8).ifBlank { "m4a" }
-        val target = File(directory, "reference-${UUID.randomUUID()}.$extension")
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            FileOutputStream(target).use { output -> input.copyTo(output) }
-        } ?: error("Não foi possível abrir o áudio selecionado.")
-        validate(target)
-        return target
-    }
-
-    fun saveRecording(source: File): File {
-        validate(source)
-        val target = File(directory, "reference-${UUID.randomUUID()}.m4a")
-        source.copyTo(target, overwrite = true)
-        validate(target)
-        return target
-    }
-
-    fun saveProfile(file: File, name: String, wav: File) {
-        require(name.isNotBlank()) { "Digite um nome para o perfil." }
-        prefs.edit().putString("active_sample", file.absolutePath)
-            .putString("active_wav", wav.absolutePath)
-            .putString("active_name", name.trim()).apply()
-    }
-
-    private fun validate(file: File) {
-        require(file.isFile && file.length() > 1024) { "O arquivo de áudio está vazio ou inválido." }
-        require(file.length() <= 50L * 1024 * 1024) { "O áudio deve ter no máximo 50 MB." }
-        val metadata = MediaMetadataRetriever()
-        try {
-            metadata.setDataSource(file.absolutePath)
-            require(metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes") {
-                "O arquivo selecionado não contém uma faixa de áudio."
-            }
-            val duration = metadata.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            require(duration in 5_000L..120_000L) {
-                "Use uma gravação entre 5 segundos e 2 minutos. O ideal para a clonagem é 10 a 15 segundos de fala limpa."
-            }
-        } finally {
-            metadata.release()
-        }
-    }
-}
-
 @Composable
 internal fun VoiceCloningSection() {
     val context = LocalContext.current
-    val store = remember { VoiceReferenceStore(context) }
+    val store = remember { VoiceProfileStore(context) }
+    var profiles by remember { mutableStateOf(store.profiles()) }
     val scope = rememberCoroutineScope()
     var modelsReady by remember { mutableStateOf(ChatterboxModelManager.installed(context) != null) }
     var busy by remember { mutableStateOf(false) }
@@ -218,6 +164,47 @@ internal fun VoiceCloningSection() {
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Preparar perfil salvo") }
         }
+        if (profiles.isNotEmpty()) {
+            Text("Perfis de voz salvos", style = MaterialTheme.typography.titleSmall)
+            profiles.forEach { profile ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = {
+                            store.select(profile)
+                            selectedFile = profile.sample
+                            profileName = profile.name
+                            activeWav = profile.wav
+                            status = "Perfil '${profile.name}' selecionado."
+                            if (modelsReady) {
+                                busy = true
+                                ClonedVoiceRuntime.activate(context, profile.wav) { result ->
+                                    scope.launch {
+                                        busy = false
+                                        status = result.fold(
+                                            { "Voz '${profile.name}' pronta para a conversa." },
+                                            { "Falha ao carregar o perfil: ${it.message}" }
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        enabled = !busy,
+                        modifier = Modifier.weight(1f)
+                    ) { Text(if (store.activeProfileId() == profile.id) "✓ " + profile.name else profile.name) }
+                    OutlinedButton(onClick = {
+                        store.delete(profile.id)
+                        profiles = store.profiles()
+                        if (store.activeProfileId() == null) {
+                            selectedFile = null
+                            activeWav = null
+                            profileName = ""
+                            ClonedVoiceRuntime.release()
+                            status = "Perfil excluído."
+                        }
+                    }, enabled = !busy) { Text("Excluir") }
+                }
+            }
+        }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = { picker.launch(arrayOf("audio/*")) }, enabled = !recording, modifier = Modifier.fillMaxWidth()) {
             Text("Selecionar arquivo de áudio")
@@ -243,6 +230,15 @@ internal fun VoiceCloningSection() {
         selectedFile?.let { file ->
             Text("Amostra: ${file.name} · ${(file.length() / 1024)} KB", fontSize = 12.sp)
             OutlinedTextField(value = profileName, onValueChange = { profileName = it }, label = { Text("Nome do perfil") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            store.activeProfileId()?.let { activeId ->
+                TextButton(onClick = {
+                    runCatching {
+                        store.rename(activeId, profileName)
+                        profiles = store.profiles()
+                        status = "Perfil renomeado."
+                    }.onFailure { status = it.message ?: "Não foi possível renomear o perfil." }
+                }, enabled = profileName.isNotBlank() && !busy) { Text("Renomear perfil") }
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = {
                     runCatching {
@@ -259,9 +255,11 @@ internal fun VoiceCloningSection() {
                             val wav = withContext(Dispatchers.IO) {
                                 val target = File(context.filesDir, "voice-references/profile-${UUID.randomUUID()}.wav")
                                 VoiceAudioNormalizer.toMonoWav(file, target)
-                                store.saveProfile(file, profileName, target)
-                                target
+                                store.save(file, profileName, target)
                             }
+                            selectedFile = store.currentFile()
+                            profileName = store.currentName()
+                            profiles = store.profiles()
                             activeWav = wav
                             status = "Perfil salvo. A amostra está pronta para o Chatterbox."
                             if (modelsReady) {
