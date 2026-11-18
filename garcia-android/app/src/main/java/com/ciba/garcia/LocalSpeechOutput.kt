@@ -153,8 +153,13 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
                     Handler(Looper.getMainLooper()).post {
                         if (!closed && activeUtteranceId == utteranceId) {
                             activeUtteranceId = null
-                            onUtteranceDone()
-                            onAvailabilityChanged(false, "Falha na voz clonada: " + (error.message ?: "erro desconhecido"))
+                            val fallbackStarted = ready && speakInternal(cleanText)
+                            if (fallbackStarted) {
+                                onAvailabilityChanged(true, "A voz clonada falhou nesta resposta; usando temporariamente a voz padrão do Android.")
+                            } else {
+                                onUtteranceDone()
+                                onAvailabilityChanged(false, "Falha na voz clonada: " + (error.message ?: "erro desconhecido"))
+                            }
                         }
                     }
                 }
