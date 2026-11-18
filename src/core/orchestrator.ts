@@ -2,6 +2,7 @@ import { AGENTS } from "./agents/catalog";
 import { buildWorkingContext } from "./memory";
 import { routeTask } from "./router";
 import type { OrchestrationResult } from "./types";
+import type { ExecutableCibaToolRegistry } from "./tools/registry";
 import { parseCibaToolModelProposal, CIBA_TOOL_PROPOSAL_PREFIX } from "./tools/model-proposal";
 import { IDENTITY } from "./orchestrator/identity";
 import { snapshotInput } from "./orchestrator/input-snapshot";
