@@ -42,7 +42,12 @@ if(NOT GGML_SETUP_RESULT EQUAL 0)
     message(FATAL_ERROR "Could not prepare the pinned Chatterbox GGML source")
 endif()
 
-set(GARCIA_MTL_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/patches/garcia-multilingual-engine.patch")
+# The project patch is committed at chatterbox-runtime/patches, outside src/main/cpp.
+set(GARCIA_MTL_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/../../../../patches/garcia-multilingual-engine.patch")
+if(NOT EXISTS "${GARCIA_MTL_PATCH}")
+    message(FATAL_ERROR "Missing Garcia multilingual patch: ${GARCIA_MTL_PATCH}")
+endif()
+
 execute_process(
     COMMAND git apply --check "${GARCIA_MTL_PATCH}"
     WORKING_DIRECTORY ${chatterbox_source_SOURCE_DIR}
