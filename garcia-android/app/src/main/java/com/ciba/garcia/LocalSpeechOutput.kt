@@ -99,7 +99,7 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
         }
         return clonedVoices + androidVoices
     }
-    fun selectedVoice(): String? = preferences.getString("voice_id", selectedVoiceId)
+    fun selectedVoice(): String? = preferences.getString("voice_id", null)
 
     private fun setVoiceInternal(id: String): Boolean {
         val tts = engine ?: return false
