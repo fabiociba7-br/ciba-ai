@@ -53,5 +53,6 @@ export type { DesktopChatterboxAdapterOptions, DesktopChatterboxBridge, DesktopC
 export { evaluateKnowledge, isKnowledgeCurrent, recordKnowledgeOutcome } from "./knowledge-learning";
 export type { KnowledgeDecision, KnowledgeEvidence, KnowledgeEvidenceKind, KnowledgeRecord, KnowledgeStatus } from "./knowledge-learning";
 
-export { authorizeLearningApiCall, evaluateApiInternalization, validateLearningApiResponse } from "./learning-api-policy";
+export { authorizeLearningApiCall, evaluateApiInternalization, evaluateIndependentCapability, validateLearningApiResponse } from "./learning-api-policy";
 export type { LearningApiPricing, LearningApiPolicy, LearningApiUsage, LearningApiDecision, ApiLearningArtifact } from "./learning-api-policy";
+export type { CapabilityBehaviorSpec } from "./learning-api-policy";
