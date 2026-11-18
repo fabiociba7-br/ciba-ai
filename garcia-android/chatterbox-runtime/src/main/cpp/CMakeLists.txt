@@ -3,8 +3,6 @@ project(garcia_chatterbox_runtime LANGUAGES C CXX)
 
 include(FetchContent)
 
-# Isolated CMake project: chatterbox.cpp carries a patched GGML revision
-# and must not share targets with the app's Whisper GGML dependency.
 set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GGML_BUILD_SERVER OFF CACHE BOOL "" FORCE)
@@ -31,8 +29,6 @@ if(NOT chatterbox_source_POPULATED)
     FetchContent_Populate(chatterbox_source)
 endif()
 
-# Upstream keeps GGML as a generated, untracked directory and applies its
-# backend patches through this pinned setup script.
 execute_process(
     COMMAND bash scripts/setup-ggml.sh
     WORKING_DIRECTORY ${chatterbox_source_SOURCE_DIR}
@@ -42,8 +38,8 @@ if(NOT GGML_SETUP_RESULT EQUAL 0)
     message(FATAL_ERROR "Could not prepare the pinned Chatterbox GGML source")
 endif()
 
-# The project patch is committed at chatterbox-runtime/patches, outside src/main/cpp.
-set(GARCIA_MTL_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/../../../../patches/garcia-multilingual-engine.patch")
+# Stored at chatterbox-runtime/patches, three levels above src/main/cpp.
+set(GARCIA_MTL_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/../../../patches/garcia-multilingual-engine.patch")
 if(NOT EXISTS "${GARCIA_MTL_PATCH}")
     message(FATAL_ERROR "Missing Garcia multilingual patch: ${GARCIA_MTL_PATCH}")
 endif()
