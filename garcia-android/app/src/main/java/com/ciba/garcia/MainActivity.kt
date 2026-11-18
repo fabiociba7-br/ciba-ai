@@ -159,6 +159,11 @@ private fun extractBrowserRequest(message: String): String? {
     return sitePhrase?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
 }
 
+private fun extractBrowserTask(message: String): String? {
+    val task = Regex("(?i)\\b(?:pesquise|pesquisar|procure|busque|buscar|encontre)\\s+(?:por\\s+)?(.+)$").find(message)?.groupValues?.get(1)?.trim()
+    return task?.takeIf { it.isNotBlank() }?.let { "pesquise $it" }
+}
+
 private val photoMarker = Regex("\\[\\[foto:(https://[^\\]\\s]+)\\]\\]")
 
 private fun splitPhotos(text: String): Pair<String, List<String>> =
@@ -518,6 +523,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var settingsSection by remember { mutableStateOf("menu") }
     var showBrowser by remember { mutableStateOf(false) }
     var browserStartRequest by remember { mutableStateOf<String?>(null) }
+    var browserStartTask by remember { mutableStateOf<String?>(null) }
     var showLogs by remember { mutableStateOf(false) }
     var showChats by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -655,6 +661,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             val browserRequest = extractBrowserRequest(text)
             if (browserRequest != null) {
                 browserStartRequest = browserRequest
+                browserStartTask = extractBrowserTask(text)
                 showBrowser = true
                 input = ""
                 error = ""
@@ -1369,7 +1376,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     if (showBrowser) {
         GarciaBrowserDialog(
             initialRequest = browserStartRequest,
-            onDismiss = { showBrowser = false; browserStartRequest = null },
+            initialTask = browserStartTask,
+            onDismiss = { showBrowser = false; browserStartRequest = null; browserStartTask = null },
             onSharePage = { pageContext ->
                 input = pageContext
                 attachment = null
