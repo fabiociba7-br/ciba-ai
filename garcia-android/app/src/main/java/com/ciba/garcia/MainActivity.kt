@@ -667,7 +667,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 val webContext = withContext(Dispatchers.IO) {
                     val capability = "INFORMAÇÃO OPERACIONAL: este aplicativo possui conexão com o serviço da Garcia e navegador interno. Você pode receber resultados de pesquisa pública anexados ao contexto desta mensagem. Nunca afirme que não existe acesso à internet de forma absoluta; diferencie pesquisa automática, navegação manual e conexão com o serviço. Se não houver fontes anexadas, não diga que pesquisou."
                     if (GarciaWebSearch.needsSearch(latestQuestion)) {
-                        runCatching { capability + "\\n\\n" + GarciaWebSearch.searchContext(latestQuestion) }
+                        runCatching { capability + "\n\n" + GarciaWebSearch.searchContext(latestQuestion) }
                             .onFailure { GarciaLog.record(context, "Pesquisa na internet", it) }
                             .getOrElse { capability + "\\n\\nA pesquisa automática falhou nesta solicitação: ${it.message ?: "erro de conexão"}. Não afirme que consultou fontes." }
                     } else capability
