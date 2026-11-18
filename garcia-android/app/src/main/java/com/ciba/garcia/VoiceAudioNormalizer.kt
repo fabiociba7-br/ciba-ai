@@ -15,8 +15,7 @@ internal object VoiceAudioNormalizer {
     fun toMonoWav(source: File, destination: File) {
         require(source.isFile && source.length() > 1024) { "Amostra de voz inválida." }
         if (source.extension.equals("wav", true)) {
-            source.copyTo(destination, overwrite = true)
-            validateWav(destination)
+            normalizePcmWav(source, destination)
             return
         }
         val extractor = MediaExtractor()
@@ -92,6 +91,66 @@ internal object VoiceAudioNormalizer {
         } finally {
             runCatching { codec?.stop() }; codec?.release(); extractor.release()
         }
+    }
+
+    private fun normalizePcmWav(source: File, destination: File) {
+        val bytes = source.readBytes()
+        require(bytes.size >= 44) { "Arquivo WAV incompleto." }
+        val data = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        require(String(bytes, 0, 4) == "RIFF" && String(bytes, 8, 4) == "WAVE") { "Arquivo WAV inválido." }
+        var formatCode = 0
+        var channels = 0
+        var rate = 0
+        var bits = 0
+        var pcmData: ByteArray? = null
+        var cursor = 12
+        while (cursor + 8 <= bytes.size) {
+            val id = String(bytes, cursor, 4)
+            val chunkSize = ByteBuffer.wrap(bytes, cursor + 4, 4).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xffffffffL
+            val start = cursor + 8
+            val end = (start.toLong() + chunkSize).coerceAtMost(bytes.size.toLong()).toInt()
+            if (id == "fmt " && end - start >= 16) {
+                formatCode = data.getShort(start).toInt() and 0xffff
+                channels = data.getShort(start + 2).toInt() and 0xffff
+                rate = data.getInt(start + 4)
+                bits = data.getShort(start + 14).toInt() and 0xffff
+            } else if (id == "data") {
+                pcmData = bytes.copyOfRange(start, end)
+            }
+            cursor = end + (chunkSize.toInt() and 1)
+        }
+        val raw = pcmData ?: error("O WAV não contém dados de áudio.")
+        require(formatCode == 1 || formatCode == 3) { "WAV comprimido não é suportado. Envie M4A, MP3 ou PCM WAV." }
+        require(channels in 1..2 && rate > 0 && bits in listOf(8, 16, 24, 32)) { "Formato WAV não suportado." }
+        require(formatCode != 3 || bits == 32) { "WAV float precisa usar 32 bits." }
+        val bytesPerSample = bits / 8
+        val frameBytes = bytesPerSample * channels
+        val frames = raw.size / frameBytes
+        val mono = ArrayList<Float>(frames)
+        val pcm = ByteBuffer.wrap(raw).order(ByteOrder.LITTLE_ENDIAN)
+        repeat(frames) {
+            var sum = 0f
+            repeat(channels) {
+                val sample = when {
+                    formatCode == 3 -> pcm.float
+                    bits == 8 -> ((pcm.get().toInt() and 0xff) - 128) / 128f
+                    bits == 16 -> pcm.short / 32768f
+                    bits == 24 -> {
+                        val a = pcm.get().toInt() and 0xff
+                        val b = pcm.get().toInt() and 0xff
+                        val c = pcm.get().toInt()
+                        val value = (c shl 16) or (b shl 8) or a
+                        (if (value and 0x800000 != 0) value or -0x1000000 else value) / 8388608f
+                    }
+                    else -> (pcm.int.toDouble() / 2147483648.0).toFloat()
+                }
+                sum += sample
+            }
+            mono.add((sum / channels).coerceIn(-1f, 1f))
+        }
+        require(mono.size >= rate * 5) { "A gravação precisa conter pelo menos 5 segundos de fala." }
+        val normalized = if (rate == TARGET_RATE) mono.toFloatArray() else resample(mono, rate, TARGET_RATE)
+        writeWav(destination, normalized)
     }
 
     private fun decode(buffer: ByteBuffer, encoding: Int, channels: Int, out: MutableList<Float>) {
