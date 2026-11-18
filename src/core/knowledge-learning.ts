@@ -49,7 +49,7 @@ export function evaluateKnowledge(input: {
   tested: boolean;
   now?: string;
 }): KnowledgeDecision {
-  const now = input.now ?? new Date().toISOString();
+  const now = input && typeof input === "object" ? input.now ?? new Date().toISOString() : "";
   if (!input || typeof input !== "object" ||
       typeof input.topic !== "string" || !input.topic.trim() || input.topic.length > 200 ||
       typeof input.summary !== "string" || !input.summary.trim() || input.summary.length > MAX_TEXT ||
