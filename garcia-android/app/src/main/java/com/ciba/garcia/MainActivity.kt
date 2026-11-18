@@ -1,5 +1,6 @@
 package com.ciba.garcia
 
+import android.content.Intent
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -841,7 +842,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     }
                 },
                 navigationIcon = { if (connected && !continuousVoice) IconButton(onClick = { scope.launch { drawerState.open() } }) { Icon(Icons.Default.Menu, "Abrir menu") } },
-                actions = { if (connected && !continuousVoice) IconButton(onClick = { newChat() }, enabled = !busy) { Icon(Icons.Default.Edit, "Nova conversa") } },
+                actions = { if (connected && !continuousVoice) { IconButton(onClick = { startActivity(Intent(this@MainActivity, LocalImageGenerationActivity::class.java)) }) { Icon(Icons.Default.PhotoLibrary, "Criar imagem") }; IconButton(onClick = { newChat() }, enabled = !busy) { Icon(Icons.Default.Edit, "Nova conversa") } } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Ink)
             )
         }, bottomBar = {
