@@ -860,6 +860,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 else if (!voiceAvailable) error = "A voz offline em português não está pronta. Configure a voz do Android nas Configurações."
                                 else if (input.isNotBlank() || attachment != null) error = "Envie ou limpe o texto pendente antes de iniciar a conversa por voz."
                                 else {
+                                    streamingUnavailable = false
+                                    streamingTranscript = ""
                                     continuousVoice = true
                                     voiceReplies = true
                                     context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", true).putBoolean("enabled", true).apply()
