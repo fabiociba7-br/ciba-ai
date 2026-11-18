@@ -46,12 +46,11 @@ jobs:
           python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 
       - name: Convert multilingual V3 T3 and S3Gen GGUFs
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         shell: bash
         run: |
           cd /tmp/chatterbox.cpp
           mkdir -p models
+          unset HF_TOKEN
           python scripts/convert-t3-mtl-to-gguf.py --quant q4_0 --out models/chatterbox-t3-mtl-v3-q4_0.gguf
           python scripts/convert-s3gen-to-gguf.py --variant mtl --quant q4_0 --out models/chatterbox-s3gen-mtl-v3-q4_0.gguf
           for f in models/*.gguf; do
