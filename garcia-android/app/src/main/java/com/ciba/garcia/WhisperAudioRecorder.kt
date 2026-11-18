@@ -111,6 +111,6 @@ internal class WhisperAudioRecorder {
     companion object {
         const val SAMPLE_RATE = 16_000
         const val MAX_SECONDS = 120
-        private const val FRAME_SAMPLES = 4_096
+        private const val FRAME_SAMPLES = 1_600
     }
 }
