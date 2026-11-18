@@ -57,7 +57,7 @@ internal fun VoiceCloningSection() {
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            runCatching { store.import(uri) }
+            runCatching { store.importAudio(uri) }
                 .onSuccess { selectedFile = it; profileName = profileName.ifBlank { "Minha voz" }; status = "Áudio importado e validado. Salve o perfil para mantê-lo." }
                 .onFailure { status = it.message ?: "Não foi possível importar o áudio." }
         }
