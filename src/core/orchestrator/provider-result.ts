@@ -1,5 +1,6 @@
 import type { OrchestrationResult } from "../types";
 import { MAX_MODEL_ID_CHARS } from "./input-types";
+import { readPlainRecord } from "./input-validation";
 
 export function snapshotProviderResult(value: unknown): Pick<OrchestrationResult, "text" | "raw" | "provider" | "model"> {
   try {
