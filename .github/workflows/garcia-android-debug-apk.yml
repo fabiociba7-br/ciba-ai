@@ -1,12 +1,6 @@
 name: Garcia Android Debug APK
 
 on:
-  push:
-    branches:
-      - feature/garcia-chatterbox-voice-profiles
-    paths:
-      - "garcia-android/**"
-      - ".github/workflows/garcia-android-debug-apk.yml"
   workflow_dispatch:
 
 permissions:
