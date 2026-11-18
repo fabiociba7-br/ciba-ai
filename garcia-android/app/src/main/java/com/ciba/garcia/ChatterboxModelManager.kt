@@ -89,7 +89,7 @@ internal object ChatterboxModelManager {
                 digest.update(buffer, 0, n)
             }
         }
-        return digest.digest().joinToString("") { "%02x".format(it) }
+        return digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
     }
 
     private fun valid(file: File): Boolean {
