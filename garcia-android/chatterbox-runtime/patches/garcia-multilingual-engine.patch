@@ -152,7 +152,7 @@ diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
 +            if (!step_ok) {
                  throw std::runtime_error("Engine: T3 step eval failed");
              }
-@@ -388,4 +407,10 @@ struct Engine::Impl {
+@@ -388,3 +407,9 @@ struct Engine::Impl {
 -            current = sample_next_token_ex(logits, generated, sp, rng);
 +            current = is_mtl
 +                ? sample_next_token_mtl(logits_cond, logits_uncond, generated, sp, rng, model.hparams.stop_speech_token)
