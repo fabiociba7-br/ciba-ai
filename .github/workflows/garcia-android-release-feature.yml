@@ -20,10 +20,11 @@ permissions:
 
 concurrency:
   group: garcia-android-signed-feature-release
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   signed-release:
+    if: github.event_name == 'workflow_dispatch'
     name: Build and verify signed Garcia release APK
     runs-on: ubuntu-latest
     env:
