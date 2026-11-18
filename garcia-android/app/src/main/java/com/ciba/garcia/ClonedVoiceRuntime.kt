@@ -138,10 +138,17 @@ internal object ClonedVoiceRuntime {
                 check(pcm.any { it.isFinite() && kotlin.math.abs(it) > 0.000001f }) {
                     "O Chatterbox retornou um áudio silencioso ou inválido."
                 }
+                // Convert the engine's 24 kHz float32 output to PCM16. PCM16
+                // is supported by a wider range of Android audio HALs and
+                // avoids devices that initialize float AudioTrack but emit silence.
+                val pcm16 = ShortArray(pcm.size) { index ->
+                    val sample = pcm[index].takeIf { it.isFinite() }?.coerceIn(-1.0f, 1.0f) ?: 0.0f
+                    (sample * 32767.0f).toInt().toShort()
+                }
                 val minimum = AudioTrack.getMinBufferSize(
                     24_000,
                     AudioFormat.CHANNEL_OUT_MONO,
-                    AudioFormat.ENCODING_PCM_FLOAT
+                    AudioFormat.ENCODING_PCM_16BIT
                 )
                 check(minimum > 0) { "O Android não disponibilizou saída de áudio compatível." }
                 audio = AudioTrack.Builder()
@@ -158,7 +165,7 @@ internal object ClonedVoiceRuntime {
                         AudioFormat.Builder()
                             .setSampleRate(24_000)
                             .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                            .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
                             .build()
                     )
                     .setBufferSizeInBytes(minimum.coerceAtLeast(4096) * 2)
@@ -177,9 +184,9 @@ internal object ClonedVoiceRuntime {
                 var offset = 0
                 while (offset < pcm.size && ready.get()) {
                     val count = audio.write(
-                        pcm,
+                        pcm16,
                         offset,
-                        minOf(4096, pcm.size - offset),
+                        minOf(4096, pcm16.size - offset),
                         AudioTrack.WRITE_BLOCKING
                     )
                     if (count <= 0) error("Falha na reprodução de áudio: $count")
