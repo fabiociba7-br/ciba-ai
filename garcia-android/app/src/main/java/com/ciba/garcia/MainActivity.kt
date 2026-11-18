@@ -544,6 +544,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         continuousVoice = false
         context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
         if (whisperRecording) { whisperRecording = false; whisperRecorder.cancel() }
+        streamingSpeech.stop(); streamingListening = false
         voiceOutput.stop()
         persist()
         currentChatId = chat.id
@@ -561,6 +562,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         continuousVoice = false
         context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
         if (whisperRecording) { whisperRecording = false; whisperRecorder.cancel() }
+        streamingSpeech.stop(); streamingListening = false
         voiceOutput.stop()
         persist()
         val chat = GarciaChat(UUID.randomUUID().toString(), "Nova conversa", emptyList())
