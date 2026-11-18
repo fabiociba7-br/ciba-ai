@@ -1,7 +1,7 @@
 diff --git a/include/tts-cpp/chatterbox/engine.h b/include/tts-cpp/chatterbox/engine.h
 --- a/include/tts-cpp/chatterbox/engine.h
 +++ b/include/tts-cpp/chatterbox/engine.h
-@@ -73,6 +73,14 @@ struct EngineOptions {
+@@ -73,5 +73,13 @@ struct EngineOptions {
      float temperature    = 0.8f;
      float repeat_penalty = 1.2f;
  
@@ -18,13 +18,13 @@ diff --git a/include/tts-cpp/chatterbox/engine.h b/include/tts-cpp/chatterbox/en
 diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
 --- a/src/chatterbox_engine.cpp
 +++ b/src/chatterbox_engine.cpp
-@@ -12,6 +12,7 @@
+@@ -12,4 +12,5 @@
  #include "chatterbox_t3_internal.h"
  #include "gpt2_bpe.h"
 +#include "mtl_tokenizer.h"
  #include "npy.h"
  #include "t3_mtl.h"
-@@ -96,22 +97,19 @@ struct Engine::Impl {
+@@ -96,22 +96,14 @@ struct Engine::Impl {
 -        // Engine currently only wires the Turbo (GPT-2 Medium) variant.  An
 -        // MTL (Llama-520M multilingual) GGUF loads cleanly via load_model_gguf
 -        // -> load_model_gguf_mtl (populating model.layers_mtl, leaving
@@ -62,7 +62,7 @@ diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
 +                throw std::runtime_error("Engine: multilingual sampling option is out of range");
 +            }
 +        }
-@@ -340,45 +337,75 @@ struct Engine::Impl {
+@@ -340,56 +340,91 @@ struct Engine::Impl {
      std::vector<int32_t> run_t3(const std::string & text) {
 -        if (model.tok_tokens.empty()) {
 -            throw std::runtime_error(
@@ -100,9 +100,8 @@ diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
          }
  
          chatterbox_sampling_params sp;
--        sp.top_k          = opts.top_k;
+         sp.top_k          = opts.top_k;
 -        sp.top_p          = opts.top_p;
-+        sp.top_k          = opts.top_k;
 +        sp.top_p          = is_mtl ? opts.mtl_top_p : opts.top_p;
          sp.temp           = opts.temperature;
 -        sp.repeat_penalty = opts.repeat_penalty;
