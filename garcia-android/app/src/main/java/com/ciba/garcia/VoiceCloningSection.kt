@@ -136,12 +136,14 @@ internal fun VoiceCloningSection() {
         val file = tempFile
         recorder = null
         recording = false
-        runCatching { active?.stop() }.onFailure { status = "A gravação ficou muito curta ou não pôde ser finalizada." }
+        val stopped = runCatching { active?.stop(); true }.getOrElse { false }
         active?.release()
         if (file != null && file.exists()) {
-            runCatching { store.saveRecording(file) }
-                .onSuccess { selectedFile = it; profileName = profileName.ifBlank { "Minha voz" }; status = "Gravação concluída e validada. Salve o perfil." }
-                .onFailure { status = it.message ?: "Não foi possível validar a gravação." }
+            if (stopped) {
+                runCatching { store.saveRecording(file) }
+                    .onSuccess { selectedFile = it; profileName = profileName.ifBlank { "Minha voz" }; status = "Gravação concluída e validada. Salve o perfil." }
+                    .onFailure { status = it.message ?: "Não foi possível validar a gravação." }
+            } else status = "A gravação ficou muito curta ou não pôde ser finalizada. Tente novamente."
             file.delete()
         }
     }
