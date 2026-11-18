@@ -27,6 +27,10 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.UUID
 
+@Suppress("DEPRECATION")
+private fun createVoiceRecorder(context: Context): MediaRecorder =
+    if (Build.VERSION.SDK_INT >= 31) MediaRecorder(context) else MediaRecorder()
+
 private const val VOICE_SAMPLE_TEXT = """Olá! Meu nome é [diga seu nome]. Esta é uma gravação da minha voz para criar um perfil pessoal na Garcia. Hoje o dia está tranquilo e estou falando em meu ritmo natural. Gosto de conversar com clareza, mas também sei mudar a entonação quando conto uma história, faço uma pergunta ou demonstro entusiasmo. Agora vou falar um pouco mais devagar. Depois, vou falar normalmente, como faço no dia a dia. A Garcia deverá usar esta amostra somente com a minha autorização."""
 
 private class VoiceReferenceStore(private val context: Context) {
@@ -103,7 +107,7 @@ internal fun VoiceCloningSection() {
         if (granted) {
             runCatching {
                 val file = File(context.cacheDir, "voice-capture-${UUID.randomUUID()}.m4a")
-                val active = if (Build.VERSION.SDK_INT >= 31) MediaRecorder(context) else @Suppress("DEPRECATION") MediaRecorder()
+                val active = createVoiceRecorder(context)
                 active.setAudioSource(MediaRecorder.AudioSource.MIC)
                 active.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 active.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
@@ -169,6 +173,7 @@ internal fun VoiceCloningSection() {
         }
         Spacer(Modifier.height(8.dp))
         Text("Texto sugerido para leitura", style = MaterialTheme.typography.titleSmall)
+        Text("Troque \"[diga seu nome]\" pelo seu nome antes de começar.", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
         Text(VOICE_SAMPLE_TEXT, fontSize = 13.sp)
         TextButton(onClick = {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
