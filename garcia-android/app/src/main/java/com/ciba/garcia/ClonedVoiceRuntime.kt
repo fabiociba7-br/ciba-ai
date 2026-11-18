@@ -135,6 +135,9 @@ internal object ClonedVoiceRuntime {
                     ChatterboxNative.nativeSynthesize(text)
                 }
                 check(pcm.isNotEmpty()) { "O Chatterbox não gerou áudio para esta resposta." }
+                check(pcm.any { it.isFinite() && kotlin.math.abs(it) > 0.000001f }) {
+                    "O Chatterbox retornou um áudio silencioso ou inválido."
+                }
                 val minimum = AudioTrack.getMinBufferSize(
                     24_000,
                     AudioFormat.CHANNEL_OUT_MONO,
@@ -144,7 +147,10 @@ internal object ClonedVoiceRuntime {
                 audio = AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder()
-                            .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                            // Route synthesized speech through the normal media/music
+                            // output. USAGE_ASSISTANT can be independently muted on
+                            // Android devices, making successful synthesis inaudible.
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
                             .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                             .build()
                     )
@@ -162,7 +168,11 @@ internal object ClonedVoiceRuntime {
                     "Não foi possível inicializar a saída de áudio da voz clonada."
                 }
                 track = audio
+                audio.setVolume(1.0f)
                 audio.play()
+                check(audio.playState == AudioTrack.PLAYSTATE_PLAYING) {
+                    "O Android não iniciou a reprodução da voz clonada."
+                }
                 onStarted()
                 var offset = 0
                 while (offset < pcm.size && ready.get()) {
