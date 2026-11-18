@@ -56,6 +56,26 @@ internal fun VoiceCloningSection() {
     var consentGiven by remember { mutableStateOf(false) }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
 
+    val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) {
+            scope.launch {
+                busy = true
+                status = "Importando e verificando os modelos Chatterbox..."
+                try {
+                    ChatterboxModelManager.importModels(context, uris) { progress -> downloadProgress = progress }
+                    modelsReady = true
+                    downloadProgress = null
+                    status = "Os dois modelos foram importados e validados. Chatterbox está pronto."
+                } catch (error: Throwable) {
+                    downloadProgress = null
+                    status = error.message ?: "Falha ao importar os modelos."
+                } finally {
+                    busy = false
+                }
+            }
+        }
+    }
+
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching { store.importAudio(uri) }
@@ -161,6 +181,13 @@ internal fun VoiceCloningSection() {
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth()
             ) { Text(if (busy) "Aguarde..." else "Baixar modelos de voz") }
+            Spacer(Modifier.height(6.dp))
+            OutlinedButton(
+                onClick = { modelPicker.launch(arrayOf("*/*")) },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Importar modelos GGUF do aparelho") }
+            Text("Selecione os dois arquivos oficiais (T3 e S3Gen) de uma vez. A Garcia confere o formato e o SHA-256 antes de instalar.", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
         }
         if (activeWav != null && modelsReady && selectedFile == store.currentFile()) {
             OutlinedButton(
