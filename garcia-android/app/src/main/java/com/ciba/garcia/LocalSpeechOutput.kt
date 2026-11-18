@@ -49,9 +49,19 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
         engine = TextToSpeech(appContext) { status ->
             if (closed) return@TextToSpeech
             val tts = engine
-            if (status != TextToSpeech.SUCCESS || tts == null) { ready = false; onAvailabilityChanged(false, "Motor de voz do Android indisponível."); return@TextToSpeech }
+            if (status != TextToSpeech.SUCCESS || tts == null) {
+                ready = false
+                val cloneAvailable = clonedVoiceAvailable()
+                onAvailabilityChanged(cloneAvailable, if (cloneAvailable) "Voz clonada disponível; Android TTS indisponível." else "Motor de voz do Android indisponível.")
+                return@TextToSpeech
+            }
             val voices = supportedVoices(tts)
-            if (voices.isEmpty()) { ready = false; onAvailabilityChanged(false, "Nenhuma voz em português foi encontrada. Instale vozes nas configurações de texto para fala do Android."); return@TextToSpeech }
+            if (voices.isEmpty()) {
+                ready = false
+                val cloneAvailable = clonedVoiceAvailable()
+                onAvailabilityChanged(cloneAvailable, if (cloneAvailable) "Voz clonada disponível; nenhuma voz portuguesa do Android foi encontrada." else "Nenhuma voz em português foi encontrada. Instale vozes nas configurações de texto para fala do Android.")
+                return@TextToSpeech
+            }
             val chosen = voices.firstOrNull { it.name == selectedVoiceId } ?: voices.firstOrNull { it.locale.country == "BR" && !it.isNetworkConnectionRequired } ?: voices.firstOrNull { it.locale.country == "BR" } ?: voices.first()
             tts.language = chosen.locale
             tts.voice = chosen
@@ -68,6 +78,9 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
             onAvailabilityChanged(true, statusLabel(chosen))
         }
     }
+
+    private fun clonedVoiceAvailable(): Boolean =
+        ClonedVoiceRuntime.hasActiveProfile(appContext) && ChatterboxModelManager.installed(appContext) != null
 
     private fun supportedVoices(tts: TextToSpeech) = tts.voices?.filter { it.locale.language == "pt" }?.sortedWith(compareByDescending<android.speech.tts.Voice> { it.locale.country == "BR" }.thenByDescending { !it.isNetworkConnectionRequired }.thenByDescending { it.quality }.thenBy { it.name }).orEmpty()
 
@@ -118,13 +131,10 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
         val cleanText = speechFriendlyText(text).take(MAX_SPOKEN_CHARS)
         if (cleanText.isBlank() || closed) return false
         if (ClonedVoiceRuntime.hasActiveProfile(appContext)) {
-            if (!ClonedVoiceRuntime.isReady() && !ClonedVoiceRuntime.isLoading()) {
-                onAvailabilityChanged(false, "O perfil de voz está salvo, mas o mecanismo Chatterbox ainda não foi preparado.")
-                return false
-            }
             val utteranceId = "garcia-clone-" + System.nanoTime()
             activeUtteranceId = utteranceId
             ClonedVoiceRuntime.speak(
+                appContext,
                 cleanText,
                 onStarted = {
                     Handler(Looper.getMainLooper()).post {
