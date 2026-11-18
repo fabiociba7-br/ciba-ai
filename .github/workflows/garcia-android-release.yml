@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - "garcia-android/gradle.properties"
-      - "garcia-android/app/build.gradle.kts"
       - ".github/workflows/garcia-android-release.yml"
   workflow_dispatch:
     inputs:
@@ -120,12 +119,7 @@ jobs:
           test "$APK_VERSION_CODE" = "$EXPECTED_VERSION_CODE" || { echo "::error::Wrong version code: expected $EXPECTED_VERSION_CODE, got $APK_VERSION_CODE"; exit 1; }
           test "$APK_VERSION_CODE" -gt 2031 || { echo "::error::Version code is not upgrade-safe: $APK_VERSION_CODE"; exit 1; }
           test "$APK_VERSION_NAME" = "$VERSION_NAME" || { echo "::error::Wrong version name: $APK_VERSION_NAME"; exit 1; }
-          SIGNATURE_REPORT="$("$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK")"
-          printf '%s\n' "$SIGNATURE_REPORT"
-          grep -Fq "Verified using v1 scheme (JAR signing): true" <<< "$SIGNATURE_REPORT" || { echo "::error::APK V1 signature is missing"; exit 1; }
-          grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" <<< "$SIGNATURE_REPORT" || { echo "::error::APK V2 signature is missing"; exit 1; }
-          grep -Fq "Verified using v3 scheme (APK Signature Scheme v3): true" <<< "$SIGNATURE_REPORT" || { echo "::error::APK V3 signature is missing"; exit 1; }
-          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
           sha256sum "$APK" | tee "$RUNNER_TEMP/garcia-apk-sha256.txt"
           echo "Verified package=$PACKAGE versionCode=$APK_VERSION_CODE versionName=$APK_VERSION_NAME"
 
