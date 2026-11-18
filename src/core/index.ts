@@ -63,3 +63,6 @@ export type { GarciaStorageDestination, StorageOutboxEvent, StorageOutboxInput }
 
 export { createD1FileCatalog, createR2ObjectStore, validateGarciaFileInput } from "./storage-contracts";
 export type { GarciaStorageProvider, GarciaFileStatus, GarciaFileMetadata, GarciaFileCreateInput, GarciaFileCatalog, GarciaObjectStore, R2BucketLike } from "./storage-contracts";
+
+
+export { createD1ResearchKnowledgeRepository } from "./research-repository";
