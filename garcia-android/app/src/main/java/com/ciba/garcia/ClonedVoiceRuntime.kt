@@ -6,6 +6,9 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import com.ciba.garcia.chatterbox.ChatterboxNative
 import java.io.File
+import java.io.FileInputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -42,28 +45,51 @@ internal object ClonedVoiceRuntime {
         return File(context.filesDir, "voice-profiles/" + id + "/cache")
     }
 
+
+    private fun validateReference(wav: File) {
+        check(wav.isFile && wav.length() > 44L) { "A gravação original da voz não foi encontrada ou está vazia." }
+        FileInputStream(wav).use { input ->
+            val header = ByteArray(44)
+            var offset = 0
+            while (offset < header.size) {
+                val count = input.read(header, offset, header.size - offset)
+                check(count > 0) { "A gravação original está incompleta." }
+                offset += count
+            }
+            check(String(header, 0, 4, Charsets.US_ASCII) == "RIFF" && String(header, 8, 4, Charsets.US_ASCII) == "WAVE") {
+                "A gravação original não está em formato WAV válido."
+            }
+            val data = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
+            check((data.getShort(20).toInt() and 0xffff) == 1 && (data.getShort(22).toInt() and 0xffff) == 1 && data.getInt(24) == 24_000 && (data.getShort(34).toInt() and 0xffff) == 16) {
+                "A gravação original precisa estar em PCM mono, 24 kHz e 16 bits."
+            }
+        }
+    }
+
     /** Must be called while holding lock and from executor. */
     private fun ensureActiveProfileLocked(context: Context) {
         if (ready.get()) return
         val prefs = context.getSharedPreferences("garcia_voice_profiles", Context.MODE_PRIVATE)
         val wav = prefs.getString("active_wav", null)?.let(::File)
             ?: error("Nenhum perfil de voz clonado está selecionado.")
-        check(wav.isFile) { "A gravação de referência do perfil não foi encontrada." }
+        validateReference(wav)
         val models = ChatterboxModelManager.installed(context)
             ?: error("Os modelos Chatterbox não estão instalados. Baixe-os em Clonar minha voz.")
         val cache = profileCache(context)
-        val cached = cacheFiles.all { File(cache, it).isFile }
+        if (cache.exists() && !cache.deleteRecursively()) error("Não foi possível reparar o cache antigo da voz clonada.")
+        check(cache.mkdirs() || cache.isDirectory) { "Não foi possível criar o cache do perfil de voz." }
         ChatterboxNative.nativeRelease()
         check(
             ChatterboxNative.nativeCreate(
                 models.t3.absolutePath,
                 models.s3.absolutePath,
-                if (cached) "" else wav.absolutePath,
+                wav.absolutePath,
                 cache.absolutePath,
                 "pt"
             )
         ) { "Não foi possível inicializar o perfil de voz no Chatterbox." }
         ready.set(true)
+        GarciaLog.recordEvent(context, "Voz clonada", "Perfil carregado diretamente da gravação original; modelos encontrados no armazenamento interno.")
     }
 
     fun activate(context: Context, referenceWav: File, onResult: (Result<Unit>) -> Unit = {}) {
@@ -76,25 +102,28 @@ internal object ClonedVoiceRuntime {
                     check(prefs.getString("active_profile_id", null) != null) {
                         "Selecione e salve um perfil antes de preparar a voz."
                     }
-                    check(referenceWav.isFile) { "A gravação de referência não foi encontrada." }
+                    validateReference(referenceWav)
                     val models = ChatterboxModelManager.installed(context)
                         ?: error("Baixe os modelos Chatterbox antes de preparar a voz.")
                     val cache = profileCache(context)
-                    val cached = cacheFiles.all { File(cache, it).isFile }
+                    if (cache.exists() && !cache.deleteRecursively()) error("Não foi possível limpar o cache antigo da voz.")
+                    check(cache.mkdirs() || cache.isDirectory) { "Não foi possível criar o cache do perfil." }
                     ChatterboxNative.nativeRelease()
                     check(
                         ChatterboxNative.nativeCreate(
                             models.t3.absolutePath,
                             models.s3.absolutePath,
-                            if (cached) "" else referenceWav.absolutePath,
+                            referenceWav.absolutePath,
                             cache.absolutePath,
                             "pt"
                         )
                     ) { "Não foi possível inicializar o Chatterbox." }
                     ready.set(true)
+                    GarciaLog.recordEvent(context, "Voz clonada", "Ativação concluída com a gravação original (" + referenceWav.length() + " bytes).")
                 }
             }
             loading = false
+            result.exceptionOrNull()?.let { GarciaLog.record(context, "Ativação da voz clonada", it) }
             onResult(result)
         }
     }
@@ -106,7 +135,10 @@ internal object ClonedVoiceRuntime {
             val result = runCatching {
                 synchronized(lock) { ensureActiveProfileLocked(context) }
             }
-            if (result.isFailure) ready.set(false)
+            if (result.isFailure) {
+                ready.set(false)
+                result.exceptionOrNull()?.let { GarciaLog.record(context, "Restauração da voz clonada", it) }
+            }
             loading = false
         }
     }
@@ -135,9 +167,20 @@ internal object ClonedVoiceRuntime {
                     ChatterboxNative.nativeSynthesize(text)
                 }
                 check(pcm.isNotEmpty()) { "O Chatterbox não gerou áudio para esta resposta." }
-                check(pcm.any { it.isFinite() && kotlin.math.abs(it) > 0.000001f }) {
-                    "O Chatterbox retornou um áudio silencioso ou inválido."
+                var peak = 0f
+                var sumSquares = 0.0
+                var nonFinite = 0
+                pcm.forEach { sample ->
+                    if (!sample.isFinite()) nonFinite++ else {
+                        peak = maxOf(peak, kotlin.math.abs(sample))
+                        sumSquares += sample.toDouble() * sample.toDouble()
+                    }
                 }
+                val rms = kotlin.math.sqrt(sumSquares / pcm.size).toFloat()
+                check(nonFinite == 0 && peak > 0.00001f && rms > 0.000001f) {
+                    "PCM inválido/silencioso: amostras=" + pcm.size + ", pico=" + peak + ", RMS=" + rms + ", inválidas=" + nonFinite
+                }
+                GarciaLog.recordEvent(context, "Áudio clonado", "PCM gerado: " + pcm.size + " amostras · pico=" + peak + " · RMS=" + rms)
                 // Convert the engine's 24 kHz float32 output to PCM16. PCM16
                 // is supported by a wider range of Android audio HALs and
                 // avoids devices that initialize float AudioTrack but emit silence.
@@ -201,6 +244,7 @@ internal object ClonedVoiceRuntime {
                 audio?.let { runCatching { it.pause(); it.flush(); it.release() } }
                 track?.let { runCatching { it.pause(); it.flush(); it.release() } }
                 track = null
+                GarciaLog.record(context, "Reprodução da voz clonada", error)
                 onError(error)
             }
         }
