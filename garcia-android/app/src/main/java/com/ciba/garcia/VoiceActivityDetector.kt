@@ -10,7 +10,7 @@ internal class VoiceActivityDetector(
     private val sampleRate: Int = 16_000,
     private val speechRmsThreshold: Double = 0.018,
     private val minimumPeakThreshold: Int = 450,
-    private val trailingSilenceMillis: Long = 1_100,
+    private val trailingSilenceMillis: Long = 700,
     private val noSpeechTimeoutMillis: Long = 10_000,
     private val maximumTurnMillis: Long = 120_000
 ) {
