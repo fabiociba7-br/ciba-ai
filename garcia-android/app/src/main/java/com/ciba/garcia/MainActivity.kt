@@ -693,6 +693,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 .put("mime_type", selectedAttachment.mimeType)
                 .put("data", selectedAttachment.base64))
         }
+        browserAutoSendPending = false
         history.add("user" to message); input = ""; attachment = null; awaitingTranscriptReview = false
         autoListenPending = false; persist(); busy = true; error = ""
         scope.launch {
