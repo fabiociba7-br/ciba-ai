@@ -42,17 +42,13 @@ describe("API learning internalization", () => {
     learnedProcedure: "Understand request and conversion formula",
     independentImplementationReference: "src/capabilities/unit-converter.ts",
     validationEvidence: ["test:unit-converter"], independentTestPassed: true,
-    requiresLiveService: false,
+    requiresLiveService: false, status: "learning" as const,
   };
   it("requires a tested independent implementation before reusing without the API", () => {
     expect(evaluateApiInternalization({ ...artifact, independentTestPassed: false }))
       .toMatchObject({ status: "learning", reusableWithoutApi: false });
     expect(evaluateApiInternalization(artifact))
       .toMatchObject({ status: "independent", reusableWithoutApi: true });
-  });
-  it("blocks assimilation when API terms do not permit derived knowledge", () => {
-    expect(evaluateApiInternalization({ ...artifact, derivedKnowledgePermitted: false }))
-      .toMatchObject({ status: "blocked", reusableWithoutApi: false });
   });
   it("blocks assimilation when API terms do not permit derived knowledge", () => {
     expect(evaluateApiInternalization({ ...artifact, derivedKnowledgePermitted: false }))
