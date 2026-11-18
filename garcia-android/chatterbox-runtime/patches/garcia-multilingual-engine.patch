@@ -116,7 +116,7 @@ diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
 +            bpe.load_from_arrays(model.tok_tokens, model.tok_merges);
 +            text_tokens = bpe.tokenize(gpt2_bpe::punc_norm(text));
 +        }
-@@ -355,4 +359,6 @@ struct Engine::Impl {
+@@ -355,5 +359,7 @@ struct Engine::Impl {
          chatterbox_sampling_params sp;
          sp.top_k          = opts.top_k;
 -        sp.top_p          = opts.top_p;
@@ -152,7 +152,7 @@ diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
 +            if (!step_ok) {
                  throw std::runtime_error("Engine: T3 step eval failed");
              }
-@@ -388,2 +407,7 @@ struct Engine::Impl {
+@@ -388,3 +407,10 @@ struct Engine::Impl {
 -            current = sample_next_token_ex(logits, generated, sp, rng);
 +            current = is_mtl
 +                ? sample_next_token_mtl(logits_cond, logits_uncond, generated, sp, rng, model.hparams.stop_speech_token)
