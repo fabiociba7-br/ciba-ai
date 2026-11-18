@@ -42,4 +42,4 @@ jobs:
           gradle-version: "8.13"
 
       - name: Run voice activity unit tests and compile Android sources
-        run: gradle --no-daemon :app:testDebugUnitTest :app:externalNativeBuildDebug :app:compileDebugKotlin
+        run: gradle --no-daemon :app:testDebugUnitTest :app:externalNativeBuildDebug :chatterbox-runtime:externalNativeBuildDebug :app:compileDebugKotlin
