@@ -1100,14 +1100,27 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 if (!user) {
                                     TextButton(
                                         onClick = {
-                                            if (voiceAvailable) voiceOutput.speak(shownText)
-                                            else error = "Configure uma voz offline em português nas configurações de texto para fala do Android."
+                                            if (voiceSpeaking) {
+                                                voiceOutput.stop()
+                                                voiceSpeaking = false
+                                                autoListenPending = false
+                                                whisperStatus = "Reprodução de voz interrompida."
+                                            } else if (voiceAvailable) {
+                                                val started = voiceOutput.speak(shownText)
+                                                if (!started) error = "Não foi possível iniciar a reprodução desta resposta."
+                                            } else {
+                                                error = "Configure uma voz em português nas configurações de texto para fala do Android."
+                                            }
                                         },
                                         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
                                     ) {
-                                        Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Icon(
+                                            if (voiceSpeaking) Icons.Default.Stop else Icons.Default.Mic,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp)
+                                        )
                                         Spacer(Modifier.width(5.dp))
-                                        Text("Ouvir resposta", fontSize = 12.sp)
+                                        Text(if (voiceSpeaking) "Parar de ouvir" else "Ouvir resposta", fontSize = 12.sp)
                                     }
                                     TextButton(
                                         onClick = {
