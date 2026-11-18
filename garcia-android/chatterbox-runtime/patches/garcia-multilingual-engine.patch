@@ -15,6 +15,12 @@ diff --git a/include/tts-cpp/chatterbox/engine.h b/include/tts-cpp/chatterbox/en
 +
      // S3Gen side.  0 = library default (2-step meanflow).
      int cfm_steps = 0;
+@@ -30,6 +30,7 @@ struct EngineOptions {
+     std::string reference_audio;
+     std::string voice_dir;
++    std::string save_voice_dir;
+ 
+     // Backend selection.
 diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
 --- a/src/chatterbox_engine.cpp
 +++ b/src/chatterbox_engine.cpp
@@ -63,6 +69,26 @@ diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
 +            }
 +        }
 @@ -340,56 +340,91 @@ struct Engine::Impl {
+@@ -333,6 +333,24 @@ struct Engine::Impl {
+             }
+         }
++
++        if (!opts.save_voice_dir.empty()) {
++            std::filesystem::create_directories(opts.save_voice_dir);
++            if (!se_data.empty()) npy_save_f32(opts.save_voice_dir + "/speaker_emb.npy",
++                {(int64_t)se_data.size()}, se_data.data());
++            if (!ct_data.empty()) npy_save_i32(opts.save_voice_dir + "/cond_prompt_speech_tokens.npy",
++                {(int64_t)ct_data.size()}, ct_data.data());
++            if (!s3gen_embedding.empty()) npy_save_f32(opts.save_voice_dir + "/embedding.npy",
++                {(int64_t)s3gen_embedding.size()}, s3gen_embedding.data());
++            if (!s3gen_prompt_token.empty()) npy_save_i32(opts.save_voice_dir + "/prompt_token.npy",
++                {(int64_t)s3gen_prompt_token.size()}, s3gen_prompt_token.data());
++            if (!s3gen_prompt_feat.empty() && s3gen_prompt_feat_rows > 0)
++                npy_save_f32(opts.save_voice_dir + "/prompt_feat.npy",
++                    {(int64_t)s3gen_prompt_feat_rows, 80}, s3gen_prompt_feat.data());
++        }
+     }
+ 
      std::vector<int32_t> run_t3(const std::string & text) {
 -        if (model.tok_tokens.empty()) {
 -            throw std::runtime_error(
