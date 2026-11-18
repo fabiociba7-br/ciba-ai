@@ -1,7 +1,7 @@
 diff --git a/include/tts-cpp/chatterbox/engine.h b/include/tts-cpp/chatterbox/engine.h
 --- a/include/tts-cpp/chatterbox/engine.h
 +++ b/include/tts-cpp/chatterbox/engine.h
-@@ -71,2 +71,3 @@ struct EngineOptions {
+@@ -72,2 +72,3 @@ struct EngineOptions {
      std::string reference_audio;
      std::string voice_dir;
 +    std::string save_voice_dir;
@@ -22,13 +22,13 @@ diff --git a/include/tts-cpp/chatterbox/engine.h b/include/tts-cpp/chatterbox/en
 diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
 --- a/src/chatterbox_engine.cpp
 +++ b/src/chatterbox_engine.cpp
-@@ -12,4 +12,5 @@
+@@ -13,4 +13,5 @@
  #include "chatterbox_t3_internal.h"
  #include "gpt2_bpe.h"
 +#include "mtl_tokenizer.h"
  #include "npy.h"
  #include "t3_mtl.h"
-@@ -93,21 +94,12 @@ struct Engine::Impl {
+@@ -94,21 +94,12 @@ struct Engine::Impl {
 -        // Engine currently only wires the Turbo (GPT-2 Medium) variant.  An
 -        // MTL (Llama-520M multilingual) GGUF loads cleanly via load_model_gguf
 -        // -> load_model_gguf_mtl (populating model.layers_mtl, leaving
