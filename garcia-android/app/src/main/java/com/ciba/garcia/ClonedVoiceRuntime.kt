@@ -36,6 +36,7 @@ internal object ClonedVoiceRuntime {
         }
         loading = true
         executor.execute {
+            loading = true
             val result = runCatching {
                 synchronized(lock) {
                     ready.set(false)
@@ -65,6 +66,7 @@ internal object ClonedVoiceRuntime {
                 if (loading) return
                 loading = true
                 executor.execute {
+                    loading = true
                     val result = runCatching {
                         synchronized(lock) {
                             check(ChatterboxNative.nativeCreate(models.t3.absolutePath, models.s3.absolutePath,
