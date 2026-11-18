@@ -30,7 +30,7 @@ diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
 +#include "mtl_tokenizer.h"
  #include "npy.h"
  #include "t3_mtl.h"
-@@ -96,22 +97,10 @@ struct Engine::Impl {
+@@ -96,21 +97,12 @@ struct Engine::Impl {
 -        // Engine currently only wires the Turbo (GPT-2 Medium) variant.  An
 -        // MTL (Llama-520M multilingual) GGUF loads cleanly via load_model_gguf
 -        // -> load_model_gguf_mtl (populating model.layers_mtl, leaving
@@ -64,7 +64,7 @@ diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
 +                throw std::runtime_error("Engine: multilingual sampling option is out of range");
 +            }
 +        }
-@@ -335,5 +330,19 @@ struct Engine::Impl {
+@@ -335,7 +330,22 @@ struct Engine::Impl {
              if (s3gen_prompt_token.empty() && !prompt_token_from_ref.empty()) {
                  s3gen_prompt_token = std::move(prompt_token_from_ref);
              }
@@ -152,7 +152,7 @@ diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
 +            if (!step_ok) {
                  throw std::runtime_error("Engine: T3 step eval failed");
              }
-@@ -388,3 +407,10 @@ struct Engine::Impl {
+@@ -388,4 +407,10 @@ struct Engine::Impl {
 -            current = sample_next_token_ex(logits, generated, sp, rng);
 +            current = is_mtl
 +                ? sample_next_token_mtl(logits_cond, logits_uncond, generated, sp, rng, model.hparams.stop_speech_token)
