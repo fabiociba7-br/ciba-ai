@@ -1,12 +1,10 @@
 diff --git a/include/tts-cpp/chatterbox/engine.h b/include/tts-cpp/chatterbox/engine.h
 --- a/include/tts-cpp/chatterbox/engine.h
 +++ b/include/tts-cpp/chatterbox/engine.h
-@@ -71,4 +71,5 @@ struct EngineOptions {
+@@ -71,2 +71,3 @@ struct EngineOptions {
      std::string reference_audio;
      std::string voice_dir;
 +    std::string save_voice_dir;
- 
-     // Backend selection.
 @@ -73,5 +74,13 @@ struct EngineOptions {
      float temperature    = 0.8f;
      float repeat_penalty = 1.2f;
