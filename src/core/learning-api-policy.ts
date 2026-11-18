@@ -8,7 +8,7 @@ export interface LearningApiPolicy {
   maxCallsPerDay: number;
   maxCallsPerMinute: number;
   maxResponseBytes: number;
-  allowDataRetention: boolean;
+  allowDerivedKnowledge: boolean;
   termsReference: string | null;
 }
 
@@ -25,14 +25,14 @@ export interface LearningApiUsage {
 
 export type LearningApiDecision =
   | { allowed: true; remainingSessionCalls: number; remainingDailyCalls: number; remainingMinuteCalls: number }
-  | { allowed: false; reason: "paid_api_forbidden" | "pricing_unknown" | "provider_disabled" | "invalid_policy" | "session_limit" | "daily_limit" | "minute_limit" | "response_limit" | "retention_not_allowed" };
+  | { allowed: false; reason: "paid_api_forbidden" | "pricing_unknown" | "provider_disabled" | "invalid_policy" | "session_limit" | "daily_limit" | "minute_limit" | "response_limit" };
 
 const MAX_CALLS_PER_SESSION = 20;
 const MAX_CALLS_PER_DAY = 100;
 const MAX_CALLS_PER_MINUTE = 5;
 const MAX_RESPONSE_BYTES = 256_000;
 
-/** Enforces a hard no-paid-API rule and conservative learning quotas before each external call. */
+/** Enforces a hard no-paid-API rule and conservative learning quotas before each external call. Raw responses are not persisted by this policy. */
 export function authorizeLearningApiCall(
   policy: LearningApiPolicy,
   usage: LearningApiUsage,
@@ -53,7 +53,6 @@ export function authorizeLearningApiCall(
   if (policy.pricing === "paid") return { allowed: false, reason: "paid_api_forbidden" };
   if (policy.pricing === "unknown") return { allowed: false, reason: "pricing_unknown" };
   if (!policy.enabled) return { allowed: false, reason: "provider_disabled" };
-  if (!policy.allowDataRetention) return { allowed: false, reason: "retention_not_allowed" };
 
   const sessionLimit = Math.min(policy.maxCallsPerLearningSession, MAX_CALLS_PER_SESSION);
   const dailyLimit = Math.min(policy.maxCallsPerDay, MAX_CALLS_PER_DAY);
@@ -78,6 +77,7 @@ export interface ApiLearningArtifact {
   learnedAt: string;
   documentationReferences: string[];
   termsReference: string;
+  derivedKnowledgePermitted: boolean;
   learnedProcedure: string;
   independentImplementationReference: string | null;
   validationEvidence: string[];
@@ -100,7 +100,7 @@ export function evaluateApiInternalization(
   if (!artifact.termsReference || artifact.documentationReferences.length === 0) {
     return { status: "blocked", reusableWithoutApi: false, reason: "source_or_terms_missing" };
   }
-  if (artifact.requiresLiveService) {
+  if (!artifact.derivedKnowledgePermitted) {\n    return { status: "blocked", reusableWithoutApi: false, reason: "terms_do_not_allow_derived_knowledge" };\n  }\n  if (artifact.requiresLiveService) {
     return { status: "external_dependency", reusableWithoutApi: false, reason: "capability_requires_live_external_service" };
   }
   if (!artifact.independentImplementationReference || !artifact.independentTestPassed ||
