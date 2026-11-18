@@ -55,6 +55,27 @@ if(NOT EXISTS "${GARCIA_GGML_READY}")
     file(WRITE "${GARCIA_GGML_READY}" "ggml=58c38058\n")
 endif()
 
+# Give each ABI/configuration its own writable checkout. Android Gradle
+# configures arm64-v8a and x86_64 in separate CMake processes; they must never
+# apply/reverse the same patch in a shared source tree.
+set(GARCIA_PATCHED_SOURCE "${CMAKE_BINARY_DIR}/garcia-chatterbox-source")
+file(REMOVE_RECURSE "${GARCIA_PATCHED_SOURCE}")
+execute_process(
+    COMMAND git clone --shared --no-hardlinks "${chatterbox_source_SOURCE_DIR}" "${GARCIA_PATCHED_SOURCE}"
+    RESULT_VARIABLE GARCIA_CLONE_RESULT
+)
+if(NOT GARCIA_CLONE_RESULT EQUAL 0)
+    message(FATAL_ERROR "Could not create isolated Chatterbox source for this ABI")
+endif()
+
+# setup-ggml.sh prepares this untracked dependency inside the shared checkout.
+# Copy that prepared dependency into the isolated ABI checkout as well.
+if(EXISTS "${chatterbox_source_SOURCE_DIR}/ggml")
+    file(COPY "${chatterbox_source_SOURCE_DIR}/ggml" DESTINATION "${GARCIA_PATCHED_SOURCE}")
+else()
+    message(FATAL_ERROR "Prepared GGML source is missing from the pinned Chatterbox checkout")
+endif()
+
 set(GARCIA_MTL_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/../../../patches/garcia-multilingual-engine.patch")
 if(NOT EXISTS "${GARCIA_MTL_PATCH}")
     message(FATAL_ERROR "Missing Garcia multilingual patch: ${GARCIA_MTL_PATCH}")
@@ -62,32 +83,22 @@ endif()
 
 execute_process(
     COMMAND git apply --check "${GARCIA_MTL_PATCH}"
-    WORKING_DIRECTORY ${chatterbox_source_SOURCE_DIR}
+    WORKING_DIRECTORY "${GARCIA_PATCHED_SOURCE}"
     RESULT_VARIABLE MTL_PATCH_CHECK
 )
-if(MTL_PATCH_CHECK EQUAL 0)
-    execute_process(
-        COMMAND git apply "${GARCIA_MTL_PATCH}"
-        WORKING_DIRECTORY ${chatterbox_source_SOURCE_DIR}
-        RESULT_VARIABLE MTL_PATCH_RESULT
-    )
-    if(NOT MTL_PATCH_RESULT EQUAL 0)
-        message(FATAL_ERROR "Could not apply Garcia multilingual Engine patch")
-    endif()
-else()
-    # A second configure may encounter a patch already applied by the first.
-    # Accept that state only if the complete patch reverses cleanly.
-    execute_process(
-        COMMAND git apply --reverse --check "${GARCIA_MTL_PATCH}"
-        WORKING_DIRECTORY ${chatterbox_source_SOURCE_DIR}
-        RESULT_VARIABLE MTL_PATCH_REVERSE_CHECK
-    )
-    if(NOT MTL_PATCH_REVERSE_CHECK EQUAL 0)
-        message(FATAL_ERROR "Chatterbox source is neither clean nor fully patched for Garcia MTL")
-    endif()
+if(NOT MTL_PATCH_CHECK EQUAL 0)
+    message(FATAL_ERROR "Garcia multilingual patch does not match the clean pinned Chatterbox source for this ABI")
+endif()
+execute_process(
+    COMMAND git apply "${GARCIA_MTL_PATCH}"
+    WORKING_DIRECTORY "${GARCIA_PATCHED_SOURCE}"
+    RESULT_VARIABLE MTL_PATCH_RESULT
+)
+if(NOT MTL_PATCH_RESULT EQUAL 0)
+    message(FATAL_ERROR "Could not apply Garcia multilingual Engine patch for this ABI")
 endif()
 
-add_subdirectory(${chatterbox_source_SOURCE_DIR} chatterbox-build)
+add_subdirectory(${GARCIA_PATCHED_SOURCE} chatterbox-build
 
 add_library(garcia_chatterbox SHARED chatterbox_jni.cpp)
 target_compile_features(garcia_chatterbox PRIVATE cxx_std_17)
