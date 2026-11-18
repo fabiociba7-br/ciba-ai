@@ -98,7 +98,7 @@ if(NOT MTL_PATCH_RESULT EQUAL 0)
     message(FATAL_ERROR "Could not apply Garcia multilingual Engine patch for this ABI")
 endif()
 
-add_subdirectory(${GARCIA_PATCHED_SOURCE} chatterbox-build
+add_subdirectory(${GARCIA_PATCHED_SOURCE} chatterbox-build)
 
 add_library(garcia_chatterbox SHARED chatterbox_jni.cpp)
 target_compile_features(garcia_chatterbox PRIVATE cxx_std_17)
