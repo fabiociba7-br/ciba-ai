@@ -11,6 +11,7 @@ import android.net.Uri
 import android.util.Base64
 import androidx.activity.result.PickVisualMediaRequest
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.view.WindowManager
@@ -387,15 +388,24 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         scope.launch {
             try {
                 val samples = withContext(Dispatchers.IO) { whisperRecorder.stop() }
+                val audioDurationMs = samples.size * 1000L / WhisperAudioRecorder.SAMPLE_RATE
+                val transcriptionStartedAt = SystemClock.elapsedRealtime()
                 val transcript = try {
                     check(samples.size >= 1600) { "Gravação muito curta. Fale por pelo menos um segundo." }
                     val result = withContext(Dispatchers.Default) {
-                        JSONObject(WhisperNative.nativeTranscribe(samples, "pt", Runtime.getRuntime().availableProcessors().coerceIn(1, 6)))
+                        JSONObject(WhisperNative.nativeTranscribe(samples, "pt", Runtime.getRuntime().availableProcessors().coerceIn(2, 4)))
                     }
                     result.optString("text").trim()
                 } finally {
                     samples.fill(0f)
                 }
+                val inferenceMs = SystemClock.elapsedRealtime() - transcriptionStartedAt
+                val realtimeFactor = if (audioDurationMs > 0) inferenceMs.toDouble() / audioDurationMs else 0.0
+                GarciaLog.recordEvent(
+                    context,
+                    "Desempenho de voz",
+                    "Whisper: áudio ${audioDurationMs}ms · transcrição ${inferenceMs}ms · fator ${"%.2f".format(java.util.Locale.US, realtimeFactor)}x"
+                )
                 check(transcript.isNotBlank()) { "Não foi possível reconhecer fala nessa gravação." }
                 if (continuousVoice) {
                     input = transcript
