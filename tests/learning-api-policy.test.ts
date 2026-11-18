@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authorizeLearningApiCall, evaluateApiInternalization, validateLearningApiResponse, type LearningApiPolicy, type LearningApiUsage } from "../src/core/learning-api-policy";
+import { authorizeLearningApiCall, evaluateApiInternalization, validateLearningApiResponse, evaluateIndependentCapability, type CapabilityBehaviorSpec, type LearningApiPolicy, type LearningApiUsage } from "../src/core/learning-api-policy";
 
 const policy: LearningApiPolicy = {
   providerId: "sample", pricing: "free_tier", enabled: true,
@@ -61,5 +61,29 @@ describe("API learning internalization", () => {
   it("keeps live-data capabilities marked as external dependencies", () => {
     expect(evaluateApiInternalization({ ...artifact, requiresLiveService: true }))
       .toMatchObject({ status: "external_dependency", reusableWithoutApi: false });
+  });
+});
+
+describe("independent capability engineering", () => {
+  const spec: CapabilityBehaviorSpec = {
+    capability: "document-conversion", purpose: "Convert supported documents",
+    inputContract: "Document bytes and target format", outputContract: "Converted document bytes",
+    behaviorRules: ["Preserve text and layout"], examples: [{ input: "sample.docx", expectedOutput: "sample.pdf" }],
+    edgeCases: ["Empty document", "Unsupported format"], implementationPlan: "Implement parsers and renderers",
+    ownApiContract: "POST /convert", ownApiImplementationReference: "src/api/convert.ts",
+    testEvidence: ["test:conversion-contract", "test:edge-cases"], testsPassed: true,
+    dependsOnLiveExternalData: false,
+  };
+  it("does not confuse API invocation knowledge with learning the underlying capability", () => {
+    expect(evaluateIndependentCapability({ ...spec, ownApiContract: null, ownApiImplementationReference: null, testsPassed: false }))
+      .toMatchObject({ learned: true, canBuildOwnApi: true, status: "ready_to_implement" });
+  });
+  it("marks an independently implemented and tested API as validated", () => {
+    expect(evaluateIndependentCapability(spec))
+      .toMatchObject({ learned: true, canBuildOwnApi: true, status: "validated" });
+  });
+  it("recognizes capabilities that fundamentally require live external data", () => {
+    expect(evaluateIndependentCapability({ ...spec, dependsOnLiveExternalData: true }))
+      .toMatchObject({ learned: true, canBuildOwnApi: false, status: "external_dependency" });
   });
 });
