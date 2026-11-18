@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authorizeLearningApiCall, evaluateApiInternalization, type LearningApiPolicy, type LearningApiUsage } from "../src/core/learning-api-policy";
+import { authorizeLearningApiCall, evaluateApiInternalization, validateLearningApiResponse, type LearningApiPolicy, type LearningApiUsage } from "../src/core/learning-api-policy";
 
 const policy: LearningApiPolicy = {
   providerId: "sample", pricing: "free_tier", enabled: true,
@@ -21,6 +21,10 @@ describe("learning API limits", () => {
     expect(authorizeLearningApiCall(policy, usage, 500)).toMatchObject({
       allowed: true, remainingSessionCalls: 2, remainingDailyCalls: 7, remainingMinuteCalls: 1,
     });
+  });
+  it("checks actual response size after receiving the API result", () => {
+    expect(validateLearningApiResponse(500, policy)).toEqual({ accepted: true });
+    expect(validateLearningApiResponse(20_000, policy)).toMatchObject({ accepted: false, reason: "response_limit" });
   });
   it("blocks session, daily, minute and oversized responses", () => {
     expect(authorizeLearningApiCall(policy, { ...usage, callsInSession: 4 })).toMatchObject({ allowed: false, reason: "session_limit" });
