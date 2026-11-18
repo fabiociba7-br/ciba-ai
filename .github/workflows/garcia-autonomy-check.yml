@@ -4,8 +4,10 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "src/core/**"
+      - "src/**"
       - "tests/**"
+      - "migrations/**"
+      - "docs/garcia-*.md"
       - ".github/workflows/garcia-autonomy-check.yml"
 
 permissions:
