@@ -35,6 +35,11 @@ android {
                 storePassword = releaseStorePassword.get()
                 keyAlias = releaseKeyAlias.get()
                 keyPassword = releaseKeyPassword.get()
+                // Keep legacy JAR signing for OEM installer compatibility,
+                // while retaining modern APK signature schemes.
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
