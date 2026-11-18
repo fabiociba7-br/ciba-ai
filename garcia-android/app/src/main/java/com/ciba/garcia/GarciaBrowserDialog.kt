@@ -30,7 +30,7 @@ import java.net.URLEncoder
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-internal fun GarciaBrowserDialog(onDismiss: () -> Unit, onSharePage: (String) -> Unit) {
+internal fun GarciaBrowserDialog(initialRequest: String? = null, onDismiss: () -> Unit, onSharePage: (String) -> Unit) {
     val context = LocalContext.current
     var address by remember { mutableStateOf("https://duckduckgo.com") }
     var pageTitle by remember { mutableStateOf("Pesquisa na internet") }
@@ -129,6 +129,11 @@ internal fun GarciaBrowserDialog(onDismiss: () -> Unit, onSharePage: (String) ->
                 task = ""
             }
         }
+    }
+
+    LaunchedEffect(initialRequest, webView) {
+        val request = initialRequest?.takeIf { it.isNotBlank() }
+        if (request != null && webView != null) navigate(request)
     }
 
     BackHandler(enabled = webView?.canGoBack() == true) { webView?.goBack() }
