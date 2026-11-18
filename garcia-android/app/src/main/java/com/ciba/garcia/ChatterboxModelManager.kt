@@ -18,6 +18,7 @@ internal object ChatterboxModelManager {
     private const val T3_SHA256 = "d886fba27183c3000becb096b1a16526fafb67fe7abd541d7901040931524d16"
     private const val S3_SHA256 = "ab3b5339f7305d5c35641a4db5024bea6aab9e2376d7f42d388a49b0b8d4145f"
     data class Models(val t3: File, val s3: File)
+    data class DownloadProgress(val fileName: String, val downloadedBytes: Long, val totalBytes: Long)
 
     fun installed(context: Context): Models? {
         val dir = File(context.filesDir, "chatterbox-models")
@@ -25,7 +26,7 @@ internal object ChatterboxModelManager {
         return if (verified(t3, T3_SHA256) && verified(s3, S3_SHA256)) Models(t3, s3) else null
     }
 
-    suspend fun download(context: Context, progress: (String) -> Unit = {}): Models = withContext(Dispatchers.IO) {
+    suspend fun download(context: Context, progress: (DownloadProgress) -> Unit = {}): Models = withContext(Dispatchers.IO) {
         val dir = File(context.filesDir, "chatterbox-models").apply { mkdirs() }
         require(StatFs(context.filesDir.absolutePath).availableBytes >= 1_500L * 1024 * 1024) {
             "A Garcia precisa de pelo menos 1,5 GB livres para baixar e preparar os modelos."
@@ -37,7 +38,7 @@ internal object ChatterboxModelManager {
         Models(t3, s3)
     }
 
-    private fun downloadOne(name: String, target: File, expectedSha256: String, progress: (String) -> Unit) {
+    private fun downloadOne(name: String, target: File, expectedSha256: String, progress: (DownloadProgress) -> Unit) {
         val temp = File(target.parentFile, name + ".part")
         temp.delete()
         val connection = (URL(BASE + name + "?download=true").openConnection() as HttpURLConnection).apply {
@@ -48,13 +49,16 @@ internal object ChatterboxModelManager {
             connection.connect()
             require(connection.responseCode in 200..299) { "Falha HTTP " + connection.responseCode + " ao baixar " + name }
             val expected = connection.contentLengthLong
-            progress("Baixando " + name + (if (expected > 0) " (" + (expected / 1048576) + " MB)." else "."))
+            var downloaded = 0L
+            progress(DownloadProgress(name, downloaded, expected))
             connection.inputStream.use { input ->
                 FileOutputStream(temp).use { output ->
                     val buffer = ByteArray(256 * 1024)
                     while (true) {
                         val n = input.read(buffer); if (n < 0) break
                         output.write(buffer, 0, n)
+                        downloaded += n
+                        progress(DownloadProgress(name, downloaded, expected))
                     }
                     output.fd.sync()
                 }
