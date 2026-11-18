@@ -88,7 +88,7 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
             ready = true
             onAvailabilityChanged(
                 true,
-                if (clonedVoiceAvailable()) "Voz clonada selecionada para as respostas; voz Android disponível como reserva."
+                if (clonedVoiceAvailable()) "Voz clonada selecionada para as respostas. A Garcia usará a gravação original pelo Chatterbox, sem substituição automática."
                 else statusLabel(chosen)
             )
         }
