@@ -168,6 +168,7 @@ internal fun VoiceCloningSection() {
                 onClick = {
                     status = "Gerando uma frase de teste com sua voz..."
                     ClonedVoiceRuntime.speak(
+                        context,
                         "Olá! Eu sou a Garcia. Esta é uma demonstração da voz que você escolheu para mim.",
                         onStarted = {},
                         onDone = { scope.launch { status = "Teste de voz concluído." } },
