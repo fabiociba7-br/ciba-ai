@@ -43,6 +43,7 @@ internal fun VoiceCloningSection() {
     val scope = rememberCoroutineScope()
     var modelsReady by remember { mutableStateOf(ChatterboxModelManager.installed(context) != null) }
     var busy by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableStateOf<ChatterboxModelManager.DownloadProgress?>(null) }
     var activeWav by remember { mutableStateOf(store.currentWav()) }
     var selectedFile by remember { mutableStateOf(store.currentFile()) }
     var profileName by remember { mutableStateOf(store.currentName()) }
@@ -121,18 +122,38 @@ internal fun VoiceCloningSection() {
         Text("Crie um perfil com sua própria voz", style = MaterialTheme.typography.titleSmall)
         Text("Importe uma gravação ou grave diretamente pelo microfone. A amostra fica armazenada na área privada da Garcia.", fontSize = 12.sp)
         Spacer(Modifier.height(10.dp))
-        Text(if (modelsReady) "Modelos Chatterbox instalados neste aparelho." else "Para clonar a voz, a Garcia precisa baixar aproximadamente 640 MB de modelos. O download é feito uma vez e fica no armazenamento privado.", fontSize = 12.sp)
+        Text(if (modelsReady) "Modelos Chatterbox instalados neste aparelho." else "Para clonar a voz, a Garcia precisa baixar aproximadamente 1,1 GB de modelos. O download é feito uma vez e fica no armazenamento privado.", fontSize = 12.sp)
         if (!modelsReady) {
+            downloadProgress?.let { progress ->
+                val total = progress.totalBytes
+                val fraction = if (total > 0L) (progress.downloadedBytes.toFloat() / total).coerceIn(0f, 1f) else 0f
+                val downloadedMb = progress.downloadedBytes / (1024f * 1024f)
+                val totalMb = if (total > 0L) total / (1024f * 1024f) else 0L
+                val remainingMb = if (total > 0L) ((total - progress.downloadedBytes).coerceAtLeast(0L) / (1024f * 1024f)) else null
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Text("Baixando ${progress.fileName}", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                    if (total > 0L) {
+                        LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth())
+                        Text("${(fraction * 100).toInt()}% · ${downloadedMb.toInt()} MB de ${totalMb} MB", fontSize = 12.sp)
+                        Text("Faltam ${remainingMb} MB", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Text("${downloadedMb.toInt()} MB baixados · tamanho total indisponível", fontSize = 12.sp)
+                    }
+                }
+            }
             OutlinedButton(
                 onClick = {
                     scope.launch {
                         busy = true
                         status = "Baixando os modelos Chatterbox. Mantenha a Garcia aberta..."
                         try {
-                            ChatterboxModelManager.download(context) { message -> status = message }
+                            ChatterboxModelManager.download(context) { progress -> downloadProgress = progress }
                             modelsReady = true
+                            downloadProgress = null
                             status = "Modelos instalados. Agora salve e prepare sua amostra."
                         } catch (error: Throwable) {
+                            downloadProgress = null
                             status = error.message ?: "Falha ao baixar os modelos."
                         } finally { busy = false }
                     }
