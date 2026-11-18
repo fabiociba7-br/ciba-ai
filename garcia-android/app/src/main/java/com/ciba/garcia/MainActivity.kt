@@ -669,7 +669,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     if (GarciaWebSearch.needsSearch(latestQuestion)) {
                         runCatching { capability + "\n\n" + GarciaWebSearch.searchContext(latestQuestion) }
                             .onFailure { GarciaLog.record(context, "Pesquisa na internet", it) }
-                            .getOrElse { capability + "\\n\\nA pesquisa automática falhou nesta solicitação: ${it.message ?: "erro de conexão"}. Não afirme que consultou fontes." }
+                            .getOrElse { capability + "\n\nA pesquisa automática falhou nesta solicitação: ${it.message ?: "erro de conexão"}. Não afirme que consultou fontes." }
                     } else capability
                 }
                 val snapshot = JSONArray()
@@ -770,7 +770,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     }
                     lines.add("$label: ${item.optInt("requests", 0)} / ${item.optInt("request_limit", 0)} solicitações")
                 }
-                usage = if (buckets.length() == 0) "Ainda não há solicitações contabilizadas hoje.\\nData (UTC): $day" else lines.joinToString("\\n")
+                usage = if (buckets.length() == 0) "Ainda não há solicitações contabilizadas hoje.\nData (UTC): $day" else lines.joinToString("\n")
                 GarciaLog.recordEvent(context, "uso", "Consulta de uso concluída · ${buckets.length()} limites")
             } catch (e: Exception) {
                 usageError = e.message ?: "Não foi possível consultar o uso."
