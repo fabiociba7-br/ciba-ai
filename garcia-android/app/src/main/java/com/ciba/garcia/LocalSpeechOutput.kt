@@ -8,6 +8,31 @@ import android.os.Looper
 
 internal data class GarciaVoiceOption(val id: String, val name: String, val language: String, val offline: Boolean, val quality: Int)
 
+/**
+ * Removes visual Markdown syntax before text is sent to Android TTS.
+ * The visible chat message is never modified.
+ */
+internal fun speechFriendlyText(source: String): String {
+    var text = source
+        .replace(Regex("(?s)```.*?```"), " ")
+        .replace(Regex("!\\[([^]]*)\\]\\([^)]*\\)"), "$1")
+        .replace(Regex("\\[([^]]+)\\]\\([^)]*\\)"), "$1")
+        .replace(Regex("`([^`]+)`"), "$1")
+        .replace(Regex("(?m)^[ \\t]{0,3}#{1,6}[ \\t]*"), "")
+        .replace(Regex("(?m)^[ \\t]*>[ \\t]?"), "")
+        .replace(Regex("(?m)^[ \\t]*[-*+][ \\t]+"), "")
+        .replace(Regex("(?m)^[ \\t]*\\d+[.)][ \\t]+"), "")
+        .replace(Regex("\\*\\*|__|~~|\\*|_"), "")
+        .replace(Regex("[()]"), "")
+        .replace(Regex("<[^>]+>"), "")
+    return text
+        .replace(Regex("[ \\t]*\\n[ \\t]*"), ". ")
+        .replace(Regex("\\s+"), " ")
+        .replace(Regex("([.!?])(?:\\s*[.!?])+"), "$1")
+        .replace(Regex(":\\."), ".")
+        .trim()
+}
+
 /** Android TTS voice selector. Preview never changes the saved voice. */
 internal class LocalSpeechOutput(context: Context, private val onAvailabilityChanged: (Boolean, String) -> Unit, private val onUtteranceDone: () -> Unit = {}, private val onUtteranceStarted: () -> Unit = {}) {
     private val appContext = context.applicationContext
@@ -29,6 +54,8 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
             val chosen = voices.firstOrNull { it.name == selectedVoiceId } ?: voices.firstOrNull { it.locale.country == "BR" && !it.isNetworkConnectionRequired } ?: voices.firstOrNull { it.locale.country == "BR" } ?: voices.first()
             tts.language = chosen.locale
             tts.voice = chosen
+            tts.setSpeechRate(SPEECH_RATE)
+            tts.setPitch(1.0f)
             selectedVoiceId = chosen.name
             preferences.edit().putString("voice_id", chosen.name).apply()
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -52,6 +79,8 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
         val languageResult = tts.setLanguage(voice.locale)
         if (languageResult == TextToSpeech.LANG_MISSING_DATA || languageResult == TextToSpeech.LANG_NOT_SUPPORTED) return false
         tts.voice = voice
+        tts.setSpeechRate(SPEECH_RATE)
+        tts.setPitch(1.0f)
         return true
     }
 
@@ -75,10 +104,11 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
     fun isReady(): Boolean = ready
     private fun speakInternal(text: String): Boolean {
         val tts = engine ?: return false
-        if (!ready || closed || text.isBlank()) return false
+        val cleanText = speechFriendlyText(text)
+        if (!ready || closed || cleanText.isBlank()) return false
         val utteranceId = "garcia-" + System.nanoTime()
         activeUtteranceId = utteranceId
-        val result = tts.speak(text.take(MAX_SPOKEN_CHARS), TextToSpeech.QUEUE_FLUSH, null, utteranceId)
+        val result = tts.speak(cleanText.take(MAX_SPOKEN_CHARS), TextToSpeech.QUEUE_FLUSH, null, utteranceId)
         if (result != TextToSpeech.SUCCESS) { activeUtteranceId = null; previewRestoreVoiceId = null }
         return result == TextToSpeech.SUCCESS
     }
@@ -86,5 +116,8 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
     fun stop() { activeUtteranceId = null; previewRestoreVoiceId = null; onUtteranceDone(); engine?.stop(); selectedVoiceId?.let(::setVoiceInternal) }
     fun shutdown() { closed = true; ready = false; activeUtteranceId = null; engine?.stop(); engine?.shutdown(); engine = null }
     private fun statusLabel(voice: android.speech.tts.Voice) = "Resposta por voz pronta · ${voice.name.replace('_', ' ')}" + if (voice.isNetworkConnectionRequired) " · requer internet" else " · offline"
-    companion object { private const val MAX_SPOKEN_CHARS = 8_000 }
+    companion object {
+        private const val MAX_SPOKEN_CHARS = 8_000
+        private const val SPEECH_RATE = 1.15f
+    }
 }
