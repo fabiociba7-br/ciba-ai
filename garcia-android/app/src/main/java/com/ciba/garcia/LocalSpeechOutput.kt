@@ -75,7 +75,11 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
                 override fun onError(utteranceId: String?) { Handler(Looper.getMainLooper()).post { if (!closed && utteranceId != null && activeUtteranceId == utteranceId) { activeUtteranceId = null; previewRestoreVoiceId = null; onUtteranceDone(); onAvailabilityChanged(false, "Falha na reprodução da resposta por voz.") } } }
             })
             ready = true
-            onAvailabilityChanged(true, statusLabel(chosen))
+            onAvailabilityChanged(
+                true,
+                if (clonedVoiceAvailable()) "Voz clonada selecionada para as respostas; voz Android disponível como reserva."
+                else statusLabel(chosen)
+            )
         }
     }
 
@@ -103,7 +107,11 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
         selectedVoiceId = id
         previewRestoreVoiceId = null
         preferences.edit().putString("voice_id", id).apply()
-        onAvailabilityChanged(true, "Voz selecionada · " + (availableVoices().firstOrNull { it.id == id }?.name ?: "Português"))
+        onAvailabilityChanged(
+            true,
+            if (clonedVoiceAvailable()) "Voz Android definida como reserva; o perfil clonado continua sendo a voz principal."
+            else "Voz selecionada · " + (availableVoices().firstOrNull { it.id == id }?.name ?: "Português")
+        )
         return true
     }
 
