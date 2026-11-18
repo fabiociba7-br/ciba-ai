@@ -13,10 +13,10 @@ import java.net.URL
 internal object ChatterboxModelManager {
     private const val REVISION = "c45504bb8d55473a2213db17ec472ed11b69056a"
     private const val BASE = "https://huggingface.co/cstr/chatterbox-GGUF/resolve/" + REVISION + "/"
-    private const val T3 = "chatterbox-t3-q4_k.gguf"
-    private const val S3 = "chatterbox-s3gen-q4_k.gguf"
-    private const val T3_SHA256 = "a9d673c48bd593e0535c4c4d2c8120a1da017e35e594cab1821ece8350f705c6"
-    private const val S3_SHA256 = "45412c0cca0fda51d56ccad5f2252be439713be6525e513152d0fdbfd3aaa7d0"
+    private const val T3 = "chatterbox-v3-t3-q4_k.gguf"
+    private const val S3 = "chatterbox-v3-s3gen-q4_k.gguf"
+    private const val T3_SHA256 = "fb63d7c53c4f8bb07286d67709c4d4200fa63b4de3476a4558f37964ce8e5aa6"
+    private const val S3_SHA256 = "dce74d3df941abcd1bd19f4a96f8325b89d3b58391f4be5c01c216db56a9a725"
     data class Models(val t3: File, val s3: File)
 
     fun installed(context: Context): Models? {
