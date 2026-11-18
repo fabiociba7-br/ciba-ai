@@ -83,6 +83,16 @@ internal object ChatterboxModelManager {
         Models(File(dir, T3), File(dir, S3))
     }
 
+    suspend fun verifyChecksumFile(context: Context, uri: Uri): String = withContext(Dispatchers.IO) {
+        val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            ?: error("Não foi possível abrir o arquivo SHA256SUMS.")
+        val normalized = text.lowercase()
+        require(normalized.contains(T3_SHA256) && normalized.contains(S3_SHA256)) {
+            "O SHA256SUMS selecionado não contém os hashes oficiais dos dois modelos Chatterbox V3."
+        }
+        "Arquivo SHA256SUMS reconhecido: os dois hashes oficiais conferem."
+    }
+
     suspend fun download(context: Context, progress: (DownloadProgress) -> Unit = {}): Models = withContext(Dispatchers.IO) {
         val dir = File(context.filesDir, "chatterbox-models").apply { mkdirs() }
         require(StatFs(context.filesDir.absolutePath).availableBytes >= 1_500L * 1024 * 1024) {
