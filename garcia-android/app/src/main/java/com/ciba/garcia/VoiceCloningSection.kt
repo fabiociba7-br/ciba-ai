@@ -41,7 +41,11 @@ private class VoiceReferenceStore(private val context: Context) {
     fun currentName(): String = prefs.getString("active_name", "").orEmpty()
 
     fun import(uri: Uri): File {
-        val target = File(directory, "reference-${UUID.randomUUID()}.m4a")
+        val displayName = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) cursor.getString(0) else null
+        }.orEmpty()
+        val extension = displayName.substringAfterLast(".", "m4a").lowercase().filter { it.isLetterOrDigit() }.take(8).ifBlank { "m4a" }
+        val target = File(directory, "reference-${UUID.randomUUID()}.$extension")
         context.contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(target).use { output -> input.copyTo(output) }
         } ?: error("Não foi possível abrir o áudio selecionado.")
@@ -94,6 +98,7 @@ internal fun VoiceCloningSection() {
     var recorder by remember { mutableStateOf<MediaRecorder?>(null) }
     var tempFile by remember { mutableStateOf<File?>(null) }
     var playing by remember { mutableStateOf(false) }
+    var consentGiven by remember { mutableStateOf(false) }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -195,7 +200,11 @@ internal fun VoiceCloningSection() {
                 Button(onClick = {
                     runCatching { store.saveProfile(file, profileName); status = "Perfil '${profileName.trim()}' salvo localmente." }
                         .onFailure { status = it.message ?: "Não foi possível salvar o perfil." }
-                }, enabled = profileName.isNotBlank() && !recording, modifier = Modifier.weight(1f)) { Text("Salvar perfil") }
+                }, enabled = profileName.isNotBlank() && consentGiven && !recording, modifier = Modifier.weight(1f)) { Text("Salvar perfil") }
+            }
+            Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Checkbox(checked = consentGiven, onCheckedChange = { consentGiven = it })
+                Text("Confirmo que esta é minha voz ou que tenho autorização explícita da pessoa gravada.", fontSize = 11.sp)
             }
         }
         Text(status, fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
