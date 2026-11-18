@@ -196,6 +196,7 @@ export async function learnFromResearch(
     status: existing ? "duplicate" : hasStrongEvidence && uncertainties.length === 0 ? "new" : "needs_verification",
     confidence: existing ? existing.confidence : hasStrongEvidence && uncertainties.length === 0 ? 0.85 : sources.length ? 0.45 : 0.1,
   };
-  if (!existing) await repository.save(entry, fingerprint);
+  // Persist every research event, including repeats, so later research can refine or challenge prior knowledge.
+  await repository.save(entry, fingerprint);
   return entry;
 }
