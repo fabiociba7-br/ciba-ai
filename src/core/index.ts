@@ -49,3 +49,6 @@ export type { TextToSpeechRuntime, TextToSpeechConsent, TextToSpeechRequest, Tex
 
 export { createDesktopChatterboxAdapter } from "./desktop-chatterbox-bridge";
 export type { DesktopChatterboxAdapterOptions, DesktopChatterboxBridge, DesktopChatterboxBridgeStatus } from "./desktop-chatterbox-bridge";
+
+export { evaluateKnowledge, isKnowledgeCurrent, recordKnowledgeOutcome } from "./knowledge-learning";
+export type { KnowledgeDecision, KnowledgeEvidence, KnowledgeEvidenceKind, KnowledgeRecord, KnowledgeStatus } from "./knowledge-learning";
