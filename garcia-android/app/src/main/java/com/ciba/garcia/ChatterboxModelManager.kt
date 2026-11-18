@@ -11,7 +11,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 internal object ChatterboxModelManager {
-    private const val REVISION = "c45504b"
+    private const val REVISION = "c45504bb8d55473a2213db17ec472ed11b69056a"
     private const val BASE = "https://huggingface.co/cstr/chatterbox-GGUF/resolve/" + REVISION + "/"
     private const val T3 = "chatterbox-t3-q4_k.gguf"
     private const val S3 = "chatterbox-s3gen-q4_k.gguf"
