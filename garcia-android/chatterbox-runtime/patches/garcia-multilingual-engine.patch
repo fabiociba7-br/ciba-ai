@@ -64,7 +64,7 @@ diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
 +                throw std::runtime_error("Engine: multilingual sampling option is out of range");
 +            }
 +        }
-@@ -335,5 +330,15 @@ struct Engine::Impl {
+@@ -335,5 +330,18 @@ struct Engine::Impl {
              if (s3gen_prompt_token.empty() && !prompt_token_from_ref.empty()) {
                  s3gen_prompt_token = std::move(prompt_token_from_ref);
              }
