@@ -130,7 +130,7 @@ function snapshotToolRuntime(value: unknown): {
   });
 }
 
-function snapshotInput(value: unknown): {
+export function snapshotInput(value: unknown): {
   messages: ChatTurn[];
   model: string;
   maxOutputTokens: number;
