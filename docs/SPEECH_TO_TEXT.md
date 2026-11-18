@@ -1,5 +1,15 @@
 # Transcrição e resposta por voz na Garcia
 
+## Reconhecimento incremental no Android
+
+Na conversação contínua, a Garcia prioriza `SpeechRecognizer.createOnDeviceSpeechRecognizer` (Android 12/API 31 ou superior), quando o serviço offline do aparelho está disponível. O reconhecimento fornece resultados parciais enquanto a pessoa fala e um resultado final ao detectar o encerramento do trecho. A interface mostra o texto parcial; somente o resultado final é enviado à conversa, respeitando a opção de conversação contínua ativada pelo proprietário.
+
+- O app consulta a disponibilidade do reconhecedor estritamente on-device; não usa o reconhecedor remoto como fallback.
+- A intenção solicita português do Brasil, resultados parciais e preferência offline.
+- Se o reconhecedor on-device não estiver disponível, a conversação contínua pode usar o fluxo local do Whisper, desde que o modelo esteja instalado.
+- Se nenhum dos dois mecanismos locais estiver disponível, a conversação por voz não inicia.
+- O reconhecimento incremental depende do serviço e do pacote de idioma offline fornecidos pelo Android/fabricante; disponibilidade e precisão devem ser confirmadas no aparelho.
+
 ## Transcrição local (Whisper.cpp)
 
 A Garcia integra `whisper.cpp` no Android por JNI/NDK. A captura e inferência são locais; não há fallback para reconhecimento remoto.
@@ -12,7 +22,8 @@ A Garcia integra `whisper.cpp` no Android por JNI/NDK. A captura e inferência s
 - Captura pelo microfone somente após ação do usuário e permissão `RECORD_AUDIO`.
 - Limite absoluto de gravação de 120 segundos. O áudio permanece em memória e é apagado após uso.
 - Detector local de atividade de voz: encerra após 1,1 s de silêncio depois da fala; cancela após 10 s sem detectar fala.
-- A pausa final inicia a transcrição automaticamente. O texto aparece no campo para revisão/edição; só é enviado ao Ciba AI após o usuário tocar em Enviar.
+- No modo de ditado, a pausa final inicia a transcrição Whisper; o texto aparece no campo para revisão/edição e só é enviado após o usuário tocar em Enviar.
+- Na conversação contínua, o resultado parcial aparece durante a fala e o resultado final é enviado automaticamente à Garcia, pois esse comportamento faz parte do modo contínuo explicitamente ativado.
 - Iniciar nova captura interrompe imediatamente a reprodução TTS em andamento.
 
 ### Ainda depende de teste no aparelho
