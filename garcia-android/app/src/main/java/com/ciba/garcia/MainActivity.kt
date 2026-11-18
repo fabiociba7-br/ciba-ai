@@ -149,6 +149,16 @@ private fun readTextAttachment(context: Context, uri: Uri): GarciaAttachment {
     return GarciaAttachment(type = "file", name = name.take(120), text = content)
 }
 
+private fun extractBrowserRequest(message: String): String? {
+    val text = message.trim()
+    val hasNavigationVerb = Regex("(?i)\\b(abra|acesse|acessa|entre|visite|navegue|vai para|vá para)\\b").containsMatchIn(text)
+    if (!hasNavigationVerb) return null
+    val url = Regex("(?i)(?:https?://)?(?:www\\.)?[a-z0-9][a-z0-9.-]*\\.[a-z]{2,}(?:/[^\\s]*)?").find(text)?.value
+    if (url != null) return url
+    val sitePhrase = Regex("(?i)\\b(?:abra|acesse|entre|visite|navegue)\\s+(?:no\\s+|na\\s+|em\\s+|o\\s+|a\\s+)?site\\s+(?:da\\s+|do\\s+)?(.+)$").find(text)
+    return sitePhrase?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+}
+
 private val photoMarker = Regex("\\[\\[foto:(https://[^\\]\\s]+)\\]\\]")
 
 private fun splitPhotos(text: String): Pair<String, List<String>> =
@@ -507,6 +517,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var showSettings by remember { mutableStateOf(false) }
     var settingsSection by remember { mutableStateOf("menu") }
     var showBrowser by remember { mutableStateOf(false) }
+    var browserStartRequest by remember { mutableStateOf<String?>(null) }
     var showLogs by remember { mutableStateOf(false) }
     var showChats by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -640,6 +651,16 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         val text = input.trim()
         val selectedAttachment = attachment
         if ((text.isEmpty() && selectedAttachment == null) || busy || !connected) return
+        if (selectedAttachment == null) {
+            val browserRequest = extractBrowserRequest(text)
+            if (browserRequest != null) {
+                browserStartRequest = browserRequest
+                showBrowser = true
+                input = ""
+                error = ""
+                return
+            }
+        }
         val message = when (selectedAttachment?.type) {
             "file" -> buildString {
                 append("Arquivo anexado: ").append(selectedAttachment.name).append("\n\n")
@@ -1347,7 +1368,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
 
     if (showBrowser) {
         GarciaBrowserDialog(
-            onDismiss = { showBrowser = false },
+            initialRequest = browserStartRequest,
+            onDismiss = { showBrowser = false; browserStartRequest = null },
             onSharePage = { pageContext ->
                 input = pageContext
                 attachment = null
