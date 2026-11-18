@@ -318,7 +318,6 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 if (retry && continuousVoice && voiceReplies) {
                     autoListenPending = true
                 } else {
-                    error = message
                     continuousVoice = false
                     context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
                         .edit().putBoolean("continuous", false).apply()
@@ -846,10 +845,11 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 voiceAutoSendPending = false
                                 voiceOutput.stop()
                                 if (whisperRecording) scope.launch(Dispatchers.IO) { whisperRecorder.cancel() }
+                                streamingSpeech.stop(); streamingListening = false
                                 whisperRecording = false
                                 whisperStatus = "Conversa por voz encerrada"
                             } else if (!whisperBusy) {
-                                if (whisperModelInfo == null) error = "Baixe e instale o modelo Whisper nas Configurações antes de iniciar a conversa por voz."
+                                if (whisperModelInfo == null && !streamingSpeech.isAvailable) error = "Este aparelho não oferece reconhecimento offline em tempo real. Baixe e instale o modelo Whisper nas Configurações."
                                 else if (!voiceAvailable) error = "A voz offline em português não está pronta. Configure a voz do Android nas Configurações."
                                 else if (input.isNotBlank() || attachment != null) error = "Envie ou limpe o texto pendente antes de iniciar a conversa por voz."
                                 else {
@@ -861,7 +861,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 }
                             }
                         },
-                        enabled = (!busy && !whisperBusy && whisperModelInfo != null) || continuousVoice,
+                        enabled = (!busy && !whisperBusy && (whisperModelInfo != null || streamingSpeech.isAvailable)) || continuousVoice,
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = if (continuousVoice) Color(0xFFB94F7C) else Blue)
                     ) {
