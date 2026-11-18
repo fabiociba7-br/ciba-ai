@@ -118,7 +118,7 @@ internal fun VoiceCloningSection() {
                 active.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                 active.setAudioEncodingBitRate(128_000)
                 active.setAudioSamplingRate(24_000)
-                active.setMaxDuration(30_000)
+                active.setAudioChannels(1)
                 active.setOutputFile(file.absolutePath)
                 active.prepare()
                 active.start()
