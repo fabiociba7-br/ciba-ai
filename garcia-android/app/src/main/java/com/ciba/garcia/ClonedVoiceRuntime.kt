@@ -55,7 +55,7 @@ internal object ClonedVoiceRuntime {
         if (wav.isFile && ChatterboxModelManager.installed(context) != null && !ready.get()) {
             val models = ChatterboxModelManager.installed(context) ?: return
             val cache = profileCache(context)
-            if (File(cache, "speaker_emb.npy").isFile && File(cache, "prompt_feat.npy").isFile) {
+            if (listOf("speaker_emb.npy", "cond_prompt_speech_tokens.npy", "embedding.npy", "prompt_token.npy", "prompt_feat.npy").all { File(cache, it).isFile }) {
                 executor.execute {
                     val result = runCatching {
                         synchronized(lock) {
