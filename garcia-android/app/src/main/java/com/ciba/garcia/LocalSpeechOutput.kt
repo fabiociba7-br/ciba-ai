@@ -45,6 +45,7 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
     private var previewRestoreVoiceId: String? = null
 
     init {
+        ClonedVoiceRuntime.restore(appContext)
         engine = TextToSpeech(appContext) { status ->
             if (closed) return@TextToSpeech
             val tts = engine
@@ -112,8 +113,50 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
         if (result != TextToSpeech.SUCCESS) { activeUtteranceId = null; previewRestoreVoiceId = null }
         return result == TextToSpeech.SUCCESS
     }
-    fun speak(text: String): Boolean { previewRestoreVoiceId = null; return speakInternal(text) }
-    fun stop() { activeUtteranceId = null; previewRestoreVoiceId = null; onUtteranceDone(); engine?.stop(); selectedVoiceId?.let(::setVoiceInternal) }
+    fun speak(text: String): Boolean {
+        previewRestoreVoiceId = null
+        val cleanText = speechFriendlyText(text).take(MAX_SPOKEN_CHARS)
+        if (cleanText.isBlank() || closed) return false
+        if (ClonedVoiceRuntime.isReady()) {
+            val utteranceId = "garcia-clone-" + System.nanoTime()
+            activeUtteranceId = utteranceId
+            ClonedVoiceRuntime.speak(
+                cleanText,
+                onStarted = {
+                    Handler(Looper.getMainLooper()).post {
+                        if (!closed && activeUtteranceId == utteranceId) onUtteranceStarted()
+                    }
+                },
+                onDone = {
+                    Handler(Looper.getMainLooper()).post {
+                        if (!closed && activeUtteranceId == utteranceId) {
+                            activeUtteranceId = null
+                            onUtteranceDone()
+                        }
+                    }
+                },
+                onError = { error ->
+                    Handler(Looper.getMainLooper()).post {
+                        if (!closed && activeUtteranceId == utteranceId) {
+                            activeUtteranceId = null
+                            onUtteranceDone()
+                            onAvailabilityChanged(false, "Falha na voz clonada: " + (error.message ?: "erro desconhecido"))
+                        }
+                    }
+                }
+            )
+            return true
+        }
+        return speakInternal(cleanText)
+    }
+    fun stop() {
+        activeUtteranceId = null
+        previewRestoreVoiceId = null
+        ClonedVoiceRuntime.stop()
+        onUtteranceDone()
+        engine?.stop()
+        selectedVoiceId?.let(::setVoiceInternal)
+    }
     fun shutdown() { closed = true; ready = false; activeUtteranceId = null; engine?.stop(); engine?.shutdown(); engine = null }
     private fun statusLabel(voice: android.speech.tts.Voice) = "Resposta por voz pronta · ${voice.name.replace('_', ' ')}" + if (voice.isNetworkConnectionRequired) " · requer internet" else " · offline"
     companion object {
