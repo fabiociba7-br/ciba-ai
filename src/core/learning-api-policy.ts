@@ -71,6 +71,21 @@ export function authorizeLearningApiCall(
   };
 }
 
+/** Rejects oversized or invalid responses after the network adapter receives them. */
+export function validateLearningApiResponse(
+  responseBytes: number,
+  policy: LearningApiPolicy,
+): { accepted: true } | { accepted: false; reason: "invalid_response_size" | "response_limit" } {
+  if (!Number.isSafeInteger(responseBytes) || responseBytes < 0) {
+    return { accepted: false, reason: "invalid_response_size" };
+  }
+  if (!policy || !Number.isSafeInteger(policy.maxResponseBytes) || policy.maxResponseBytes < 0 ||
+      responseBytes > Math.min(policy.maxResponseBytes, MAX_RESPONSE_BYTES)) {
+    return { accepted: false, reason: "response_limit" };
+  }
+  return { accepted: true };
+}
+
 export interface ApiLearningArtifact {
   providerId: string;
   capability: string;
