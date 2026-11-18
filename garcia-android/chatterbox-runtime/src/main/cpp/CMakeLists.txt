@@ -29,16 +29,28 @@ if(NOT chatterbox_source_POPULATED)
     FetchContent_Populate(chatterbox_source)
 endif()
 
-execute_process(
-    COMMAND bash scripts/setup-ggml.sh
-    WORKING_DIRECTORY ${chatterbox_source_SOURCE_DIR}
-    RESULT_VARIABLE GGML_SETUP_RESULT
-)
-if(NOT GGML_SETUP_RESULT EQUAL 0)
-    message(FATAL_ERROR "Could not prepare the pinned Chatterbox GGML source")
+# Android Gradle may configure this same FetchContent source more than once
+# (including duplicate ABI configure tasks). Serialize all mutations of the
+# shared source tree and keep GGML setup idempotent across those invocations.
+set(GARCIA_SOURCE_LOCK "${chatterbox_source_SOURCE_DIR}/.garcia-source-setup.lock")
+file(LOCK "${GARCIA_SOURCE_LOCK}" GUARD PROCESS TIMEOUT 180 RESULT_VARIABLE GARCIA_LOCK_RESULT)
+if(NOT GARCIA_LOCK_RESULT STREQUAL "0")
+    message(FATAL_ERROR "Could not lock shared Chatterbox source tree: ${GARCIA_LOCK_RESULT}")
 endif()
 
-# Stored at chatterbox-runtime/patches, three levels above src/main/cpp.
+set(GARCIA_GGML_READY "${chatterbox_source_SOURCE_DIR}/.garcia-ggml-ready")
+if(NOT EXISTS "${GARCIA_GGML_READY}")
+    execute_process(
+        COMMAND bash scripts/setup-ggml.sh
+        WORKING_DIRECTORY ${chatterbox_source_SOURCE_DIR}
+        RESULT_VARIABLE GGML_SETUP_RESULT
+    )
+    if(NOT GGML_SETUP_RESULT EQUAL 0)
+        message(FATAL_ERROR "Could not prepare the pinned Chatterbox GGML source")
+    endif()
+    file(WRITE "${GARCIA_GGML_READY}" "ggml=58c38058\n")
+endif()
+
 set(GARCIA_MTL_PATCH "${CMAKE_CURRENT_SOURCE_DIR}/../../../patches/garcia-multilingual-engine.patch")
 if(NOT EXISTS "${GARCIA_MTL_PATCH}")
     message(FATAL_ERROR "Missing Garcia multilingual patch: ${GARCIA_MTL_PATCH}")
@@ -59,9 +71,15 @@ if(MTL_PATCH_CHECK EQUAL 0)
         message(FATAL_ERROR "Could not apply Garcia multilingual Engine patch")
     endif()
 else()
-    file(READ "${chatterbox_source_SOURCE_DIR}/src/chatterbox_engine.cpp" ENGINE_SOURCE)
-    if(NOT ENGINE_SOURCE MATCHES "multilingual T3 prompt eval failed")
-        message(FATAL_ERROR "Chatterbox source is neither clean nor patched for Garcia MTL")
+    # A second configure may encounter a patch already applied by the first.
+    # Accept that state only if the complete patch reverses cleanly.
+    execute_process(
+        COMMAND git apply --reverse --check "${GARCIA_MTL_PATCH}"
+        WORKING_DIRECTORY ${chatterbox_source_SOURCE_DIR}
+        RESULT_VARIABLE MTL_PATCH_REVERSE_CHECK
+    )
+    if(NOT MTL_PATCH_REVERSE_CHECK EQUAL 0)
+        message(FATAL_ERROR "Chatterbox source is neither clean nor fully patched for Garcia MTL")
     endif()
 endif()
 
