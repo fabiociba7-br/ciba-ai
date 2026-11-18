@@ -1,6 +1,9 @@
 name: Garcia Android Compile Check
 
 on:
+  push:
+    branches:
+      - feature/garcia-chatterbox-voice-profiles
   workflow_dispatch:
 
 permissions:
