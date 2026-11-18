@@ -67,8 +67,10 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
             tts.voice = chosen
             tts.setSpeechRate(SPEECH_RATE)
             tts.setPitch(1.0f)
-            selectedVoiceId = chosen.name
-            preferences.edit().putString("voice_id", chosen.name).apply()
+            if (selectedVoiceId.isNullOrBlank() || selectedVoiceId?.startsWith(CLONE_PREFIX) != true) {
+                selectedVoiceId = chosen.name
+                preferences.edit().putString("voice_id", chosen.name).apply()
+            }
             tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) { Handler(Looper.getMainLooper()).post { if (!closed && utteranceId != null && activeUtteranceId == utteranceId) onUtteranceStarted() } }
                 override fun onDone(utteranceId: String?) { Handler(Looper.getMainLooper()).post { if (!closed && utteranceId != null && activeUtteranceId == utteranceId) { activeUtteranceId = null; previewRestoreVoiceId?.let { restore -> previewRestoreVoiceId = null; setVoiceInternal(restore) }; onUtteranceDone() } } }
@@ -84,7 +86,7 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
     }
 
     private fun clonedVoiceAvailable(): Boolean =
-        ClonedVoiceRuntime.hasActiveProfile(appContext) && ChatterboxModelManager.installed(appContext) != null
+        ClonedVoiceRuntime.hasActiveProfile(appContext)
 
     private fun supportedVoices(tts: TextToSpeech) = tts.voices?.filter { it.locale.language == "pt" }?.sortedWith(compareByDescending<android.speech.tts.Voice> { it.locale.country == "BR" }.thenByDescending { !it.isNetworkConnectionRequired }.thenByDescending { it.quality }.thenBy { it.name }).orEmpty()
 
