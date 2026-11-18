@@ -254,6 +254,7 @@ internal fun VoiceCloningSection() {
                         try {
                             val profile = withContext(Dispatchers.IO) {
                                 val target = File(context.filesDir, "voice-references/profile-${UUID.randomUUID()}.wav")
+                                target.parentFile?.mkdirs()
                                 VoiceAudioNormalizer.toMonoWav(file, target)
                                 store.save(file, profileName, target)
                             }
