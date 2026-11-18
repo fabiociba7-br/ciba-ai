@@ -18,6 +18,17 @@ set(TTS_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(TTS_CPP_INSTALL OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
+# Gradle can invoke CMake configuration more than once for the same ABI.
+# Lock before FetchContent_Populate so clone, GGML setup and patching are all
+# serialized against duplicate configure processes using this build directory.
+set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps" CACHE PATH "Garcia dependency source cache" FORCE)
+file(MAKE_DIRECTORY "${FETCHCONTENT_BASE_DIR}")
+set(GARCIA_SOURCE_LOCK "${FETCHCONTENT_BASE_DIR}/.garcia-source-setup.lock")
+file(LOCK "${GARCIA_SOURCE_LOCK}" GUARD PROCESS TIMEOUT 180 RESULT_VARIABLE GARCIA_LOCK_RESULT)
+if(NOT GARCIA_LOCK_RESULT STREQUAL "0")
+    message(FATAL_ERROR "Could not lock Garcia FetchContent setup: ${GARCIA_LOCK_RESULT}")
+endif()
+
 FetchContent_Declare(
     chatterbox_source
     GIT_REPOSITORY https://github.com/gianni-cor/chatterbox.cpp.git
@@ -27,15 +38,6 @@ FetchContent_Declare(
 FetchContent_GetProperties(chatterbox_source)
 if(NOT chatterbox_source_POPULATED)
     FetchContent_Populate(chatterbox_source)
-endif()
-
-# Android Gradle may configure this same FetchContent source more than once
-# (including duplicate ABI configure tasks). Serialize all mutations of the
-# shared source tree and keep GGML setup idempotent across those invocations.
-set(GARCIA_SOURCE_LOCK "${chatterbox_source_SOURCE_DIR}/.garcia-source-setup.lock")
-file(LOCK "${GARCIA_SOURCE_LOCK}" GUARD PROCESS TIMEOUT 180 RESULT_VARIABLE GARCIA_LOCK_RESULT)
-if(NOT GARCIA_LOCK_RESULT STREQUAL "0")
-    message(FATAL_ERROR "Could not lock shared Chatterbox source tree: ${GARCIA_LOCK_RESULT}")
 endif()
 
 set(GARCIA_GGML_READY "${chatterbox_source_SOURCE_DIR}/.garcia-ggml-ready")
