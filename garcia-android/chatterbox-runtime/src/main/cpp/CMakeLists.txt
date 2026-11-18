@@ -18,10 +18,12 @@ set(TTS_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(TTS_CPP_INSTALL OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
-# Gradle can invoke CMake configuration more than once for the same ABI.
-# Lock before FetchContent_Populate so clone, GGML setup and patching are all
-# serialized against duplicate configure processes using this build directory.
-set(FETCHCONTENT_BASE_DIR "${CMAKE_BINARY_DIR}/_deps" CACHE PATH "Garcia dependency source cache" FORCE)
+# Gradle configures every ABI in a different CMake binary directory, but all
+# ABI builds must share one patched Chatterbox checkout. A per-ABI FetchContent
+# directory allowed independent patch/setup processes to touch different copies
+# and made the patch state nondeterministic. Keep sources in the module's .cxx
+# cache and serialize clone, GGML setup and patching across every ABI.
+set(FETCHCONTENT_BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../.cxx/_deps" CACHE PATH "Garcia shared dependency source cache" FORCE)
 file(MAKE_DIRECTORY "${FETCHCONTENT_BASE_DIR}")
 set(GARCIA_SOURCE_LOCK "${FETCHCONTENT_BASE_DIR}/.garcia-source-setup.lock")
 file(LOCK "${GARCIA_SOURCE_LOCK}" GUARD PROCESS TIMEOUT 180 RESULT_VARIABLE GARCIA_LOCK_RESULT)
