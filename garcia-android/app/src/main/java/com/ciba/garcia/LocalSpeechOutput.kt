@@ -212,9 +212,12 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
                         if (!closed && activeUtteranceId == utteranceId) {
                             activeUtteranceId = null
                             onUtteranceDone()
+                            // A failed clone preview must not disable the entire
+                            // voice selector. Keep settings interactive so the user can
+                            // switch to another profile or Android voice and inspect the error.
                             onAvailabilityChanged(
-                                false,
-                                "A voz clonada não conseguiu gerar esta resposta. A voz padrão do Android não será usada. Erro do Chatterbox: " +
+                                true,
+                                "Falha ao gerar/reproduzir a voz clonada. Você ainda pode selecionar outra voz. Erro do Chatterbox: " +
                                     (error.message ?: error.javaClass.simpleName)
                             )
                         }
