@@ -3,8 +3,9 @@ name: Garcia Android Debug APK
 on:
   push:
     branches:
-      - feature/garcia-android-whisper-native
+      - feature/garcia-chatterbox-voice-profiles
     paths:
+      - "garcia-android/**"
       - ".github/workflows/garcia-android-debug-apk.yml"
   workflow_dispatch:
 
@@ -38,7 +39,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.2.12479018 cmake;3.22.1"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
