@@ -44,6 +44,7 @@ internal fun VoiceCloningSection() {
     var modelsReady by remember { mutableStateOf(ChatterboxModelManager.installed(context) != null) }
     var busy by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableStateOf<ChatterboxModelManager.DownloadProgress?>(null) }
+    var checksumStatus by remember { mutableStateOf("Nenhum SHA256SUMS selecionado.") }
     var activeWav by remember { mutableStateOf(store.currentWav()) }
     var selectedFile by remember { mutableStateOf(store.currentFile()) }
     var profileName by remember { mutableStateOf(store.currentName()) }
@@ -74,6 +75,23 @@ internal fun VoiceCloningSection() {
                 }
             }
         }
+    }
+
+    val checksumPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                busy = true
+                checksumStatus = "Lendo e validando SHA256SUMS..."
+                status = "Validando arquivo de hashes do Chatterbox..."
+                try {
+                    checksumStatus = ChatterboxModelManager.verifyChecksumFile(context, uri)
+                    status = "SHA256SUMS validado com sucesso."
+                } catch (error: Throwable) {
+                    checksumStatus = error.message ?: "Falha ao validar SHA256SUMS."
+                    status = checksumStatus
+                } finally { busy = false }
+            }
+        } else { status = "Seleção do SHA256SUMS cancelada." }
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -140,6 +158,7 @@ internal fun VoiceCloningSection() {
 
     Column(Modifier.fillMaxWidth().heightIn(max = 540.dp).verticalScroll(rememberScrollState())) {
         Text("Crie um perfil com sua própria voz", style = MaterialTheme.typography.titleSmall)
+        if (busy) { Spacer(Modifier.height(6.dp)); Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp); Text(status, fontSize = 12.sp) } }
         Text("Importe uma gravação ou grave diretamente pelo microfone. A amostra fica armazenada na área privada da Garcia.", fontSize = 12.sp)
         Spacer(Modifier.height(10.dp))
         Text(if (modelsReady) "Modelos Chatterbox instalados neste aparelho." else "Para clonar a voz, a Garcia precisa baixar aproximadamente 1,1 GB de modelos. O download é feito uma vez e fica no armazenamento privado.", fontSize = 12.sp)
@@ -183,11 +202,14 @@ internal fun VoiceCloningSection() {
             ) { Text(if (busy) "Aguarde..." else "Baixar modelos de voz") }
             Spacer(Modifier.height(6.dp))
             OutlinedButton(
-                onClick = { modelPicker.launch(arrayOf("*/*")) },
+                onClick = { status = "Abrindo arquivos do aparelho para selecionar os dois modelos GGUF..."; modelPicker.launch(arrayOf("*/*")) },
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Importar modelos GGUF do aparelho") }
-            Text("Selecione os dois arquivos oficiais (T3 e S3Gen) de uma vez. A Garcia confere o formato e o SHA-256 antes de instalar.", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
+            Text("Selecione os dois arquivos oficiais (T3 e S3Gen) juntos. A importação e a verificação serão exibidas aqui.", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
+            OutlinedButton(onClick = { status = "Selecione o arquivo SHA256SUMS baixado junto com os modelos..."; checksumPicker.launch(arrayOf("text/plain", "application/octet-stream")) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Importar / validar SHA256SUMS") }
+            Text(checksumStatus, fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
+            if (busy && downloadProgress != null) { val p = downloadProgress!!; val ratio = if (p.totalBytes > 0L) (p.downloadedBytes.toFloat() / p.totalBytes).coerceIn(0f, 1f) else 0f; Text("Importando ${p.fileName}", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold); if (p.totalBytes > 0L) { LinearProgressIndicator(progress = { ratio }, modifier = Modifier.fillMaxWidth()); Text("${(ratio * 100).toInt()}% · ${p.downloadedBytes / (1024 * 1024)} MB de ${p.totalBytes / (1024 * 1024)} MB · faltam ${(p.totalBytes - p.downloadedBytes).coerceAtLeast(0) / (1024 * 1024)} MB", fontSize = 11.sp) } else { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()); Text("${p.downloadedBytes / (1024 * 1024)} MB importados", fontSize = 11.sp) } }
         }
         if (activeWav != null && modelsReady && selectedFile == store.currentFile()) {
             OutlinedButton(
