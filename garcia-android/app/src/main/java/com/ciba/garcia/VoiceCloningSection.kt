@@ -14,6 +14,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -39,6 +41,7 @@ private class VoiceReferenceStore(private val context: Context) {
 
     fun currentFile(): File? = prefs.getString("active_sample", null)?.let(::File)?.takeIf { it.isFile }
     fun currentName(): String = prefs.getString("active_name", "").orEmpty()
+    fun currentWav(): File? = prefs.getString("active_wav", null)?.let(::File)?.takeIf { it.isFile }
 
     fun import(uri: Uri): File {
         val displayName = context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -61,9 +64,10 @@ private class VoiceReferenceStore(private val context: Context) {
         return target
     }
 
-    fun saveProfile(file: File, name: String) {
+    fun saveProfile(file: File, name: String, wav: File) {
         require(name.isNotBlank()) { "Digite um nome para o perfil." }
         prefs.edit().putString("active_sample", file.absolutePath)
+            .putString("active_wav", wav.absolutePath)
             .putString("active_name", name.trim()).apply()
     }
 
@@ -90,6 +94,10 @@ private class VoiceReferenceStore(private val context: Context) {
 internal fun VoiceCloningSection() {
     val context = LocalContext.current
     val store = remember { VoiceReferenceStore(context) }
+    val scope = rememberCoroutineScope()
+    var modelsReady by remember { mutableStateOf(ChatterboxModelManager.installed(context) != null) }
+    var busy by remember { mutableStateOf(false) }
+    var activeWav by remember { mutableStateOf(store.currentWav()) }
     var selectedFile by remember { mutableStateOf(store.currentFile()) }
     var profileName by remember { mutableStateOf(store.currentName()) }
     var status by remember { mutableStateOf(if (selectedFile != null) "Amostra salva neste aparelho." else "Nenhuma amostra de voz selecionada.") }
@@ -167,6 +175,50 @@ internal fun VoiceCloningSection() {
         Text("Crie um perfil com sua própria voz", style = MaterialTheme.typography.titleSmall)
         Text("Importe uma gravação ou grave diretamente pelo microfone. A amostra fica armazenada na área privada da Garcia.", fontSize = 12.sp)
         Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(10.dp))
+        Text(if (modelsReady) "Modelos Chatterbox instalados neste aparelho." else "Para clonar a voz, a Garcia precisa baixar aproximadamente 640 MB de modelos. O download é feito uma vez e fica no armazenamento privado.", fontSize = 12.sp)
+        if (!modelsReady) {
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        busy = true
+                        status = "Baixando os modelos Chatterbox. Mantenha a Garcia aberta..."
+                        try {
+                            ChatterboxModelManager.download(context) { message -> status = message }
+                            modelsReady = true
+                            status = "Modelos instalados. Agora salve e prepare sua amostra."
+                        } catch (error: Throwable) {
+                            status = error.message ?: "Falha ao baixar os modelos."
+                        } finally { busy = false }
+                    }
+                },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (busy) "Aguarde..." else "Baixar modelos de voz") }
+        }
+        if (activeWav != null && modelsReady) {
+            OutlinedButton(
+                onClick = {
+                    val wav = activeWav
+                    if (wav != null) {
+                        busy = true
+                        status = "Preparando o perfil de voz..."
+                        ClonedVoiceRuntime.activate(context, wav) { result ->
+                            scope.launch {
+                                busy = false
+                                status = result.fold(
+                                    { "Voz clonada e pronta para uso nas conversas por voz." },
+                                    { "Falha ao preparar a voz: ${it.message}" }
+                                )
+                            }
+                        }
+                    }
+                },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Preparar perfil salvo") }
+        }
+        Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = { picker.launch(arrayOf("audio/*")) }, enabled = !recording, modifier = Modifier.fillMaxWidth()) {
             Text("Selecionar arquivo de áudio")
         }
@@ -200,17 +252,44 @@ internal fun VoiceCloningSection() {
                     }.onFailure { status = it.message ?: "Não foi possível reproduzir a amostra." }
                 }, enabled = !recording && !playing, modifier = Modifier.weight(1f)) { Text("Ouvir amostra") }
                 Button(onClick = {
-                    runCatching { store.saveProfile(file, profileName); status = "Perfil '${profileName.trim()}' salvo localmente." }
-                        .onFailure { status = it.message ?: "Não foi possível salvar o perfil." }
-                }, enabled = profileName.isNotBlank() && consentGiven && !recording, modifier = Modifier.weight(1f)) { Text("Salvar perfil") }
+                    scope.launch {
+                        busy = true
+                        status = "Convertendo a amostra para WAV mono..."
+                        try {
+                            val wav = withContext(Dispatchers.IO) {
+                                val target = File(context.filesDir, "voice-references/profile-${UUID.randomUUID()}.wav")
+                                VoiceAudioNormalizer.toMonoWav(file, target)
+                                store.saveProfile(file, profileName, target)
+                                target
+                            }
+                            activeWav = wav
+                            status = "Perfil salvo. A amostra está pronta para o Chatterbox."
+                            if (modelsReady) {
+                                status = "Preparando sua voz. Na primeira vez, a análise pode demorar."
+                                ClonedVoiceRuntime.activate(context, wav) { result ->
+                                    scope.launch {
+                                        busy = false
+                                        status = result.fold(
+                                            { "Voz clonada e pronta. A Garcia já pode falar com este perfil." },
+                                            { "Não foi possível preparar a voz: ${it.message}" }
+                                        )
+                                    }
+                                }
+                            } else busy = false
+                        } catch (error: Throwable) {
+                            busy = false
+                            status = error.message ?: "Falha ao preparar o áudio."
+                        }
+                    }
+                }, enabled = profileName.isNotBlank() && consentGiven && !recording && !busy, modifier = Modifier.weight(1f)) { Text("Salvar e preparar voz") }
             }
-            Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = consentGiven, onCheckedChange = { consentGiven = it })
                 Text("Confirmo que esta é minha voz ou que tenho autorização explícita da pessoa gravada.", fontSize = 11.sp)
             }
         }
         Text(status, fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
         Spacer(Modifier.height(6.dp))
-        Text("Atenção: esta etapa prepara e salva a amostra. A clonagem neural Chatterbox e a geração de áudio com o perfil ainda dependem da integração do mecanismo nativo; não será exibida como concluída antes de funcionar.", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
+        Text("A gravação e o processamento acontecem localmente. Os modelos são baixados uma única vez; depois, a Garcia reutiliza o perfil salvo.", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
     }
 }
