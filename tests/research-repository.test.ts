@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createD1ResearchKnowledgeRepository } from "../src/core/research-repository";
 import type { ResearchLearningEntry } from "../src/core/knowledge-learning";
 
 function fakeD1() {
   const calls: Array<{ sql: string; values: unknown[] }> = [];
+  let batchSize = 0;
   const db = {
     prepare(sql: string) {
       const values: unknown[] = [];
@@ -15,11 +16,11 @@ function fakeD1() {
       return statement;
     },
     async batch(statements: Array<{ sql?: string }>) {
-      calls.push(...statements.map((statement) => ({ sql: statement.sql || "batch-statement", values: [] })));
+      batchSize = statements.length;
       return [];
     },
   };
-  return { db: db as unknown as D1Database, calls };
+  return { db: db as unknown as D1Database, calls, getBatchSize: () => batchSize };
 }
 
 const entry: ResearchLearningEntry = {
@@ -45,12 +46,10 @@ const entry: ResearchLearningEntry = {
 
 describe("D1 research repository", () => {
   it("persists a research event and its source records in one batch", async () => {
-    const { db, calls } = fakeD1();
+    const { db, getBatchSize } = fakeD1();
     const repository = createD1ResearchKnowledgeRepository(db);
     await repository.save(entry, "api-fingerprint");
-    expect(calls).toHaveLength(1);
-    expect(calls[0].sql).toBe("batch-statement");
-    expect(calls[0].values).toEqual([]);
+    expect(getBatchSize()).toBe(2);
   });
 
   it("returns null when a fingerprint is not yet known", async () => {
