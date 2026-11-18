@@ -30,13 +30,14 @@ import java.net.URLEncoder
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-internal fun GarciaBrowserDialog(initialRequest: String? = null, onDismiss: () -> Unit, onSharePage: (String) -> Unit) {
+internal fun GarciaBrowserDialog(initialRequest: String? = null, initialTask: String? = null, onDismiss: () -> Unit, onSharePage: (String) -> Unit) {
     val context = LocalContext.current
     var address by remember { mutableStateOf("https://duckduckgo.com") }
     var pageTitle by remember { mutableStateOf("Pesquisa na internet") }
     var loading by remember { mutableStateOf(false) }
     var pageError by remember { mutableStateOf("") }
     var task by remember { mutableStateOf("") }
+    var initialTaskPending by remember { mutableStateOf(initialTask?.takeIf { it.isNotBlank() }) }
     var taskStatus by remember { mutableStateOf("A Garcia pode pesquisar e interagir com a página aberta.") }
     var webView by remember { mutableStateOf<WebView?>(null) }
 
@@ -77,9 +78,9 @@ internal fun GarciaBrowserDialog(initialRequest: String? = null, onDismiss: () -
         }
     }
 
-    fun runTask() {
+    fun runTask(commandOverride: String? = null) {
         val view = webView ?: return
-        val command = task.trim()
+        val command = (commandOverride ?: task).trim()
         if (command.isBlank()) return
         pageError = ""
         val search = Regex("(?i)^(?:pesquise|pesquisar|busque|buscar|procure|encontre)(?:\\s+por)?\\s+(.+)$").find(command)
@@ -200,6 +201,10 @@ internal fun GarciaBrowserDialog(initialRequest: String? = null, onDismiss: () -
                                     pageTitle = view?.title?.take(80).orEmpty().ifBlank { "Página aberta" }
                                     CookieManager.getInstance().flush()
                                     taskStatus = "Página pronta. Você pode pesquisar nela, clicar em links ou ler o conteúdo."
+                                    initialTaskPending?.let { pending ->
+                                        initialTaskPending = null
+                                        runTask(pending)
+                                    }
                                 }
                                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                                     val uri = request?.url ?: return true
