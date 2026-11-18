@@ -211,6 +211,20 @@ internal fun VoiceCloningSection() {
             Text(checksumStatus, fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
             if (busy && downloadProgress != null) { val p = downloadProgress!!; val ratio = if (p.totalBytes > 0L) (p.downloadedBytes.toFloat() / p.totalBytes).coerceIn(0f, 1f) else 0f; Text("Importando ${p.fileName}", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold); if (p.totalBytes > 0L) { LinearProgressIndicator(progress = { ratio }, modifier = Modifier.fillMaxWidth()); Text("${(ratio * 100).toInt()}% · ${p.downloadedBytes / (1024 * 1024)} MB de ${p.totalBytes / (1024 * 1024)} MB · faltam ${(p.totalBytes - p.downloadedBytes).coerceAtLeast(0) / (1024 * 1024)} MB", fontSize = 11.sp) } else { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()); Text("${p.downloadedBytes / (1024 * 1024)} MB importados", fontSize = 11.sp) } }
         }
+        if (modelsReady) {
+            Text("Gerenciar modelos Chatterbox", style = MaterialTheme.typography.titleSmall)
+            OutlinedButton(
+                onClick = { status = "Selecione os dois modelos GGUF T3 e S3Gen..."; modelPicker.launch(arrayOf("*/*")) },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Importar / substituir modelos GGUF") }
+            OutlinedButton(
+                onClick = { status = "Selecione o arquivo SHA256SUMS..."; checksumPicker.launch(arrayOf("text/plain", "application/octet-stream")) },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Importar / validar SHA256SUMS") }
+            Text(checksumStatus, fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
+        }
         if (activeWav != null && modelsReady && selectedFile == store.currentFile()) {
             OutlinedButton(
                 onClick = {
