@@ -24,14 +24,6 @@ internal object ClonedVoiceRuntime {
     @Volatile private var track: AudioTrack? = null
     @Volatile private var loading = false
 
-    private val cacheFiles = listOf(
-        "speaker_emb.npy",
-        "cond_prompt_speech_tokens.npy",
-        "embedding.npy",
-        "prompt_token.npy",
-        "prompt_feat.npy"
-    )
-
     fun isReady() = ready.get()
     fun isLoading() = loading
 
