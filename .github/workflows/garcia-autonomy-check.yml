@@ -1,6 +1,8 @@
 name: Garcia Autonomy Checks
 
 on:
+  push:
+    branches: [feature/garcia-autonomous-intelligence]
   pull_request:
     branches: [main]
     paths:
