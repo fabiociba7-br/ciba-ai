@@ -121,7 +121,6 @@ internal fun VoiceCloningSection() {
         Text("Crie um perfil com sua própria voz", style = MaterialTheme.typography.titleSmall)
         Text("Importe uma gravação ou grave diretamente pelo microfone. A amostra fica armazenada na área privada da Garcia.", fontSize = 12.sp)
         Spacer(Modifier.height(10.dp))
-        Spacer(Modifier.height(10.dp))
         Text(if (modelsReady) "Modelos Chatterbox instalados neste aparelho." else "Para clonar a voz, a Garcia precisa baixar aproximadamente 640 MB de modelos. O download é feito uma vez e fica no armazenamento privado.", fontSize = 12.sp)
         if (!modelsReady) {
             OutlinedButton(
@@ -149,7 +148,7 @@ internal fun VoiceCloningSection() {
                     if (wav != null) {
                         busy = true
                         status = "Preparando o perfil de voz..."
-                        ClonedVoiceRuntime.activate(context, profile.wav) { result ->
+                        ClonedVoiceRuntime.activate(context, wav) { result ->
                             scope.launch {
                                 busy = false
                                 status = result.fold(
@@ -265,7 +264,7 @@ internal fun VoiceCloningSection() {
                             status = "Perfil salvo. A amostra está pronta para o Chatterbox."
                             if (modelsReady) {
                                 status = "Preparando sua voz. Na primeira vez, a análise pode demorar."
-                                ClonedVoiceRuntime.activate(context, wav) { result ->
+                                ClonedVoiceRuntime.activate(context, profile.wav) { result ->
                                     scope.launch {
                                         busy = false
                                         status = result.fold(
