@@ -1,0 +1,165 @@
+diff --git a/include/tts-cpp/chatterbox/engine.h b/include/tts-cpp/chatterbox/engine.h
+index 0000000..0000000 100644
+--- a/include/tts-cpp/chatterbox/engine.h
++++ b/include/tts-cpp/chatterbox/engine.h
+@@ -76,6 +76,15 @@ struct EngineOptions {
+     float repeat_penalty = 1.2f;
+ 
++    // Multilingual T3 options. The default language is Portuguese because
++    // Garcia is a Portuguese-first assistant. These fields are ignored by Turbo.
++    std::string language = "pt";
++    float cfg_weight = 0.5f;
++    float min_p = 0.05f;
++    float exaggeration = 0.5f;
++    float mtl_top_p = 1.0f;
++    float mtl_repeat_penalty = 2.0f;
++
+     // S3Gen side.  0 = library default (2-step meanflow).
+     int cfm_steps = 0;
+diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
+index 0000000..0000000 100644
+--- a/src/chatterbox_engine.cpp
++++ b/src/chatterbox_engine.cpp
+@@ -15,6 +15,7 @@
+ #include "gpt2_bpe.h"
+ #include "npy.h"
++#include "mtl_tokenizer.h"
+ #include "t3_mtl.h"
+@@ -112,24 +113,6 @@ struct Engine::Impl {
+-        // Engine currently only wires the Turbo (GPT-2 Medium) variant.  An
+-        // MTL (Llama-520M multilingual) GGUF loads cleanly via load_model_gguf
+-        // -> load_model_gguf_mtl (populating model.layers_mtl, leaving
+-        // model.layers empty), but synthesize() unconditionally calls
+-        // eval_prompt() -> build_prompt_graph() -> build_transformer_core(),
+-        // which iterates model.layers[il] and would index into an empty
+-        // vector (UB / crash).  Reject up front with a clear error until
+-        // the public Engine API is extended with language / cfg_weight /
+-        // min_p / exaggeration and synthesize() learns to dispatch on
+-        // model.hparams.variant.  The CLI (tts-cli / chatterbox) uses the
+-        // lower-level eval_prompt_mtl / eval_step_mtl / sample_next_token_mtl
+-        // helpers directly and is unaffected.
+-        if (model.hparams.variant != CHBX_VARIANT_TURBO) {
+-            free_model();
+-            throw std::runtime_error(
+-                "Engine: T3 GGUF reports chatterbox.variant != t3_turbo "
+-                "(multilingual / t3_mtl is not yet supported through the "
+-                "public Engine API).  Use the tts-cli binary or the "
+-                "internal eval_*_mtl helpers in chatterbox_t3_internal.h "
+-                "for now.  Path: " + opts.t3_gguf_path);
+-        }
++        if (model.hparams.variant == CHBX_VARIANT_MTL) {
++            if (model.mtl_tokenizer_json.empty()) {
++                free_model();
++                throw std::runtime_error("Engine: multilingual GGUF has no embedded tokenizer");
++            }
++            if (opts.language.empty()) {
++                free_model();
++                throw std::runtime_error("Engine: multilingual language is required (for example pt)");
++            }
++            if (opts.cfg_weight < 0.0f || opts.min_p < 0.0f || opts.min_p > 1.0f ||
++                opts.exaggeration < 0.0f || opts.exaggeration > 1.0f ||
++                opts.mtl_top_p <= 0.0f || opts.mtl_top_p > 1.0f) {
++                free_model();
++                throw std::runtime_error("Engine: multilingual sampling option is out of range");
++            }
++        }
+@@ -279,45 +262,83 @@ struct Engine::Impl {
+     std::vector<int32_t> run_t3(const std::string & text) {
+-        if (model.tok_tokens.empty()) {
+-            throw std::runtime_error(
+-                "Engine: T3 GGUF has no embedded tokenizer; "
+-                "re-run scripts/convert-t3-turbo-to-gguf.py");
+-        }
+-
+-        gpt2_bpe bpe;
+-        bpe.load_from_arrays(model.tok_tokens, model.tok_merges);
+-        const std::string normalised = gpt2_bpe::punc_norm(text);
+-        const std::vector<int32_t> text_tokens = bpe.tokenize(normalised);
++        const bool is_mtl = model.hparams.variant == CHBX_VARIANT_MTL;
++        std::vector<int32_t> text_tokens;
++        if (is_mtl) {
++            mtl_tokenizer tokenizer;
++            if (!tokenizer.load_from_json(model.mtl_tokenizer_json) ||
++                !tokenizer.is_language_supported(opts.language)) {
++                throw std::runtime_error("Engine: unsupported multilingual language: " + opts.language);
++            }
++            const auto ids = tokenizer.encode(text, opts.language);
++            text_tokens.reserve(ids.size() + 2);
++            text_tokens.push_back(model.hparams.start_text_token);
++            text_tokens.insert(text_tokens.end(), ids.begin(), ids.end());
++            text_tokens.push_back(model.hparams.stop_text_token);
++        } else {
++            if (model.tok_tokens.empty()) {
++                throw std::runtime_error("Engine: T3 GGUF has no embedded GPT-2 tokenizer");
++            }
++            gpt2_bpe bpe;
++            bpe.load_from_arrays(model.tok_tokens, model.tok_merges);
++            text_tokens = bpe.tokenize(gpt2_bpe::punc_norm(text));
++        }
+         if (text_tokens.empty()) {
+             throw std::runtime_error("Engine: text tokenised to empty sequence");
+         }
+ 
+         chatterbox_sampling_params sp;
+-        sp.top_k          = opts.top_k;
+-        sp.top_p          = opts.top_p;
+-        sp.temp           = opts.temperature;
+-        sp.repeat_penalty = opts.repeat_penalty;
++        sp.top_k          = is_mtl ? 0 : opts.top_k;
++        sp.top_p          = is_mtl ? opts.mtl_top_p : opts.top_p;
++        sp.temp           = opts.temperature;
++        sp.repeat_penalty = is_mtl ? opts.mtl_repeat_penalty : opts.repeat_penalty;
++        sp.min_p           = is_mtl ? opts.min_p : 0.0f;
++        sp.cfg_weight      = is_mtl ? opts.cfg_weight : 0.0f;
+ 
+         const int n_threads = resolve_thread_count(opts.n_threads);
+         std::mt19937 rng(opts.seed);
+ 
+         std::vector<float> logits;
++        std::vector<float> logits_cond;
++        std::vector<float> logits_uncond;
+         int prompt_len = 0;
+-        if (!eval_prompt(model, allocr, n_threads, text_tokens, logits, prompt_len)) {
+-            throw std::runtime_error("Engine: T3 prompt eval failed");
++        if (is_mtl) {
++            if (!eval_prompt_mtl(model, allocr, n_threads, text_tokens, opts.exaggeration,
++                                 logits_cond, logits_uncond, prompt_len)) {
++                throw std::runtime_error("Engine: multilingual T3 prompt eval failed");
++            }
++        } else if (!eval_prompt(model, allocr, n_threads, text_tokens, logits, prompt_len)) {
++            throw std::runtime_error("Engine: T3 prompt eval failed");
+         }
+@@
+-        int32_t current = sample_next_token_ex(logits, generated, sp, rng);
++        int32_t current = is_mtl
++            ? sample_next_token_mtl(logits_cond, logits_uncond, generated, sp, rng,
++                                    model.hparams.stop_speech_token)
++            : sample_next_token_ex(logits, generated, sp, rng);
+         generated.push_back(current);
+ 
+         for (int i = 0; i < opts.n_predict; ++i) {
+@@
+-            if (!eval_step(model, allocr, n_threads, n_past, current, logits)) {
+-                throw std::runtime_error("Engine: T3 step eval failed");
++            const bool step_ok = is_mtl
++                ? eval_step_mtl(model, allocr, n_threads, n_past, current,
++                                logits_cond, logits_uncond)
++                : eval_step(model, allocr, n_threads, n_past, current, logits);
++            if (!step_ok) {
++                throw std::runtime_error(is_mtl ? "Engine: multilingual T3 step eval failed"
++                                                : "Engine: T3 step eval failed");
+             }
+             ++n_past;
+-            current = sample_next_token_ex(logits, generated, sp, rng);
++            current = is_mtl
++                ? sample_next_token_mtl(logits_cond, logits_uncond, generated, sp, rng,
++                                        model.hparams.stop_speech_token)
++                : sample_next_token_ex(logits, generated, sp, rng);
+             generated.push_back(current);
++            if (is_mtl && generated.size() >= 3) {
++                const size_t n = generated.size();
++                if (generated[n - 1] == generated[n - 2] &&
++                    generated[n - 2] == generated[n - 3]) break;
++            }
+         }
+*** End Patch
