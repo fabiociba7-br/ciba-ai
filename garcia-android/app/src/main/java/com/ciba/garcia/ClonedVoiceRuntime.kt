@@ -156,6 +156,7 @@ internal object ClonedVoiceRuntime {
                     } finally {
                         loading = false
                     }
+                    GarciaLog.recordEvent(context, "Voz clonada", "Síntese iniciada pelo Chatterbox · texto=" + text.length + " caracteres.")
                     ChatterboxNative.nativeSynthesize(text)
                 }
                 check(pcm.isNotEmpty()) { "O Chatterbox não gerou áudio para esta resposta." }
@@ -172,14 +173,20 @@ internal object ClonedVoiceRuntime {
                 check(nonFinite == 0 && peak > 0.00001f && rms > 0.000001f) {
                     "PCM inválido/silencioso: amostras=" + pcm.size + ", pico=" + peak + ", RMS=" + rms + ", inválidas=" + nonFinite
                 }
-                GarciaLog.recordEvent(context, "Áudio clonado", "PCM gerado: " + pcm.size + " amostras · pico=" + peak + " · RMS=" + rms)
-                // Convert the engine's 24 kHz float32 output to PCM16. PCM16
-                // is supported by a wider range of Android audio HALs and
-                // avoids devices that initialize float AudioTrack but emit silence.
+                // Some mobile builds of the native vocoder return valid but
+                // very low-level float PCM. Preserve the waveform and dynamics,
+                // but lift quiet output to a safe playback peak before PCM16
+                // quantisation (otherwise most samples collapse near digital zero).
+                val gain = if (peak < 0.08f) (0.85f / peak).coerceAtMost(24.0f) else 1.0f
+                val outputPeak = minOf(peak * gain, 1.0f)
+                GarciaLog.recordEvent(context, "Áudio clonado", "PCM gerado: " + pcm.size + " amostras · pico=" + peak + " · RMS=" + rms + " · ganho=" + gain)
+                // Chatterbox returns 24 kHz mono float32. Convert to PCM16,
+                // which has the broadest AudioTrack/HAL compatibility.
                 val pcm16 = ShortArray(pcm.size) { index ->
-                    val sample = pcm[index].takeIf { it.isFinite() }?.coerceIn(-1.0f, 1.0f) ?: 0.0f
+                    val sample = pcm[index].takeIf { it.isFinite() }?.times(gain)?.coerceIn(-1.0f, 1.0f) ?: 0.0f
                     (sample * 32767.0f).toInt().toShort()
                 }
+                check(pcm16.any { it.toInt() != 0 }) { "O áudio ficou inaudível após a conversão para PCM16." }
                 val minimum = AudioTrack.getMinBufferSize(
                     24_000,
                     AudioFormat.CHANNEL_OUT_MONO,
@@ -227,6 +234,19 @@ internal object ClonedVoiceRuntime {
                     if (count <= 0) error("Falha na reprodução de áudio: $count")
                     offset += count
                 }
+                // AudioTrack can accept the complete buffer before the HAL
+                // has drained it. Wait for the playback head to consume every
+                // frame instead of treating successful writes as audible output.
+                val drainDeadline = android.os.SystemClock.elapsedRealtime() +
+                    ((pcm16.size * 1000L) / 24_000L) + 5_000L
+                while (audio.playbackHeadPosition.toLong() < pcm16.size.toLong()) {
+                    check(ready.get()) { "Reprodução da voz clonada interrompida." }
+                    check(android.os.SystemClock.elapsedRealtime() < drainDeadline) {
+                        "Tempo esgotado aguardando a saída de áudio do Android."
+                    }
+                    Thread.sleep(20)
+                }
+                GarciaLog.recordEvent(context, "Áudio clonado", "Reprodução concluída · frames=" + audio.playbackHeadPosition + " · duração_ms=" + ((pcm16.size * 1000L) / 24_000L))
                 audio.stop()
                 audio.release()
                 audio = null
