@@ -18,17 +18,18 @@ internal fun speechFriendlyText(source: String): String {
         .replace(Regex("!\\[([^]]*)\\]\\([^)]*\\)"), "$1")
         .replace(Regex("\\[([^]]+)\\]\\([^)]*\\)"), "$1")
         .replace(Regex("`([^`]+)`"), "$1")
-        .replace(Regex("(?m)^\\s{0,3}#{1,6}\\s*"), "")
-        .replace(Regex("(?m)^\\s*>\\s?"), "")
-        .replace(Regex("(?m)^\\s*[-*+]\\s+"), "")
-        .replace(Regex("(?m)^\\s*\\d+[.)]\\s+"), "")
+        .replace(Regex("(?m)^[ \\t]{0,3}#{1,6}[ \\t]*"), "")
+        .replace(Regex("(?m)^[ \\t]*>[ \\t]?"), "")
+        .replace(Regex("(?m)^[ \\t]*[-*+][ \\t]+"), "")
+        .replace(Regex("(?m)^[ \\t]*\\d+[.)][ \\t]+"), "")
         .replace(Regex("\\*\\*|__|~~|\\*|_"), "")
         .replace(Regex("[()]"), "")
         .replace(Regex("<[^>]+>"), "")
     return text
         .replace(Regex("[ \\t]*\\n[ \\t]*"), ". ")
         .replace(Regex("\\s+"), " ")
-        .replace(Regex("([.!?])(?:\\s*\\.)+"), "$1")
+        .replace(Regex("([.!?])(?:\\s*[.!?])+"), "$1")
+        .replace(Regex(":\\."), ".")
         .trim()
 }
 
