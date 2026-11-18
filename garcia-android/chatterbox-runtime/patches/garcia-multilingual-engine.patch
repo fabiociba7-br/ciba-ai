@@ -64,12 +64,17 @@ diff --git a/src/chatterbox_engine.cpp b/src/chatterbox_engine.cpp
 +                throw std::runtime_error("Engine: multilingual sampling option is out of range");
 +            }
 +        }
-@@ -335,5 +330,18 @@ struct Engine::Impl {
+@@ -335,5 +330,19 @@ struct Engine::Impl {
              if (s3gen_prompt_token.empty() && !prompt_token_from_ref.empty()) {
                  s3gen_prompt_token = std::move(prompt_token_from_ref);
              }
          }
 +
++        if (!opts.reference_audio.empty() &&
++            (se_data.empty() || ct_data.empty() || s3gen_embedding.empty() ||
++             s3gen_prompt_token.empty() || s3gen_prompt_feat.empty())) {
++            throw std::runtime_error("Engine: incomplete voice-cloning conditioning");
++        }
 +        if (!opts.save_voice_dir.empty()) {
 +            std::filesystem::create_directories(opts.save_voice_dir);
 +            if (!se_data.empty()) npy_save_f32(opts.save_voice_dir + "/speaker_emb.npy", {(int64_t)se_data.size()}, se_data.data());
