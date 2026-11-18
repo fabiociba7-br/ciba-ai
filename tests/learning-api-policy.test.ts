@@ -4,7 +4,7 @@ import { authorizeLearningApiCall, evaluateApiInternalization, type LearningApiP
 const policy: LearningApiPolicy = {
   providerId: "sample", pricing: "free_tier", enabled: true,
   maxCallsPerLearningSession: 4, maxCallsPerDay: 10, maxCallsPerMinute: 2,
-  maxResponseBytes: 10_000, allowDataRetention: true, termsReference: "https://example.test/terms",
+  maxResponseBytes: 10_000, allowDerivedKnowledge: true, termsReference: "https://example.test/terms",
 };
 const usage: LearningApiUsage = {
   providerId: "sample", sessionId: "learn-1", day: "2026-11-18",
@@ -28,15 +28,13 @@ describe("learning API limits", () => {
     expect(authorizeLearningApiCall(policy, { ...usage, callsThisMinute: 2 })).toMatchObject({ allowed: false, reason: "minute_limit" });
     expect(authorizeLearningApiCall(policy, usage, 20_000)).toMatchObject({ allowed: false, reason: "response_limit" });
   });
-  it("does not retain data if the provider policy disallows it", () => {
-    expect(authorizeLearningApiCall({ ...policy, allowDataRetention: false }, usage)).toMatchObject({ allowed: false, reason: "retention_not_allowed" });
-  });
+  
 });
 
 describe("API learning internalization", () => {
   const artifact = {
     providerId: "sample", capability: "convert-units", learnedAt: "2026-11-18T21:30:00Z",
-    documentationReferences: ["https://example.test/docs"], termsReference: "https://example.test/terms",
+    documentationReferences: ["https://example.test/docs"], termsReference: "https://example.test/terms", derivedKnowledgePermitted: true,
     learnedProcedure: "Understand request and conversion formula",
     independentImplementationReference: "src/capabilities/unit-converter.ts",
     validationEvidence: ["test:unit-converter"], independentTestPassed: true,
@@ -47,6 +45,10 @@ describe("API learning internalization", () => {
       .toMatchObject({ status: "learning", reusableWithoutApi: false });
     expect(evaluateApiInternalization(artifact))
       .toMatchObject({ status: "independent", reusableWithoutApi: true });
+  });
+  it("blocks assimilation when API terms do not permit derived knowledge", () => {
+    expect(evaluateApiInternalization({ ...artifact, derivedKnowledgePermitted: false }))
+      .toMatchObject({ status: "blocked", reusableWithoutApi: false });
   });
   it("keeps live-data capabilities marked as external dependencies", () => {
     expect(evaluateApiInternalization({ ...artifact, requiresLiveService: true }))
