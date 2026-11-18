@@ -31,9 +31,15 @@ internal object VoiceAudioNormalizer {
             for (i in 0 until extractor.trackCount) {
                 val format = extractor.getTrackFormat(i)
                 val candidate = format.getString(MediaFormat.KEY_MIME).orEmpty()
-                if (candidate.startsWith("audio/")) { track = i; mime = candidate; break }
+                if (candidate.startsWith("audio/")) {
+                    track = i
+                    mime = candidate
+                    rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                    channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                    break
+                }
             }
-            require(track >= 0) { "Nenhuma faixa de áudio foi encontrada." }
+            require(track >= 0 && rate > 0 && channels in 1..2) { "Nenhuma faixa de áudio mono ou estéreo foi encontrada." }
             extractor.selectTrack(track)
             codec = MediaCodec.createDecoderByType(mime)
             codec.configure(extractor.getTrackFormat(track), null, null, 0)
