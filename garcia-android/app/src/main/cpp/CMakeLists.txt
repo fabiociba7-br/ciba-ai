@@ -31,6 +31,10 @@ target_link_libraries(garcia_whisper PRIVATE whisper android log)
 
 # Local image inference. stable-diffusion.cpp is MIT-licensed and is built
 # into the APK; model weights are user-selected local files and are not bundled.
+# Whisper.cpp and stable-diffusion.cpp both depend on GGML. Reuse the GGML
+# target already created by whisper.cpp in upstream-compatible mode so the
+# stable-diffusion sources do not include patched-only ggml-ext.h headers.
+set(SD_USE_UPSTREAM_GGML ON CACHE BOOL "" FORCE)
 set(SD_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(SD_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(SD_WEBP OFF CACHE BOOL "" FORCE)
