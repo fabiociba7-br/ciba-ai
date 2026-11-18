@@ -45,6 +45,15 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
     private var previewRestoreVoiceId: String? = null
 
     init {
+        // Keep the chat's top-level speech path aligned with the active cloned
+        // profile. Older installs may have a saved active profile but no
+        // voice_id preference yet; in that case, select the clone explicitly.
+        if (selectedVoiceId.isNullOrBlank()) {
+            VoiceProfileStore(appContext).currentProfile()?.let { profile ->
+                selectedVoiceId = CLONE_PREFIX + profile.id
+                preferences.edit().putString("voice_id", selectedVoiceId).apply()
+            }
+        }
         ClonedVoiceRuntime.restore(appContext)
         engine = TextToSpeech(appContext) { status ->
             if (closed) return@TextToSpeech
@@ -170,7 +179,16 @@ internal class LocalSpeechOutput(context: Context, private val onAvailabilityCha
         previewRestoreVoiceId = null
         val cleanText = speechFriendlyText(text).take(MAX_SPOKEN_CHARS)
         if (cleanText.isBlank() || closed) return false
-        if (selectedVoice()?.startsWith(CLONE_PREFIX) == true && ClonedVoiceRuntime.hasActiveProfile(appContext)) {
+        // The chat and the standalone clone test must use the same active
+        // profile. Repair a missing legacy selection instead of silently
+        // speaking with Android TTS while a clone is saved.
+        val activeClone = VoiceProfileStore(appContext).currentProfile()
+        if (selectedVoice()?.startsWith(CLONE_PREFIX) == true && activeClone != null) {
+            val expectedId = CLONE_PREFIX + activeClone.id
+            if (selectedVoice() != expectedId) {
+                selectedVoiceId = expectedId
+                preferences.edit().putString("voice_id", expectedId).apply()
+            }
             val utteranceId = "garcia-clone-" + System.nanoTime()
             activeUtteranceId = utteranceId
             ClonedVoiceRuntime.speak(
