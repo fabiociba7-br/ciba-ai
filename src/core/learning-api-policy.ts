@@ -100,7 +100,9 @@ export function evaluateApiInternalization(
   if (!artifact.termsReference || artifact.documentationReferences.length === 0) {
     return { status: "blocked", reusableWithoutApi: false, reason: "source_or_terms_missing" };
   }
-  if (!artifact.derivedKnowledgePermitted) {\n    return { status: "blocked", reusableWithoutApi: false, reason: "terms_do_not_allow_derived_knowledge" };\n  }\n  if (artifact.requiresLiveService) {
+  if (!artifact.derivedKnowledgePermitted) {
+    return { status: "blocked", reusableWithoutApi: false, reason: "terms_do_not_allow_derived_knowledge" };
+  }\n  if (artifact.requiresLiveService) {
     return { status: "external_dependency", reusableWithoutApi: false, reason: "capability_requires_live_external_service" };
   }
   if (!artifact.independentImplementationReference || !artifact.independentTestPassed ||
