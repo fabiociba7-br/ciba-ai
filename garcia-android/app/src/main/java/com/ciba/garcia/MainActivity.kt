@@ -1169,6 +1169,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         val voiceOptions = voiceOutput.availableVoices()
         val sectionTitle = when (settingsSection) {
             "voice" -> "Voz e conversação"
+            "voiceClone" -> "Clonar minha voz"
             "speech" -> "Transcrição de voz"
             "accounts" -> "Contas e integrações"
             "diagnostics" -> "Uso e diagnóstico"
@@ -1185,6 +1186,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         Spacer(Modifier.height(8.dp))
                         listOf(
                             "voice" to ("Voz e conversação" to "Escolha uma voz, ouça amostras e configure a conversa por voz"),
+                            "voiceClone" to ("Clonar minha voz" to "Importar ou gravar uma amostra e preparar um perfil de voz"),
                             "speech" to ("Transcrição de voz" to "Instalar, reparar ou remover o modelo Whisper"),
                             "accounts" to ("Contas e integrações" to "Facebook e serviços conectados"),
                             "diagnostics" to ("Uso e diagnóstico" to "Consumo, logs e estado da conexão"),
@@ -1258,6 +1260,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             }, enabled = voiceAvailable && voiceReplies && (whisperModelInfo != null || streamingSpeech.isAvailable) && !busy && !whisperRecording && !streamingListening)
                         }
                         Text(if (streamingSpeech.isAvailable) "No modo de conversa por voz, a Garcia responde falando. Fora desse modo, as respostas aparecem somente em texto. O reconhecimento de fala é offline e o áudio não é enviado ao servidor." else "No modo de conversa por voz, a Garcia responde falando. Fora desse modo, as respostas aparecem somente em texto. A fala é transcrita localmente pelo Whisper; o áudio bruto não é enviado ao servidor.", color = Muted, fontSize = 11.sp)
+                    } else if (settingsSection == "voiceClone") {
+                        VoiceCloningSection()
                     } else if (settingsSection == "speech") {
                         Text("Modelo de transcrição local", fontWeight = FontWeight.Bold)
                         Text(whisperStatus, color = Muted, fontSize = 12.sp)
