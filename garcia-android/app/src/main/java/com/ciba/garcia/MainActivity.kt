@@ -681,7 +681,12 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             }
             else -> text
         }
-        if (message.length > 1_500) { error = "A mensagem com o anexo ultrapassa o limite de 1.500 caracteres. Reduza a pergunta ou o conteúdo do arquivo."; return }
+        val messageLimit = if (browserAutoSendPending) 18_000 else 1_500
+        if (message.length > messageLimit) {
+            error = if (browserAutoSendPending) "O conteúdo desta página é grande demais para análise automática." else "A mensagem com o anexo ultrapassa o limite de 1.500 caracteres. Reduza a pergunta ou o conteúdo do arquivo."
+            browserAutoSendPending = false
+            return
+        }
         val imagePayload = JSONArray()
         if (selectedAttachment?.type == "image") {
             imagePayload.put(JSONObject()
