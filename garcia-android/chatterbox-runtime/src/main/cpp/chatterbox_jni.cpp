@@ -13,7 +13,7 @@
 namespace {
 constexpr const char * TAG = "GarciaChatterbox";
 std::mutex g_mutex;
-std::unique_ptr<tts_cpp::chatterbox::Engine> g_engine;
+std::shared_ptr<tts_cpp::chatterbox::Engine> g_engine;
 
 std::string toString(JNIEnv * env, jstring value) {
     if (value == nullptr) return {};
@@ -60,7 +60,7 @@ Java_com_ciba_garcia_chatterbox_ChatterboxNative_nativeCreate(
         options.mtl_top_p = 1.0f;
         options.mtl_repeat_penalty = 2.0f;
 
-        auto candidate = std::make_unique<tts_cpp::chatterbox::Engine>(options);
+        auto candidate = std::make_shared<tts_cpp::chatterbox::Engine>(options);
         std::lock_guard<std::mutex> lock(g_mutex);
         g_engine = std::move(candidate);
         __android_log_print(ANDROID_LOG_INFO, TAG, "Multilingual Chatterbox engine loaded.");
@@ -81,12 +81,16 @@ Java_com_ciba_garcia_chatterbox_ChatterboxNative_nativeSynthesize(
         return nullptr;
     }
     try {
-        std::lock_guard<std::mutex> lock(g_mutex);
-        if (!g_engine) {
+        std::shared_ptr<tts_cpp::chatterbox::Engine> engine;
+        {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            engine = g_engine;
+        }
+        if (!engine) {
             throwState(env, "O mecanismo Chatterbox ainda não foi carregado.");
             return nullptr;
         }
-        const auto result = g_engine->synthesize(text);
+        const auto result = engine->synthesize(text);
         if (result.pcm.empty()) {
             throwState(env, "O Chatterbox não gerou áudio.");
             return nullptr;
@@ -103,8 +107,9 @@ Java_com_ciba_garcia_chatterbox_ChatterboxNative_nativeSynthesize(
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_ciba_garcia_chatterbox_ChatterboxNative_nativeCancel(JNIEnv *, jclass) {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    if (g_engine) g_engine->cancel();
+    std::shared_ptr<tts_cpp::chatterbox::Engine> engine;
+    { std::lock_guard<std::mutex> lock(g_mutex); engine = g_engine; }
+    if (engine) engine->cancel();
 }
 
 extern "C" JNIEXPORT void JNICALL
