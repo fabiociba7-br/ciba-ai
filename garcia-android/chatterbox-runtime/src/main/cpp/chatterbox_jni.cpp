@@ -49,7 +49,8 @@ Java_com_ciba_garcia_chatterbox_ChatterboxNative_nativeCreate(
         options.t3_gguf_path = t3;
         options.s3gen_gguf_path = s3;
         options.reference_audio = reference;
-        options.voice_dir = voiceDir;
+        if (!reference.empty()) options.save_voice_dir = voiceDir;
+        else options.voice_dir = voiceDir;
         options.language = lang.empty() ? "pt" : lang;
         options.n_threads = std::max(1, std::min(4, (int)std::thread::hardware_concurrency()));
         options.n_predict = 700;
