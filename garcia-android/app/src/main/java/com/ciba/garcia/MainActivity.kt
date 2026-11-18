@@ -663,8 +663,22 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         autoListenPending = false; persist(); busy = true; error = ""
         scope.launch {
             try {
+                val latestQuestion = history.lastOrNull { it.first == "user" }?.second.orEmpty()
+                val webContext = withContext(Dispatchers.IO) {
+                    val capability = "INFORMAÇÃO OPERACIONAL: este aplicativo possui conexão com o serviço da Garcia e navegador interno. Você pode receber resultados de pesquisa pública anexados ao contexto desta mensagem. Nunca afirme que não existe acesso à internet de forma absoluta; diferencie pesquisa automática, navegação manual e conexão com o serviço. Se não houver fontes anexadas, não diga que pesquisou."
+                    if (GarciaWebSearch.needsSearch(latestQuestion)) {
+                        runCatching { capability + "\\n\\n" + GarciaWebSearch.searchContext(latestQuestion) }
+                            .onFailure { GarciaLog.record(context, "Pesquisa na internet", it) }
+                            .getOrElse { capability + "\\n\\nA pesquisa automática falhou nesta solicitação: ${it.message ?: "erro de conexão"}. Não afirme que consultou fontes." }
+                    } else capability
+                }
                 val snapshot = JSONArray()
-                history.forEach { (role, content) -> snapshot.put(JSONObject().put("role", role).put("content", content)) }
+                history.forEachIndexed { index, (role, content) ->
+                    if (index == history.lastIndex && role == "user") {
+                        snapshot.put(JSONObject().put("role", "user").put("content", webContext))
+                    }
+                    snapshot.put(JSONObject().put("role", role).put("content", content))
+                }
                 val answer = withContext(Dispatchers.IO) { client.chat(snapshot, imagePayload) }
                 history.add("assistant" to answer); persist()
                 if (continuousVoice && voiceReplies && voiceAvailable) {
