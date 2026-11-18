@@ -22,7 +22,7 @@ internal class VoiceProfileStore(context: Context) {
     private val prefs = app.getSharedPreferences("garcia_voice_profiles", Context.MODE_PRIVATE)
 
 
-    fun import(uri: Uri): File {
+    fun importAudio(uri: Uri): File {
         val displayName = app.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) cursor.getString(0) else null
         }.orEmpty()
