@@ -15,7 +15,7 @@ internal object ChatterboxModelManager {
     private const val BASE = "https://huggingface.co/cstr/chatterbox-GGUF/resolve/" + REVISION + "/"
     private const val T3 = "chatterbox-t3-q4_k.gguf"
     private const val S3 = "chatterbox-s3gen-q4_k.gguf"
-    private const val T3_SHA256 = "ed1fdf2bafc2ded40b2e29f37d3d5e387b32d3e300620a43b838592c3b8dcf9a"
+    private const val T3_SHA256 = "a9d673c48bd593e0535c4c4d2c8120a1da017e35e594cab1821ece8350f705c6"
     private const val S3_SHA256 = "45412c0cca0fda51d56ccad5f2252be439713be6525e513152d0fdbfd3aaa7d0"
     data class Models(val t3: File, val s3: File)
 
