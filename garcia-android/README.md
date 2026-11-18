@@ -42,3 +42,8 @@ Abra a pasta `garcia-android`. Use JDK 17 e Android SDK Platform 36. O projeto n
 ## Arquitetura
 
 `MainActivity` contém a interface e estado de conversa; `CibaAiClient` concentra as chamadas HTTP; `SecureStore` protege credenciais e histórico local. O backend não recebe histórico persistido: o cliente envia apenas as últimas mensagens necessárias a cada chamada.
+
+
+## Conversação por voz em tempo real
+
+No Android 12 ou superior, a conversação contínua prioriza o reconhecedor de fala on-device do sistema, com resultados parciais em português do Brasil enquanto a pessoa fala. O resultado final segue para a Garcia sem enviar áudio ao servidor. Se o serviço offline do aparelho não estiver disponível ou falhar, o app usa o Whisper local instalado; nunca faz fallback para reconhecimento em nuvem. O ditado avulso continua usando Whisper com revisão antes do envio.
