@@ -298,6 +298,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var autoListenPending by remember { mutableStateOf(false) }
     var awaitingTranscriptReview by remember { mutableStateOf(false) }
     var streamingListening by remember { mutableStateOf(false) }
+    var streamingUnavailable by remember { mutableStateOf(false) }
     var streamingTranscript by remember { mutableStateOf("") }
     val streamingSpeech = remember {
         OnDeviceSpeechRecognizer(
@@ -316,6 +317,10 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 streamingListening = false
                 whisperStatus = message
                 if (retry && continuousVoice && voiceReplies) {
+                    autoListenPending = true
+                } else if (continuousVoice && voiceReplies && whisperModelInfo != null) {
+                    streamingUnavailable = true
+                    whisperStatus = "$message Usando Whisper local."
                     autoListenPending = true
                 } else {
                     continuousVoice = false
@@ -416,7 +421,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         if (granted) {
             if (input.isNotBlank() || attachment != null || busy || whisperBusy) {
                 error = "Envie ou limpe o texto pendente antes de iniciar outra captura."
-            } else if (continuousVoice && streamingSpeech.isAvailable) {
+            } else if (continuousVoice && streamingSpeech.isAvailable && !streamingUnavailable) {
                 streamingTranscript = ""
                 error = ""
                 streamingListening = streamingSpeech.start()
@@ -863,7 +868,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 }
                             }
                         },
-                        enabled = (!busy && !whisperBusy && (whisperModelInfo != null || streamingSpeech.isAvailable)) || continuousVoice,
+                        enabled = (!busy && !whisperBusy && (whisperModelInfo != null || (streamingSpeech.isAvailable && !streamingUnavailable))) || continuousVoice,
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = if (continuousVoice) Color(0xFFB94F7C) else Blue)
                     ) {
@@ -1235,7 +1240,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     streamingSpeech.stop(); streamingListening = false
                                     whisperStatus = "Conversa por voz pausada"
                                 } else if (!voiceReplies) error = "Ative também a leitura automática das respostas."
-                                else if (whisperModelInfo == null && !streamingSpeech.isAvailable) error = "Instale o modelo Whisper ou disponibilize o reconhecimento offline do Android."
+                                else if (whisperModelInfo == null && (!streamingSpeech.isAvailable || streamingUnavailable)) error = "Instale o modelo Whisper ou disponibilize o reconhecimento offline do Android."
                             }, enabled = voiceAvailable && voiceReplies && (whisperModelInfo != null || streamingSpeech.isAvailable) && !busy && !whisperRecording && !streamingListening)
                         }
                         Text(if (streamingSpeech.isAvailable) "A conversa contínua usa reconhecimento offline do Android e mostra a transcrição enquanto você fala. O áudio não é enviado ao servidor." else "Na conversa contínua, a fala é transcrita localmente pelo Whisper, enviada à Garcia e respondida em voz alta. O áudio bruto não é enviado ao servidor.", color = Muted, fontSize = 11.sp)
