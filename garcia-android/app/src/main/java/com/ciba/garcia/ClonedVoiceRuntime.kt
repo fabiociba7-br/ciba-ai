@@ -66,7 +66,7 @@ internal object ClonedVoiceRuntime {
                 var offset = 0
                 while (offset < pcm.size && ready.get()) {
                     val n = audio.write(pcm, offset, minOf(4096, pcm.size - offset), AudioTrack.WRITE_BLOCKING)
-                    if (n < 0) error("Falha na reprodução de áudio: " + n)
+                    if (n <= 0) error("Falha na reprodução de áudio: " + n)
                     offset += n
                 }
                 audio.stop(); audio.release(); track = null; onDone()
@@ -80,7 +80,7 @@ internal object ClonedVoiceRuntime {
     fun stop() {
         track?.let { runCatching { it.pause(); it.flush(); it.stop(); it.release() } }
         track = null
-        executor.execute { runCatching { ChatterboxNative.nativeCancel() } }
+        runCatching { ChatterboxNative.nativeCancel() }
     }
 
     fun release() {
