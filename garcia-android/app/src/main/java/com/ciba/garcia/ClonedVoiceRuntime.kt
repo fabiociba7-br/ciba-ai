@@ -17,6 +17,10 @@ internal object ClonedVoiceRuntime {
     @Volatile private var loading = false
 
     fun isReady() = ready.get()
+    fun isLoading() = loading
+    fun hasActiveProfile(context: Context): Boolean =
+        !context.getSharedPreferences("garcia_voice_profiles", Context.MODE_PRIVATE)
+            .getString("active_profile_id", null).isNullOrBlank()
 
     private fun profileCache(context: Context): File {
         val prefs = context.getSharedPreferences("garcia_voice_profiles", Context.MODE_PRIVATE)
@@ -30,7 +34,6 @@ internal object ClonedVoiceRuntime {
             onResult(Result.failure(IllegalStateException("Baixe os modelos Chatterbox antes de preparar a voz.")))
             return
         }
-        if (loading) return
         loading = true
         executor.execute {
             val result = runCatching {
@@ -77,9 +80,10 @@ internal object ClonedVoiceRuntime {
     }
 
     fun speak(text: String, onStarted: () -> Unit, onDone: () -> Unit, onError: (Throwable) -> Unit) {
-        if (!ready.get()) { onError(IllegalStateException("Perfil de voz ainda não está pronto.")); return }
+        if (!ready.get() && !loading) { onError(IllegalStateException("Perfil de voz ainda não está pronto.")); return }
         executor.execute {
             try {
+                check(ready.get()) { "Perfil de voz ainda não está pronto." }
                 val pcm = ChatterboxNative.nativeSynthesize(text)
                 val minimum = AudioTrack.getMinBufferSize(24_000, AudioFormat.CHANNEL_OUT_MONO,
                     AudioFormat.ENCODING_PCM_FLOAT).coerceAtLeast(4096)
