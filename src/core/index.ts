@@ -59,3 +59,7 @@ export type { CapabilityBehaviorSpec } from "./learning-api-policy";
 
 export { createD1StorageOutbox } from "./storage-outbox";
 export type { GarciaStorageDestination, StorageOutboxEvent, StorageOutboxInput } from "./storage-outbox";
+
+
+export { createD1FileCatalog, createR2ObjectStore, validateGarciaFileInput } from "./storage-contracts";
+export type { GarciaStorageProvider, GarciaFileStatus, GarciaFileMetadata, GarciaFileCreateInput, GarciaFileCatalog, GarciaObjectStore, R2BucketLike } from "./storage-contracts";
