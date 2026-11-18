@@ -523,6 +523,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var settingsSection by remember { mutableStateOf("menu") }
     var showBrowser by remember { mutableStateOf(false) }
     var browserStartRequest by remember { mutableStateOf<String?>(null) }
+    var browserAutoSendPending by remember { mutableStateOf(false) }
     var browserStartTask by remember { mutableStateOf<String?>(null) }
     var showLogs by remember { mutableStateOf(false) }
     var showChats by remember { mutableStateOf(false) }
@@ -722,6 +723,13 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     LaunchedEffect(voiceAutoSendPending, continuousVoice, busy, input) {
         if (voiceAutoSendPending && continuousVoice && !busy && input.isNotBlank()) {
             voiceAutoSendPending = false
+            send()
+        }
+    }
+
+    LaunchedEffect(browserAutoSendPending, busy, input, connected) {
+        if (browserAutoSendPending && !busy && input.isNotBlank() && connected) {
+            browserAutoSendPending = false
             send()
         }
     }
@@ -1107,7 +1115,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                                 whisperStatus = "Reprodução de voz interrompida."
                                             } else if (voiceAvailable) {
                                                 val started = voiceOutput.speak(shownText)
-                                                if (!started) error = "Não foi possível iniciar a reprodução desta resposta."
+                                                if (started) voiceSpeaking = true
+                                                else error = "Não foi possível iniciar a reprodução desta resposta."
                                             } else {
                                                 error = "Configure uma voz em português nas configurações de texto para fala do Android."
                                             }
@@ -1395,6 +1404,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 input = pageContext
                 attachment = null
                 error = ""
+                browserAutoSendPending = true
                 showBrowser = false
             }
         )
