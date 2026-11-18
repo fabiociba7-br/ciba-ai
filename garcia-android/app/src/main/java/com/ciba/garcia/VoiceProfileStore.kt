@@ -109,6 +109,8 @@ internal class VoiceProfileStore(context: Context) {
             .putString("active_wav", profile.wav.absolutePath)
             .putString("active_name", profile.name)
             .apply()
+        app.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
+            .edit().putString("voice_id", "clone:" + profile.id).apply()
     }
 
     fun rename(profileId: String, newName: String) {
@@ -130,6 +132,7 @@ internal class VoiceProfileStore(context: Context) {
         val edit = prefs.edit().putString("profiles_json", json.toString())
         if (activeProfileId() == profileId) {
             edit.remove("active_profile_id").remove("active_sample").remove("active_wav").remove("active_name")
+            app.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().remove("voice_id").apply()
         }
         edit.apply()
         profileDir?.deleteRecursively()
