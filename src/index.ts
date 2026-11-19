@@ -563,20 +563,29 @@ const handleOwnerComposioSession = async (request: Request, env: Env) => {
     }
 
     const timestamp = nowIso();
-    const stored = await env.DB.prepare(`
-      INSERT INTO owner_composio_sessions(
-        owner_id, session_id, toolkits_json, status, created_at, updated_at, revoked_at
-      ) VALUES(?, ?, ?, 'active', ?, ?, NULL)
-      ON CONFLICT(owner_id) DO UPDATE SET
-        session_id = excluded.session_id,
-        toolkits_json = excluded.toolkits_json,
-        status = 'active',
-        created_at = excluded.created_at,
-        updated_at = excluded.updated_at,
-        revoked_at = NULL
-      WHERE owner_composio_sessions.status = 'revoked'
-    `).bind(owner.owner_id, session.sessionId, JSON.stringify(session.toolkits), timestamp, timestamp).run();
-    if (stored.meta.changes !== 1) {
+    const stored = await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO owner_composio_sessions(
+          owner_id, session_id, toolkits_json, status, created_at, updated_at, revoked_at
+        ) VALUES(?, ?, ?, 'active', ?, ?, NULL)
+        ON CONFLICT(owner_id) DO UPDATE SET
+          session_id = excluded.session_id,
+          toolkits_json = excluded.toolkits_json,
+          status = 'active',
+          created_at = excluded.created_at,
+          updated_at = excluded.updated_at,
+          revoked_at = NULL
+        WHERE owner_composio_sessions.status = 'revoked'
+      `).bind(owner.owner_id, session.sessionId, JSON.stringify(session.toolkits), timestamp, timestamp),
+      env.DB.prepare(`
+        UPDATE owner_composio_tool_policies SET enabled = 0, updated_at = ?
+        WHERE owner_id = ? AND EXISTS (
+          SELECT 1 FROM owner_composio_sessions
+          WHERE owner_id = ? AND session_id = ? AND status = 'active'
+        )
+      `).bind(timestamp, owner.owner_id, owner.owner_id, session.sessionId),
+    ]);
+    if (stored[0]?.meta?.changes !== 1) {
       await deleteComposioOwnerSession(env.COMPOSIO_API_KEY, session.sessionId).catch(() => undefined);
       return json({ error: "composio_session_storage_conflict" }, 409);
     }
@@ -601,11 +610,20 @@ const handleOwnerComposioSession = async (request: Request, env: Env) => {
       return json({ error: "composio_session_revoke_failed" }, 502);
     }
     const timestamp = nowIso();
-    await env.DB.prepare(`
-      UPDATE owner_composio_sessions
-      SET status = 'revoked', revoked_at = ?, updated_at = ?
-      WHERE owner_id = ? AND session_id = ? AND status = 'active'
-    `).bind(timestamp, timestamp, owner.owner_id, row.session_id).run();
+    await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE owner_composio_sessions
+        SET status = 'revoked', revoked_at = ?, updated_at = ?
+        WHERE owner_id = ? AND session_id = ? AND status = 'active'
+      `).bind(timestamp, timestamp, owner.owner_id, row.session_id),
+      env.DB.prepare(`
+        UPDATE owner_composio_tool_policies SET enabled = 0, updated_at = ?
+        WHERE owner_id = ? AND EXISTS (
+          SELECT 1 FROM owner_composio_sessions
+          WHERE owner_id = ? AND session_id = ? AND status = 'revoked'
+        )
+      `).bind(timestamp, owner.owner_id, owner.owner_id, row.session_id),
+    ]);
     return json({ configured: false, revoked: true });
   }
 
@@ -732,9 +750,11 @@ const handleOwnerComposioPolicy = async (request: Request, env: Env) => {
   }
 
   try {
+    const attached = await attachComposioOwnerSession(env.COMPOSIO_API_KEY, session.session_id);
     const client = createComposioMcpDiscoveryClient({
       apiKey: env.COMPOSIO_API_KEY,
-      sessionId: session.session_id,
+      sessionId: attached.sessionId,
+      mcpUrl: attached.mcpUrl,
     });
     await client.initialize();
     const discovered = await client.listTools();
