@@ -1,6 +1,7 @@
 import { resolveOwnerRoute } from "./http/owner-routes";
 import { resolveAppRoute } from "./http/app-routes";
 import { resolveServiceRoute } from "./http/service-routes";
+import { resolveAccountRoute } from "./http/account-routes";
 import { json, corsHeaders, applyResponseHeaders } from "./http/responses";
 import { resolveAdminRoute } from "./http/routes";
 import { readJson } from "./http/request";
@@ -4342,17 +4343,16 @@ const handleRequest = async (
       }
     }
   }
-  if (url.pathname === "/v1/auth/register" && request.method === "POST") {
-    return handleRegister(request, env);
-  }
-  if (url.pathname === "/v1/admin/owners" && request.method === "POST") {
-    return handleCreateOwner(request, env);
-  }
-  if (url.pathname === "/v1/admin/owner-invitations" && request.method === "POST") {
-    return handleCreateOwnerInvitation(request, env);
-  }
-  if (url.pathname === "/v1/owner/pair" && request.method === "POST") {
-    return handlePairOwner(request, env);
+  const accountRoute = resolveAccountRoute(url.pathname, request.method);
+  if (accountRoute) {
+    switch (accountRoute) {
+      case "auth-register": return handleRegister(request, env);
+      case "admin-create-owner": return handleCreateOwner(request, env);
+      case "admin-create-owner-invitation": return handleCreateOwnerInvitation(request, env);
+      case "owner-pair": return handlePairOwner(request, env);
+      case "admin-create-invitation": return handleCreateInvitation(request, env);
+      case "admin-revoke-device": return handleRevokeDevice(request, env);
+    }
   }
   const ownerRoute = resolveOwnerRoute(url.pathname, request.method);
   if (ownerRoute) {
@@ -4412,12 +4412,6 @@ const handleRequest = async (
       case "messages-inbox": return handleAppMessageInbox(request, env);
       case "messages-ack": return handleAcknowledgeAppMessages(request, env);
     }
-  }
-  if (url.pathname === "/v1/admin/invitations" && request.method === "POST") {
-    return handleCreateInvitation(request, env);
-  }
-  if (url.pathname === "/v1/admin/devices/revoke" && request.method === "POST") {
-    return handleRevokeDevice(request, env);
   }
   return json({ error: "not_found" }, 404);
 };
