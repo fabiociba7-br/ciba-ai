@@ -964,7 +964,11 @@ const handleOwnerComposioInvoke = async (request: Request, env: Env) => {
       maxOutputBytes: 64_000,
       maxConcurrentExecutions: 1,
       authorize: async (authorization) => {
-        if (authorization.toolId !== toolId || authorization.risk !== classified.risk) return false;
+        if (authorization.toolId !== toolId || authorization.risk !== classified.risk ||
+            (classified.requiresApproval && (!authorization.approvalIdentity ||
+              authorization.approvalIdentity.ownerId !== owner.owner_id ||
+              authorization.approvalIdentity.appId !== device.app_id ||
+              authorization.approvalIdentity.deviceId !== device.device_id))) return false;
         const current = await env.DB.prepare(`
           SELECT p.enabled, p.risk, p.requires_approval, p.schema_sha256
           FROM owner_composio_tool_policies p
@@ -1024,6 +1028,7 @@ const handleOwnerComposioInvoke = async (request: Request, env: Env) => {
         : json({ error: "approval_not_found_or_expired" }, 409);
     }
 
+    let executionAuthorization: { approvalId: string; identity: typeof identity } | undefined;
     if (classified.requiresApproval) {
       if (typeof body.approval_id !== "string") return json({ error: "tool_approval_required" }, 403);
       const consumed = await approvals.consume({
@@ -1032,11 +1037,12 @@ const handleOwnerComposioInvoke = async (request: Request, env: Env) => {
         request: approvalRequest,
       });
       if (!consumed) return json({ error: "tool_approval_required_or_expired" }, 403);
+      executionAuthorization = { approvalId: body.approval_id, identity };
     } else if (body.approval_id !== undefined) {
       return json({ error: "unexpected_tool_approval" }, 400);
     }
 
-    const result = await registry.execute(toolId, plan.input, context);
+    const result = await registry.execute(toolId, plan.input, context, executionAuthorization);
     return json({ executed: true, tool: toolName, result });
   } catch (error) {
     const reason = error instanceof Error && /^[a-z0-9_:-]{1,80}$/i.test(error.message)
