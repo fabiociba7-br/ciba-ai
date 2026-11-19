@@ -2804,7 +2804,7 @@ const handleChat = async (request: Request, env: Env) => {
           if (access !== null) return false;
           const [activeSession, currentPolicy] = await Promise.all([
             env.DB.prepare(
-              "SELECT session_id FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
+              "SELECT session_id, toolkits_json FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
             ).bind(owner.owner_id).first<{ session_id: string; toolkits_json: string }>(),
             env.DB.prepare(`
               SELECT toolkit, risk, requires_approval, schema_sha256, enabled
