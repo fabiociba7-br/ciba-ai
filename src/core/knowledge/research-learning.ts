@@ -64,9 +64,10 @@ export async function learnFromResearch(
   const newInsights = clean(input.newInsights, 50);
   const uncertainties = clean(input.uncertainties ?? [], 50);
   if (findings.length === 0 && newInsights.length === 0) throw new Error("research_without_findings");
-  const normalized = [input.topic, ...findings, ...newInsights].join("|").toLocaleLowerCase().replace(/\s+/g, " ").trim();
-  // Stable deterministic fingerprint avoids learning the exact same finding repeatedly.
-  const fingerprint = normalized;
+  const normalized = [input.topic, ...findings, ...newInsights].join("|").toLowerCase().replace(/\s+/g, " ").trim();
+  // Store a bounded deterministic digest, never raw research text, as the lookup key.
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized));
+  const fingerprint = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
   const existing = await repository.findByFingerprint(fingerprint);
   const hasStrongEvidence = sources.some((source) => source.evidenceKind === "official" || source.evidenceKind === "primary");
   const entry: ResearchLearningEntry = {
