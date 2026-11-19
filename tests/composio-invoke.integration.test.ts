@@ -23,6 +23,7 @@ const db = (env as unknown as { DB: D1Database }).DB;
 const ownerIds: string[] = [];
 let accessToken = "";
 let ownerId = "";
+let previousExternalToolsControl: { enabled: number; reason: string | null; updated_by: string; updated_at: string } | null = null;
 
 const workerEnv = { ...env, COMPOSIO_API_KEY: apiKey } as Env;
 const request = (path: string, init: RequestInit = {}) => workerModule.fetch(
@@ -131,6 +132,9 @@ const ownerRequest = (body: Record<string, unknown>) => request("/v1/owner/compo
 });
 
 beforeAll(async () => {
+  previousExternalToolsControl = await db.prepare(
+    "SELECT enabled, reason, updated_by, updated_at FROM cibagenio_controls WHERE resource_id = 'external_tools' AND scope = 'global' AND scope_id = ''"
+  ).first<{ enabled: number; reason: string | null; updated_by: string; updated_at: string }>();
   await db.prepare("INSERT INTO cibagenio_controls(resource_id, scope, scope_id, enabled, reason, updated_by, updated_at) VALUES('external_tools', 'global', '', 1, 'Composio integration test', 'test', ?) ON CONFLICT(resource_id, scope, scope_id) DO UPDATE SET enabled = 1, reason = excluded.reason, updated_by = 'test', updated_at = excluded.updated_at")
     .bind(new Date().toISOString()).run();
   await setupOwner();
@@ -142,8 +146,15 @@ afterAll(async () => {
     await db.prepare("DELETE FROM tool_approvals WHERE owner_id = ?").bind(id).run();
     await db.prepare("DELETE FROM owner_composio_tool_policies WHERE owner_id = ?").bind(id).run();
     await db.prepare("DELETE FROM owner_composio_sessions WHERE owner_id = ?").bind(id).run();
+    await db.prepare("DELETE FROM owner_pairing_invitations WHERE owner_id = ?").bind(id).run();
     await db.prepare("DELETE FROM devices WHERE owner_id = ?").bind(id).run();
     await db.prepare("DELETE FROM owners WHERE owner_id = ?").bind(id).run();
+  }
+  if (previousExternalToolsControl) {
+    await db.prepare("UPDATE cibagenio_controls SET enabled = ?, reason = ?, updated_by = ?, updated_at = ? WHERE resource_id = 'external_tools' AND scope = 'global' AND scope_id = ''")
+      .bind(previousExternalToolsControl.enabled, previousExternalToolsControl.reason, previousExternalToolsControl.updated_by, previousExternalToolsControl.updated_at).run();
+  } else {
+    await db.prepare("DELETE FROM cibagenio_controls WHERE resource_id = 'external_tools' AND scope = 'global' AND scope_id = ''").run();
   }
 });
 
