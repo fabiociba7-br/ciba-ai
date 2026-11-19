@@ -3527,14 +3527,25 @@ const handleCreateAgentJob = async (request: Request, env: Env, ctx: ExecutionCo
   return json({ queued: true, duplicate: false, task_id: taskId, status: "queued", expires_at: expiresAt }, 201);
 };
 
-const handleGetAgentJob = async (request: Request, env: Env, taskId: string) => {
+const handleGetAgentJob = async (request: Request, env: Env, taskId: string, ctx: ExecutionContext) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
   if (device.app_id !== "com.ciba.garcia") return json({ error: "garcia_app_required" }, 403);
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
+  const resourceAccess = await requireCibaGenioAccess(env, "task_dispatch", device.app_id);
+  if (resourceAccess) return resourceAccess;
   const task = await getAgentJob(env.DB, owner.owner_id, taskId);
   if (!task) return json({ error: "agent_job_not_found" }, 404);
+  if (task.status === "queued") {
+    ctx.waitUntil((async () => {
+      const runtime = await readRuntimeSettings(env);
+      if (runtime.ai_enabled === "false" || runtime.maintenance_mode === "true") return;
+      const model = resolveModel(runtime.ai_model, env.AI_MODEL);
+      if (!model || !ZERO_COST_MODELS.has(model)) return;
+      await runOneAgentQueueJob(env.DB, env.AI, model);
+    })().catch(() => undefined));
+  }
   let result: unknown = null;
   if (task.result_json) {
     try { result = JSON.parse(task.result_json); } catch { result = null; }
@@ -3553,6 +3564,8 @@ const handleCancelAgentJob = async (request: Request, env: Env, taskId: string) 
   if (device.app_id !== "com.ciba.garcia") return json({ error: "garcia_app_required" }, 403);
   const owner = await getActiveOwnerForDevice(env, device.owner_id);
   if (!owner) return json({ error: "active_owner_required" }, 403);
+  const resourceAccess = await requireCibaGenioAccess(env, "task_dispatch", device.app_id);
+  if (resourceAccess) return resourceAccess;
   const cancelled = await cancelAgentJob(env.DB, owner.owner_id, taskId, nowIso());
   if (!cancelled) return json({ error: "agent_job_not_cancellable" }, 409);
   return json({ cancelled: true, task_id: taskId });
@@ -3787,7 +3800,7 @@ const handleRequest = async (
   }
   const agentJobStatus = url.pathname.match(/^\/v1\/owner\/agent-jobs\/([A-Za-z0-9_-]{16,128})$/);
   if (agentJobStatus && request.method === "GET") {
-    return handleGetAgentJob(request, env, agentJobStatus[1]);
+    return handleGetAgentJob(request, env, agentJobStatus[1], ctx);
   }
   if (url.pathname === "/v1/apps/tasks/dispatch" && request.method === "POST") {
     return handleTaskDispatch(request, env);
