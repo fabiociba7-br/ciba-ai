@@ -38,6 +38,7 @@ import { enqueueAgentJob, getAgentJob, cancelAgentJob } from "./core/agent-queue
 import { runOneAgentQueueJob } from "./core/agent-queue-runner";
 import { attachComposioOwnerSession, createComposioOwnerSession, deleteComposioOwnerSession } from "./core/composio/sessions";
 import { createComposioMcpDiscoveryClient } from "./core/composio/client";
+import { classifyComposioTool, hashComposioToolSchema } from "./core/composio/policy";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
@@ -656,6 +657,147 @@ const handleOwnerComposioTools = async (request: Request, env: Env) => {
       ? error.message
       : "composio_discovery_failed";
     return json({ error: "composio_discovery_failed", reason }, 502);
+  }
+};
+
+const handleOwnerComposioPolicy = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  if (device.app_id !== "com.ciba.garcia") return json({ error: "garcia_app_required" }, 403);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const resourceAccess = await requireCibaGenioAccess(env, "external_tools", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
+  if (request.method === "GET") {
+    const rows = await env.DB.prepare(`
+      SELECT tool_name, toolkit, risk, requires_approval, schema_sha256,
+        description, enabled, consented_at, updated_at
+      FROM owner_composio_tool_policies
+      WHERE owner_id = ?
+      ORDER BY toolkit, tool_name
+    `).bind(owner.owner_id).all<{
+      tool_name: string; toolkit: string; risk: "read" | "write" | "external";
+      requires_approval: number; schema_sha256: string; description: string;
+      enabled: number; consented_at: string; updated_at: string;
+    }>();
+    return json({
+      execution_enabled: false,
+      policies: (rows.results || []).map((row) => ({
+        name: row.tool_name,
+        toolkit: row.toolkit,
+        risk: row.risk,
+        requires_approval: row.requires_approval === 1,
+        schema_sha256: row.schema_sha256,
+        description: row.description,
+        enabled: row.enabled === 1,
+        consented_at: row.consented_at,
+        updated_at: row.updated_at,
+      })),
+      note: "Esta lista registra consentimento e classificação local. A execução remota permanece desativada.",
+    });
+  }
+
+  if (request.method !== "POST") {
+    return json({ error: "method_not_allowed", allowed: ["GET", "POST"] }, 405, { allow: "GET, POST" });
+  }
+  if (!env.COMPOSIO_API_KEY) return json({ error: "composio_server_not_configured" }, 503);
+
+  let body: Record<string, unknown>;
+  try { body = await readJson(request, 8_000); } catch {
+    return json({ error: "invalid_json" }, 400);
+  }
+  if (body.consent !== true) return json({ error: "explicit_consent_required" }, 400);
+  if (!Array.isArray(body.tools) || body.tools.length > 32 ||
+      !body.tools.every((name) => typeof name === "string" && /^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(name))) {
+    return json({ error: "composio_tool_allowlist_invalid" }, 400);
+  }
+  const requestedNames = body.tools as string[];
+  if (new Set(requestedNames).size !== requestedNames.length) {
+    return json({ error: "composio_tool_allowlist_duplicate" }, 400);
+  }
+
+  const session = await env.DB.prepare(
+    "SELECT session_id, toolkits_json FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
+  ).bind(owner.owner_id).first<{ session_id: string; toolkits_json: string }>();
+  if (!session) return json({ error: "composio_session_not_found" }, 404);
+
+  let enabledToolkits: string[];
+  try {
+    const parsed = JSON.parse(session.toolkits_json);
+    if (!Array.isArray(parsed) || !parsed.every((item) => typeof item === "string")) throw new Error();
+    enabledToolkits = parsed;
+  } catch {
+    return json({ error: "composio_session_configuration_invalid" }, 500);
+  }
+
+  try {
+    const client = createComposioMcpDiscoveryClient({
+      apiKey: env.COMPOSIO_API_KEY,
+      sessionId: session.session_id,
+    });
+    await client.initialize();
+    const discovered = await client.listTools();
+    const selected = requestedNames.map((name) => {
+      const tool = discovered.find((item) => item.name === name);
+      if (!tool) throw new Error("composio_tool_not_discovered");
+      const classified = classifyComposioTool(tool, enabledToolkits);
+      return { ...classified, schemaSha256: hashComposioToolSchema(tool.inputSchema) };
+    });
+    const policies = await Promise.all(selected.map(async (item) => ({
+      ...item,
+      schemaSha256: await item.schemaSha256,
+    })));
+    const timestamp = nowIso();
+    const statements = [
+      env.DB.prepare(
+        "UPDATE owner_composio_tool_policies SET enabled = 0, updated_at = ? WHERE owner_id = ?"
+      ).bind(timestamp, owner.owner_id),
+      ...policies.map((item) => env.DB.prepare(`
+        INSERT INTO owner_composio_tool_policies(
+          owner_id, tool_name, toolkit, risk, requires_approval, schema_sha256,
+          description, enabled, consented_at, updated_at
+        ) VALUES(?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        ON CONFLICT(owner_id, tool_name) DO UPDATE SET
+          toolkit = excluded.toolkit,
+          risk = excluded.risk,
+          requires_approval = excluded.requires_approval,
+          schema_sha256 = excluded.schema_sha256,
+          description = excluded.description,
+          enabled = 1,
+          consented_at = excluded.consented_at,
+          updated_at = excluded.updated_at
+      `).bind(
+        owner.owner_id, item.name, item.toolkit, item.risk,
+        item.requiresApproval ? 1 : 0, item.schemaSha256,
+        item.description, timestamp, timestamp
+      )),
+    ];
+    await env.DB.batch(statements);
+    return json({
+      saved: true,
+      execution_enabled: false,
+      policies: policies.map((item) => ({
+        name: item.name,
+        toolkit: item.toolkit,
+        risk: item.risk,
+        requires_approval: item.requiresApproval,
+        schema_sha256: item.schemaSha256,
+        description: item.description,
+        enabled: true,
+      })),
+      disabled_count: Math.max(0, (await env.DB.prepare(
+        "SELECT COUNT(*) AS count FROM owner_composio_tool_policies WHERE owner_id = ? AND enabled = 0"
+      ).bind(owner.owner_id).first<{ count: number }>())?.count || 0),
+      note: "Consentimento salvo. Ferramentas write/external exigirão aprovação individual quando a execução for habilitada; nenhuma ferramenta foi executada.",
+    });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "";
+    if (code === "composio_tool_not_discovered" || code === "composio_toolkit_not_enabled" ||
+        code === "composio_tool_descriptor_invalid") {
+      return json({ error: code }, 400);
+    }
+    return json({ error: "composio_policy_save_failed" }, 502);
   }
 };
 
@@ -3927,7 +4069,7 @@ const handleRequest = async (
   if (url.pathname === "/v1/owner/pair" && request.method === "POST") {
     return handlePairOwner(request, env);
   }
-  if (url.pathname === "/v1/owner/composio/tools" && request.method === "GET") {
+  if (url.pathname === "/v1/owner/composio/policy" && ["GET", "POST"].includes(request.method)) {\n    return handleOwnerComposioPolicy(request, env);\n  }\n  if (url.pathname === "/v1/owner/composio/tools" && request.method === "GET") {
     return handleOwnerComposioTools(request, env);
   }
   if (url.pathname === "/v1/owner/composio/session" && ["GET", "POST", "DELETE"].includes(request.method)) {
