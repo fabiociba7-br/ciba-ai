@@ -20,6 +20,17 @@ A memória usa apenas o contexto recebido na requisição e não grava conversas
 
 Consulte UNIFIED_INTELLIGENCE.md e OPEN_SOURCE_SELECTION.md para a estratégia de aproveitamento de projetos open source. Para o estado e os requisitos da transcrição local, consulte SPEECH_TO_TEXT.md; para a síntese de voz local da Garcia, consulte TEXT_TO_SPEECH.md. O núcleo possui contratos para Chatterbox, mas ainda não contém o runtime Python/PyTorch nem pesos de modelo. A integração foi desenhada para adapters locais, sem chamadas HTTP, APIs externas ou serviços remotos.
 
+## Isolamento dos agentes especialistas
+
+O módulo `src/core/agents/isolation.ts` aplica políticas determinísticas por perfil antes da inferência:
+- orçamento independente de contexto e quantidade máxima de mensagens;
+- limite separado para contexto de memória fornecido na requisição;
+- descoberta de ferramentas filtrada por nível de risco e quantidade máxima;
+- perfis gerais, raciocínio, criatividade e verificação recebem apenas ferramentas de leitura;
+- pesquisa pode descobrir ferramentas externas, e programação pode descobrir ferramentas de escrita/externas, mas isso não concede execução nem aprovação.
+
+O registro de ferramentas e o servidor continuam responsáveis por autorização, validação de entrada e aprovação explícita. O isolamento reduz contexto e superfície de ferramentas; não é um sandbox de sistema operacional nem execução paralela de agentes. O modelo atual continua sendo uma inferência por requisição, sem custo adicional de chamadas.
+
 ## Próximas etapas
 
 1. Validar o modelo e o binding AI na conta Cloudflare real.
