@@ -20,6 +20,8 @@ export interface McpHttpClientOptions {
   getAuthHeaders?: () => Promise<Record<string, string>>;
   /** Local policy allowlist. Empty or omitted means discovery-only, with no executable tools. */
   allowedToolNames?: string[];
+  /** Exact tool names whose one-shot approval was consumed by the trusted caller. */
+  approvedToolNames?: string[];
   fetcher?: typeof fetch;
   timeoutMs?: number;
   maxResponseBytes?: number;
@@ -114,6 +116,14 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
   const maxResponseBytes = Math.min(256_000, Math.max(1_024, options.maxResponseBytes ?? 128_000));
   const discovered = new Map<string, McpRemoteTool>();
   const allowedToolNames = new Set(options.allowedToolNames ?? []);
+  const approvedToolNames = new Set(options.approvedToolNames ?? []);
+  if ([...allowedToolNames, ...approvedToolNames].some((name) =>
+      typeof name !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(name))) {
+    throw new Error("mcp_tool_allowlist_invalid");
+  }
+  if ([...approvedToolNames].some((name) => !allowedToolNames.has(name))) {
+    throw new Error("mcp_approved_tool_not_allowlisted");
+  }
   let initialized = false;
   let negotiatedProtocolVersion = PROTOCOL_VERSION;
 
@@ -239,8 +249,10 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
     if (!discovered.has(name)) throw new Error("mcp_tool_not_discovered");
     if (!allowedToolNames.has(name)) throw new Error("mcp_tool_not_allowlisted");
     const descriptor = discovered.get(name);
-    if (descriptor?.annotations?.readOnlyHint !== true || descriptor.annotations.destructiveHint === true) {
-      throw new Error("mcp_tool_not_read_only");
+    const readOnly = descriptor?.annotations?.readOnlyHint === true &&
+      descriptor.annotations.destructiveHint !== true;
+    if (!readOnly && !approvedToolNames.has(name)) {
+      throw new Error("mcp_tool_not_read_only_or_approved");
     }
     if (!name || name.length > MAX_TOOL_NAME || !isRecord(args)) throw new Error("mcp_tool_arguments_invalid");
     const result = await post({
