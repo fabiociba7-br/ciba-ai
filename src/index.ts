@@ -8,6 +8,8 @@ export interface Env {
   ADMIN_TOKEN: string;
   FACEBOOK_APP_SECRET?: string;
   COMPOSIO_API_KEY?: string;
+  // Remote Composio execution is fail-closed unless explicitly enabled per environment.
+  COMPOSIO_EXECUTION_ENABLED?: string;
   AI_MODEL?: string;
   ALLOWED_APP_IDS?: string;
   MAX_OUTPUT_TOKENS?: string;
@@ -879,6 +881,12 @@ const handleOwnerComposioInvoke = async (request: Request, env: Env) => {
       typeof invocationId !== "string" || !invocationId.trim() || invocationId.length > 128 ||
       body.input === undefined) {
     return json({ error: "composio_invocation_invalid" }, 400);
+  }
+  // Approval is necessary but not sufficient: production execution remains disabled
+  // unless an operator explicitly enables this server-side feature flag.
+  // This check happens before session attachment, discovery, or any remote call.
+  if (action === "execute" && env.COMPOSIO_EXECUTION_ENABLED !== "true") {
+    return json({ error: "composio_execution_disabled" }, 403);
   }
   if (action === "approve" && (typeof body.approval_id !== "string" ||
       !body.approval_id.trim() || body.approval_id.length > 128 || typeof body.allow !== "boolean")) {
