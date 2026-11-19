@@ -30,8 +30,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: backend-refactor-ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: backend-refactor-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
 
 jobs:
   check:
