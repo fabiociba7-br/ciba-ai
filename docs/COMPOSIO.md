@@ -49,10 +49,36 @@ A lista substitui a allowlist anterior. Nomes duplicados, desconhecidos ou que n
 
 `GET /v1/owner/composio/policy` consulta as permissões gravadas. As rotas exigem dispositivo Garcia autenticado, proprietário ativo e `external_tools` habilitado.
 
-## Execução desativada
+## Execução controlada e aprovações
 
-**Nenhuma ferramenta Composio é executada pela Garcia nesta etapa.** O adaptador MCP de Composio continua somente com `initialize` e `listTools`; não expõe `callTool`. O endpoint de política apenas grava consentimento, allowlist, risco e hash do schema.
+O endpoint `POST /v1/owner/composio/invoke` conecta a allowlist local ao registro de ferramentas e ao armazenamento de aprovações duráveis. Ele exige dispositivo Garcia autenticado, proprietário ativo, controle `external_tools`, sessão ativa e ferramenta habilitada pelo próprio proprietário.
 
-A integração existente de aprovação durável D1 já oferece base para aprovações de uso único, vinculadas à identidade, chamada e parâmetros exatos. A próxima etapa será ligar a execução Composio a essa base, revalidar schema e fingerprint em cada chamada e aplicar limites de tempo, tamanho e concorrência. Nenhuma execução deve ser habilitada antes disso.
+O fluxo tem três ações explícitas:
+
+1. `propose`: valida argumentos contra o schema atual. Para risco `read`, apenas prepara a chamada; para `write` ou `external`, cria uma aprovação D1 de uso único com validade de cinco minutos.
+2. `approve`: registra a decisão explícita do proprietário, vinculada ao mesmo proprietário, app, dispositivo de origem, conversa, invocação, ferramenta, argumentos e fingerprint do schema.
+3. `execute`: reanexa à sessão, redescobre a ferramenta, recalcula risco e hash do schema, verifica novamente a permissão local e, para risco `write`/ `external`, consome atomicamente a aprovação antes da chamada MCP. A aprovação não pode ser reutilizada.
+
+Exemplo de proposta:
+
+```json
+{
+  "action": "propose",
+  "tool_name": "GMAIL_SEND_EMAIL",
+  "conversation_id": "conversation-123",
+  "invocation_id": "invocation-456",
+  "input": {
+    "to": "destinatario@example.com",
+    "subject": "Assunto",
+    "body": "Mensagem"
+  }
+}
+```
+
+Para responder à aprovação, envie `action: "approve"`, o mesmo `tool_name`, `conversation_id`, `invocation_id` e `input`, além de `approval_id` e `allow: true` (ou `false`). A execução exige os mesmos campos e `approval_id`. Uma mudança no schema, risco, argumentos, sessão ou permissão invalida o fluxo.
+
+O cliente MCP continua deny-by-default: uma chamada só pode alcançar uma ferramenta incluída na allowlist da invocação; ferramentas de escrita/destruição só passam pela barreira MCP quando o servidor autoriza aquele nome após consumir a aprovação. Limites de payload, schema, resposta, tempo e concorrência são aplicados pelo registro local. A chamada não é feita durante proposta ou aprovação.
+
+**Atenção:** execução remota agora existe apenas através desse endpoint controlado. Ela não foi conectada automaticamente ao fluxo de chat/modelo nem permite que o modelo invoque ferramentas sem uma proposta explícita e os controles do servidor. A chave Composio continua exclusivamente no Worker.
 
 A criação da sessão envia `proxy_execute: false`, `workbench: false`, `execute.enable_multi_execute: false` e desativa tags de escrita/destruição. Nenhuma chave deve ser colocada no aplicativo Android, no repositório ou em memória comum. A chave do projeto precisa das permissões Composio **Session management** para criar/revogar sessões e **Session tool execution** para acessar o endpoint MCP; não habilite Proxy execute ou Workbench nesta etapa. [Documentação oficial: sessions via MCP](https://docs.composio.dev/docs/sessions-via-mcp)
