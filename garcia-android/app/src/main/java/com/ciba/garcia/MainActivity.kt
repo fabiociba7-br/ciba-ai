@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -506,7 +507,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var settingsSection by remember { mutableStateOf("menu") }
     var agentRole by remember { mutableStateOf("general") }
     var agentPrompt by remember { mutableStateOf("") }
-    var agentTaskId by remember { mutableStateOf("") }
+    var agentTaskId by remember { mutableStateOf(store.get("last_agent_task_id").orEmpty()) }
     var agentTaskInfo by remember { mutableStateOf<JSONObject?>(null) }
     var agentBusy by remember { mutableStateOf(false) }
     var showAgentRoleMenu by remember { mutableStateOf(false) }
@@ -532,6 +533,22 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var showFacebookManager by remember { mutableStateOf(false) }
     var connected by remember { mutableStateOf(store.get("device_token") != null) }
     val chatListState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+    LaunchedEffect(agentTaskId, showSettings, settingsSection) {
+        if (agentTaskId.isBlank() || !showSettings || settingsSection != "agents") return@LaunchedEffect
+        while (true) {
+            val current = agentTaskInfo?.optString("status").orEmpty()
+            if (current in setOf("completed", "failed", "cancelled")) break
+            delay(4_000)
+            if (agentBusy) continue
+            try {
+                val refreshed = withContext(Dispatchers.IO) { client.agentJobStatus(agentTaskId) }
+                agentTaskInfo = refreshed
+            } catch (e: Exception) {
+                agentError = e.message ?: "Não foi possível atualizar a tarefa."
+            }
+        }
+    }
 
     LaunchedEffect(history.size, busy) {
         if (history.isNotEmpty()) {
@@ -1364,6 +1381,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                         val task = response.optJSONObject("task")
                                         agentTaskId = response.optString("task_id").ifBlank { task?.optString("task_id").orEmpty() }
                                         if (agentTaskId.isBlank()) error("O servidor não retornou o identificador da tarefa.")
+                                        store.put("last_agent_task_id", agentTaskId)
                                         agentTaskInfo = JSONObject()
                                             .put("task_id", agentTaskId)
                                             .put("status", response.optString("status", task?.optString("status") ?: "queued"))
