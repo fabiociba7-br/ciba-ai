@@ -32,6 +32,7 @@ import { CIBAGENIO_RESOURCES, parseCibaGenioCommand } from "./core/cibagenio";
 import { createNativeCapabilityRegistry } from "./core/native-capabilities";
 import { createD1ToolApprovalStore } from "./core/tools/durable-consent";
 import { createGarciaCapabilityToolRuntime } from "./core/tools/garcia-capability-tools";
+import { enqueueAgentJob, getAgentJob, cancelAgentJob } from "./core/agent-queue-store";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
@@ -3481,6 +3482,74 @@ const handleAcknowledgeAppMessages = async (request: Request, env: Env) => {
   return json({ acknowledged, requested: ids.length });
 };
 
+const handleCreateAgentJob = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  if (device.app_id !== "com.ciba.garcia") return json({ error: "garcia_app_required" }, 403);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const resourceAccess = await requireCibaGenioAccess(env, "task_dispatch", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
+  const body = await readJson(request, 36_000);
+  const role = body.agent_role;
+  const idempotencyKey = typeof body.idempotency_key === "string" ? body.idempotency_key.trim() : "";
+  if (!["general", "reasoning", "research", "coding", "creative", "verification"].includes(String(role)) ||
+      !idempotencyKey || idempotencyKey.length > 128 ||
+      !body.payload || typeof body.payload !== "object" || Array.isArray(body.payload)) {
+    return json({ error: "invalid_agent_job_fields" }, 400);
+  }
+  let payloadJson: string;
+  try { payloadJson = JSON.stringify(body.payload); } catch {
+    return json({ error: "invalid_agent_job_payload" }, 400);
+  }
+  if (!payloadJson || payloadJson.length > 32_000) {
+    return json({ error: "agent_job_payload_too_large", max_characters: 32_000 }, 413);
+  }
+  const timestamp = nowIso();
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const taskId = crypto.randomUUID();
+  const result = await enqueueAgentJob(env.DB, {
+    taskId, ownerId: owner.owner_id, role: role as "general" | "reasoning" | "research" | "coding" | "creative" | "verification",
+    idempotencyKey, payloadJson, now: timestamp, expiresAt,
+    priority: typeof body.priority === "number" && Number.isFinite(body.priority) ? body.priority : 0,
+  });
+  if (result.queueFull) return json({ error: "agent_queue_full", maximum_queued: 20 }, 429);
+  if (result.duplicate && result.job) return json({ queued: true, duplicate: true, task: result.job }, 200);
+  return json({ queued: true, duplicate: false, task_id: taskId, status: "queued", expires_at: expiresAt }, 201);
+};
+
+const handleGetAgentJob = async (request: Request, env: Env, taskId: string) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  if (device.app_id !== "com.ciba.garcia") return json({ error: "garcia_app_required" }, 403);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const task = await getAgentJob(env.DB, owner.owner_id, taskId);
+  if (!task) return json({ error: "agent_job_not_found" }, 404);
+  let result: unknown = null;
+  if (task.result_json) {
+    try { result = JSON.parse(task.result_json); } catch { result = null; }
+  }
+  return json({
+    task_id: task.task_id, agent_role: task.agent_role, status: task.status,
+    attempts: task.attempts, max_attempts: task.max_attempts, error_code: task.error_code,
+    result, created_at: task.created_at, updated_at: task.updated_at,
+    started_at: task.started_at, completed_at: task.completed_at, expires_at: task.expires_at,
+  });
+};
+
+const handleCancelAgentJob = async (request: Request, env: Env, taskId: string) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  if (device.app_id !== "com.ciba.garcia") return json({ error: "garcia_app_required" }, 403);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const cancelled = await cancelAgentJob(env.DB, owner.owner_id, taskId, nowIso());
+  if (!cancelled) return json({ error: "agent_job_not_cancellable" }, 409);
+  return json({ cancelled: true, task_id: taskId });
+};
+
 const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
@@ -3696,6 +3765,17 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/owner/access-grants/revoke" && request.method === "POST") {
     return handleRevokeOwnerAccessGrant(request, env);
+  }
+  if (url.pathname === "/v1/owner/agent-jobs" && request.method === "POST") {
+    return handleCreateAgentJob(request, env);
+  }
+  const agentJobCancel = url.pathname.match(/^\/v1\/owner\/agent-jobs\/([A-Za-z0-9_-]{16,128})\/cancel$/);
+  if (agentJobCancel && request.method === "POST") {
+    return handleCancelAgentJob(request, env, agentJobCancel[1]);
+  }
+  const agentJobStatus = url.pathname.match(/^\/v1\/owner\/agent-jobs\/([A-Za-z0-9_-]{16,128})$/);
+  if (agentJobStatus && request.method === "GET") {
+    return handleGetAgentJob(request, env, agentJobStatus[1]);
   }
   if (url.pathname === "/v1/apps/tasks/dispatch" && request.method === "POST") {
     return handleTaskDispatch(request, env);
