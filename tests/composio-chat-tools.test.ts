@@ -61,6 +61,7 @@ describe("Composio chat tool adapter", () => {
       id: "composio.gmail_send_email",
       risk: "write",
       requiresApproval: true,
+      description: expect.stringContaining("exige aprovação explícita"),
     });
     const output = await definitions[0].execute({});
     expect(output).toEqual([{ type: "text", text: "two messages" }]);
