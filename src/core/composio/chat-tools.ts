@@ -20,9 +20,9 @@ export interface ComposioChatToolOptions {
 }
 
 /**
- * Exposes only owner-consented, schema-stable, locally classified read tools to
- * the conversational runtime. Write/external tools remain on the explicit
- * approval endpoint and can never enter this automatic read-only adapter.
+ * Exposes only owner-consented, schema-stable tools to Garcia's runtime.
+ * Read tools may execute under the normal read authorization path. Write and
+ * external tools are proposal-only and are gated by durable owner approval.
  */
 export async function createComposioChatToolDefinitions(
   options: ComposioChatToolOptions,
@@ -61,9 +61,11 @@ export async function createComposioChatToolDefinitions(
     let schemaSha256: string;
     try {
       classified = classifyComposioTool(remote, options.enabledToolkits);
-      if (classified.risk !== "read" || classified.requiresApproval ||
-          consent.risk !== "read" || consent.requires_approval !== 0 ||
-          consent.toolkit !== classified.toolkit) continue;
+      if (consent.toolkit !== classified.toolkit ||
+          consent.risk !== classified.risk ||
+          consent.requires_approval !== (classified.requiresApproval ? 1 : 0) ||
+          (classified.risk === "read" && classified.requiresApproval) ||
+          (classified.risk !== "read" && !classified.requiresApproval)) continue;
       schemaSha256 = await hashComposioToolSchema(remote.inputSchema);
     } catch {
       continue;
@@ -78,12 +80,12 @@ export async function createComposioChatToolDefinitions(
     definitions.push(Object.freeze({
       id,
       description: `Consulta de leitura autorizada da integração ${classified.toolkit}, ferramenta ${remote.name}.`,
-      risk: "read" as const,
-      requiresApproval: false,
+      risk: classified.risk,
+      requiresApproval: classified.requiresApproval,
       inputSchema: remote.inputSchema,
       async execute(input: unknown) {
         const result = await options.callTool(remote.name, input as Record<string, unknown>);
-        if (result.isError) throw new Error("composio_read_tool_failed");
+        if (result.isError) throw new Error("composio_tool_call_failed");
         return result.structuredContent ?? result.content;
       },
     }));

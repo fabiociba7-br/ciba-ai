@@ -34,6 +34,7 @@ import { deriveTaskLifecycle } from "./core/task-lifecycle";
 import { CIBAGENIO_RESOURCES, parseCibaGenioCommand } from "./core/cibagenio";
 import { createNativeCapabilityRegistry } from "./core/native-capabilities";
 import { createD1ToolApprovalStore } from "./core/tools/durable-consent";
+import { createDurableCibaToolApprovalFlow } from "./core/tools/durable-approval-flow";
 import { createCibaToolRegistry } from "./core/tools/registry";
 import { createGarciaCapabilityToolRuntime } from "./core/tools/garcia-capability-tools";
 import { handleMcpRequest } from "./core/mcp/protocol";
@@ -2714,6 +2715,7 @@ const handleChat = async (request: Request, env: Env) => {
 
   const composioChatPolicies = new Map<string, {
     toolName: string; toolkit: string; schemaSha256: string; sessionId: string;
+    risk: "read" | "write" | "external"; requiresApproval: boolean;
   }>();
   let composioChatTools: Awaited<ReturnType<typeof createComposioChatToolDefinitions>> = [];
 
@@ -2727,7 +2729,7 @@ const handleChat = async (request: Request, env: Env) => {
       const savedPolicies = await env.DB.prepare(`
         SELECT tool_name, toolkit, risk, requires_approval, schema_sha256, enabled
         FROM owner_composio_tool_policies
-        WHERE owner_id = ? AND enabled = 1 AND risk = 'read' AND requires_approval = 0
+        WHERE owner_id = ? AND enabled = 1
         ORDER BY tool_name LIMIT 32
       `).bind(owner.owner_id).all<{
         tool_name: string; toolkit: string; risk: "read" | "write" | "external";
@@ -2766,6 +2768,8 @@ const handleChat = async (request: Request, env: Env) => {
             toolkit: saved.toolkit,
             schemaSha256: saved.schema_sha256,
             sessionId: attached.sessionId,
+            risk: saved.risk,
+            requiresApproval: saved.requires_approval === 1,
           });
         }
       }
@@ -2785,6 +2789,14 @@ const handleChat = async (request: Request, env: Env) => {
         },
         executeReadOnlyProposals: true,
         additionalTools: composioChatTools,
+        approval: {
+          store: createD1ToolApprovalStore(env.DB),
+          identity: {
+            ownerId: owner.owner_id,
+            appId: device.app_id,
+            deviceId: device.device_id,
+          },
+        },
         getFacebookConnectionStatus: async () => {
           const link = await env.DB.prepare(
             "SELECT linked_at FROM owner_facebook_links WHERE owner_id = ?"
@@ -2792,8 +2804,7 @@ const handleChat = async (request: Request, env: Env) => {
           return { linked: Boolean(link), linkedAt: link?.linked_at || null };
         },
         authorize: async (toolRequest) => {
-          if (device.owner_id !== owner.owner_id ||
-              toolRequest.risk !== "read" || toolRequest.requiresApproval !== false) return false;
+          if (device.owner_id !== owner.owner_id) return false;
           if (toolRequest.toolId === "garcia.capabilities.list" ||
               toolRequest.toolId === "garcia.capabilities.get" ||
               toolRequest.toolId === "facebook.connection.status") return true;
@@ -2823,7 +2834,10 @@ const handleChat = async (request: Request, env: Env) => {
           return Boolean(activeSession?.session_id === composioPolicy.sessionId &&
             toolkitStillEnabled && currentPolicy &&
             currentPolicy.enabled === 1 && currentPolicy.toolkit === composioPolicy.toolkit &&
-            currentPolicy.risk === "read" && currentPolicy.requires_approval === 0 &&
+            currentPolicy.risk === composioPolicy.risk &&
+            currentPolicy.requires_approval === (composioPolicy.requiresApproval ? 1 : 0) &&
+            toolRequest.risk === composioPolicy.risk &&
+            toolRequest.requiresApproval === composioPolicy.requiresApproval &&
             currentPolicy.schema_sha256 === composioPolicy.schemaSha256);
         },
       })
@@ -2910,6 +2924,19 @@ const handleChat = async (request: Request, env: Env) => {
       : {}),
     ...(orchestration.toolApproval
       ? { tool_approval: orchestration.toolApproval }
+      : {}),
+    ...(orchestration.toolProposal?.toolId.startsWith("composio.")
+      ? {
+          tool_proposal: {
+            tool_id: orchestration.toolProposal.toolId,
+            tool_name: orchestration.toolProposal.toolId.slice("composio.".length),
+            risk: orchestration.toolProposal.risk,
+            requires_approval: orchestration.toolProposal.requiresApproval,
+            input: orchestration.toolProposal.input,
+            conversation_id: orchestration.toolProposal.conversationId,
+            invocation_id: orchestration.toolProposal.invocationId,
+          },
+        }
       : {}),
     intelligence: {
       agent: orchestration.selectedAgent,

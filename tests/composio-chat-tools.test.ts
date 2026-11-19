@@ -39,7 +39,7 @@ async function policy(
 }
 
 describe("Composio chat tool adapter", () => {
-  it("exposes only explicitly enabled, schema-matched, locally read-only tools", async () => {
+  it("exposes consented read tools for execution and write/external tools only as approval-gated proposals", async () => {
     const callTool = vi.fn(async () => ({
       content: [{ type: "text", text: "two messages" }],
       isError: false,
@@ -51,11 +51,16 @@ describe("Composio chat tool adapter", () => {
       callTool,
     });
 
-    expect(definitions).toHaveLength(1);
+    expect(definitions).toHaveLength(2);
     expect(definitions[0]).toMatchObject({
       id: "composio.gmail_list_emails",
       risk: "read",
       requiresApproval: false,
+    });
+    expect(definitions[1]).toMatchObject({
+      id: "composio.gmail_send_email",
+      risk: "write",
+      requiresApproval: true,
     });
     const output = await definitions[0].execute({});
     expect(output).toEqual([{ type: "text", text: "two messages" }]);
@@ -85,7 +90,7 @@ describe("Composio chat tool adapter", () => {
     expect(stale).toEqual([]);
   });
 
-  it("fails closed when local policy is not read-only or the toolkit is not enabled", async () => {
+  it("fails closed when local policy risk does not match the remote classification or toolkit is not enabled", async () => {
     const notReadOnly = await createComposioChatToolDefinitions({
       remoteTools: [readTool],
       enabledToolkits: ["gmail"],
@@ -112,7 +117,7 @@ describe("Composio chat tool adapter", () => {
       savedPolicies: [await policy("GMAIL_LIST_EMAILS")],
       callTool: async () => ({ content: [{ type: "text", text: "failure" }], isError: true }),
     });
-    await expect(definitions[0].execute({})).rejects.toThrow("composio_read_tool_failed");
+    await expect(definitions[0].execute({})).rejects.toThrow("composio_tool_call_failed");
   });
 
   it("executes an authorized Composio read proposal through Garcia's normal orchestrator registry", async () => {

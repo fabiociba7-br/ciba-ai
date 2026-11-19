@@ -1,5 +1,10 @@
 import type { CibaToolDefinition } from "./contracts";
 import {
+  createDurableCibaToolApprovalFlow,
+  createDurableCibaToolRegistry,
+} from "./durable-approval-flow";
+import type { DurableToolApprovalIdentity, DurableToolApprovalStore } from "./durable-consent";
+import {
   createNativeCapabilityRegistry,
   type NativeCapabilityCategory,
 } from "../native-capabilities";
@@ -49,6 +54,8 @@ export interface GarciaCapabilityToolOptions {
   getFacebookConnectionStatus?: () => Promise<{ linked: boolean; linkedAt: string | null }>;
   /** Additional trusted, pre-authorized definitions supplied by server adapters. */
   additionalTools?: CibaToolDefinition[];
+  /** Optional D1 approval store and server-derived identity for protected actions. */
+  approval?: { store: DurableToolApprovalStore; identity: DurableToolApprovalIdentity };
 }
 
 /**
@@ -114,7 +121,7 @@ export function createGarciaCapabilityTools(
     }] : []),
     ...(options.additionalTools ?? []),
   ];
-  return createCibaToolRegistry(definitions, {
+  const registryOptions = {
     allowlist: [
       "garcia.capabilities.list",
       "garcia.capabilities.get",
@@ -126,7 +133,13 @@ export function createGarciaCapabilityTools(
     maxInputBytes: 32_000,
     maxOutputBytes: 64_000,
     maxConcurrentExecutions: 4,
-  });
+  };
+  return options.approval
+    ? createDurableCibaToolRegistry(definitions, {
+        ...registryOptions,
+        approvals: options.approval.store,
+      })
+    : createCibaToolRegistry(definitions, registryOptions);
 }
 
 export interface GarciaCapabilityToolRuntimeOptions extends GarciaCapabilityToolOptions {
@@ -140,6 +153,10 @@ export interface GarciaCapabilityToolRuntime {
   registry: ExecutableCibaToolRegistry;
   context: CibaToolInvocationContext;
   executeReadOnlyProposals: boolean;
+  durableApproval?: {
+    flow: ReturnType<typeof createDurableCibaToolApprovalFlow>;
+    identity: DurableToolApprovalIdentity;
+  };
 }
 
 /** Builds the exact runtime shape accepted by runCibaOrchestrator. */
@@ -170,16 +187,25 @@ export function createGarciaCapabilityToolRuntime(
       !descriptors.invocationId.value.trim() || descriptors.invocationId.value.length > 128) {
     throw new Error("invalid_garcia_capability_runtime");
   }
+  const registry = createGarciaCapabilityTools({
+    authorize: options.authorize,
+    getFacebookConnectionStatus: options.getFacebookConnectionStatus,
+    additionalTools: options.additionalTools,
+    approval: options.approval,
+  });
+  const context = Object.freeze({
+    conversationId: descriptors.conversationId.value as string,
+    invocationId: descriptors.invocationId.value as string,
+  });
   return Object.freeze({
-    registry: createGarciaCapabilityTools({
-      authorize: options.authorize,
-      getFacebookConnectionStatus: options.getFacebookConnectionStatus,
-      additionalTools: options.additionalTools,
-    }),
-    context: Object.freeze({
-      conversationId: descriptors.conversationId.value,
-      invocationId: descriptors.invocationId.value,
-    }),
+    registry,
+    context,
     executeReadOnlyProposals: options.executeReadOnlyProposals === true,
+    ...(options.approval ? {
+      durableApproval: {
+        flow: createDurableCibaToolApprovalFlow(registry, options.approval.store),
+        identity: options.approval.identity,
+      },
+    } : {}),
   });
 }
