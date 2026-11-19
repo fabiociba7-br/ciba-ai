@@ -40,7 +40,7 @@ function validateEndpoint(endpoint: string, allowedHosts: string[]): URL {
     host.endsWith(".local") || host.endsWith(".internal") ||
     /^(?:127\.|10\.|192\.168\.|169\.254\.)/.test(host) ||
     /^172\.(?:1[6-9]|2\d|3[01])\./.test(host) || host === "::1";
-  if (url.protocol !== "https:" || !allowedPort || url.username || url.password || url.hash ||
+  if (url.protocol !== "https:" || !allowedPort || url.username || url.password || url.hash || url.search ||
       blockedHost || !allowedHosts.some((item) => item.toLowerCase() === host)) {
     throw new Error("mcp_endpoint_not_allowed");
   }
@@ -93,12 +93,14 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
   const discovered = new Map<string, McpRemoteTool>();
   const allowedToolNames = new Set(options.allowedToolNames ?? []);
   let initialized = false;
+  let negotiatedProtocolVersion = PROTOCOL_VERSION;
 
-  const requestHeaders = async (): Promise<Headers> => {
+  const requestHeaders = async (includeProtocolVersion = initialized): Promise<Headers> => {
     const headers = new Headers({
       "content-type": "application/json",
-      accept: "application/json",
+      accept: "application/json, text/event-stream",
     });
+    if (includeProtocolVersion) headers.set("MCP-Protocol-Version", negotiatedProtocolVersion);
     if (options.getAccessToken) {
       const token = await options.getAccessToken();
       if (token) {
@@ -157,10 +159,11 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
     if (!isRecord(result) || typeof result.protocolVersion !== "string" || !isRecord(result.serverInfo)) {
       throw new Error("mcp_initialize_invalid_result");
     }
+    negotiatedProtocolVersion = result.protocolVersion;
     const notification = await fetcher(endpoint.toString(), {
       method: "POST",
       redirect: "error",
-      headers: await requestHeaders(),
+      headers: await requestHeaders(true),
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
       signal: AbortSignal.timeout(timeoutMs),
     });
