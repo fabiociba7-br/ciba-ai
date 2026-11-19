@@ -59,8 +59,30 @@ function validateSessionResponse(value: unknown): ComposioSessionResult {
 }
 
 async function readApiResponse(response: Response): Promise<Record<string, unknown>> {
-  const raw = await response.text();
-  if (raw.length > 64_000) throw new Error("composio_response_too_large");
+  const maximumBytes = 64_000;
+  const declaredBytes = Number(response.headers.get("content-length") || 0);
+  if (declaredBytes > maximumBytes) throw new Error("composio_response_too_large");
+  const reader = response.body?.getReader();
+  const decoder = new TextDecoder();
+  let raw = "";
+  let bytes = 0;
+  if (reader) {
+    try {
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        bytes += chunk.value.byteLength;
+        if (bytes > maximumBytes) {
+          await reader.cancel();
+          throw new Error("composio_response_too_large");
+        }
+        raw += decoder.decode(chunk.value, { stream: true });
+      }
+      raw += decoder.decode();
+    } finally {
+      reader.releaseLock();
+    }
+  }
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch {
     throw new Error("composio_response_invalid");
@@ -98,6 +120,7 @@ export async function createComposioOwnerSession(
       "x-api-key": options.apiKey,
       accept: "application/json",
     },
+    signal: AbortSignal.timeout(10_000),
     body: JSON.stringify({
       user_id: options.userId,
       toolkits: { enable: toolkits },
@@ -135,6 +158,7 @@ export async function deleteComposioOwnerSession(
   const response = await fetcher(`${API_BASE}/${encodeURIComponent(sessionId)}`, {
     method: "DELETE",
     redirect: "manual",
+    signal: AbortSignal.timeout(10_000),
     headers: {
       "x-api-key": apiKey,
       accept: "application/json",
