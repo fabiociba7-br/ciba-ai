@@ -48,25 +48,7 @@ import { createComposioChatToolDefinitions } from "./core/composio/chat-tools";
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
 
-const b64url = (bytes: Uint8Array): string => {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-};
-
-const randomToken = (size = 32): string => {
-  const bytes = new Uint8Array(size);
-  crypto.getRandomValues(bytes);
-  return b64url(bytes);
-};
-
-const sha256 = async (value: string): Promise<string> => {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-};
-
-const nowIso = () => new Date().toISOString();
-const utcDay = () => new Date().toISOString().slice(0, 10);
+import { b64url, randomToken, sha256, nowIso, utcDay } from "./security/crypto";
 
 const allowedApps = (env: Env) =>
   new Set((env.ALLOWED_APP_IDS || "").split(",").map((s) => s.trim()).filter(Boolean));
