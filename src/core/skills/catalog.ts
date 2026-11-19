@@ -80,7 +80,7 @@ const SKILLS: readonly GarciaSkillDefinition[] = Object.freeze([
   },
 ].map((skill) => Object.freeze({
   ...skill,
-  roles: Object.freeze([...skill.roles]),
+  roles: Object.freeze([...skill.roles] as CibaRole[]),
   triggers: Object.freeze([...skill.triggers]),
 })));
 
