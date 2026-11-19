@@ -35,11 +35,12 @@ function validateEndpoint(endpoint: string, allowedHosts: string[]): URL {
     throw new Error("mcp_endpoint_invalid");
   }
   const host = url.hostname.toLowerCase();
+  const allowedPort = !url.port || url.port === "443";
   const blockedHost = host === "localhost" || host.endsWith(".localhost") ||
     host.endsWith(".local") || host.endsWith(".internal") ||
     /^(?:127\.|10\.|192\.168\.|169\.254\.)/.test(host) ||
     /^172\.(?:1[6-9]|2\d|3[01])\./.test(host) || host === "::1";
-  if (url.protocol !== "https:" || url.username || url.password || url.hash ||
+  if (url.protocol !== "https:" || !allowedPort || url.username || url.password || url.hash ||
       blockedHost || !allowedHosts.some((item) => item.toLowerCase() === host)) {
     throw new Error("mcp_endpoint_not_allowed");
   }
@@ -117,6 +118,7 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
       method: "POST",
       headers: await requestHeaders(),
       body: serialized,
+      redirect: "error",
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) throw new Error(`mcp_http_error_${response.status}`);
@@ -159,6 +161,7 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
       method: "POST",
       headers: await requestHeaders(),
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
+      redirect: "error",
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!notification.ok) throw new Error(`mcp_http_error_${notification.status}`);
