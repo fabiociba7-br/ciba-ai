@@ -23,7 +23,7 @@ describe("Garcia declarative skill library", () => {
 
   it("selects a role-specific default and at most one relevant secondary skill", () => {
     const selected = selectGarciaSkills("coding", [
-      { role: "user", content: "Preciso corrigir um bug e auditar a segurança do repositório." } as never,
+      { role: "user", content: "Preciso corrigir um bug e auditar a segurança do repositório." },
     ]);
 
     expect(selected.map((skill) => skill.id)).toEqual(["software-engineering", "repository-audit"]);
@@ -32,7 +32,7 @@ describe("Garcia declarative skill library", () => {
 
   it("does not select skills outside the active agent role", () => {
     const selected = selectGarciaSkills("creative", [
-      { role: "user", content: "Pesquisar fontes e comparar evidências." } as never,
+      { role: "user", content: "Pesquisar fontes e comparar evidências." },
     ]);
 
     expect(selected.map((skill) => skill.id)).toEqual(["technical-writing"]);
@@ -40,9 +40,9 @@ describe("Garcia declarative skill library", () => {
 
   it("uses the latest user message rather than old conversation triggers", () => {
     const selected = selectGarciaSkills("reasoning", [
-      { role: "user", content: "Pesquisar fontes e comparar evidências." } as never,
-      { role: "assistant", content: "Vou pesquisar." } as never,
-      { role: "user", content: "Ajude a priorizar as próximas etapas." } as never,
+      { role: "user", content: "Pesquisar fontes e comparar evidências." },
+      { role: "assistant", content: "Vou pesquisar." },
+      { role: "user", content: "Ajude a priorizar as próximas etapas." },
     ]);
 
     expect(selected.map((skill) => skill.id)).toEqual(["task-planning"]);
@@ -68,4 +68,31 @@ describe("Garcia declarative skill library", () => {
     expect(formatted).not.toContain("arbitrary code");
     expect(formatted.length).toBeLessThanOrEqual(4_000);
   });
+
+  it("injects selected skill guidance into the system prompt without extra model calls", async () => {
+    const { runCibaOrchestrator } = await import("../src/core/orchestrator");
+    let captured: Array<{ role: string; content: string }> = [];
+    const provider = {
+      id: "skills-test-provider",
+      enabled: true,
+      async generate(request: { messages: Array<{ role: "system" | "user" | "assistant"; content: string }> }) {
+        captured = request.messages;
+        return { text: "Implementação analisada.", raw: null, provider: "test", model: "test-model" };
+      },
+    };
+
+    const result = await runCibaOrchestrator({
+      messages: [{ role: "user", content: "Corrigir um bug e revisar a segurança do repositório." }],
+      model: "test-model",
+      maxOutputTokens: 256,
+      provider,
+      agentRole: "coding",
+    });
+
+    expect(result.text).toBe("Implementação analisada.");
+    expect(result.usedInferenceCalls).toBe(1);
+    expect(captured[0].content).toContain("[software-engineering · Engenharia de software]");
+    expect(captured[0].content).toContain("[repository-audit · Auditoria de repositório]");
+  });
+
 });
