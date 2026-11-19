@@ -951,24 +951,18 @@ const handleOwnerComposioInvoke = async (request: Request, env: Env) => {
       maxOutputBytes: 64_000,
       maxConcurrentExecutions: 1,
       authorize: async (authorization) => {
-        if (authorization.toolId !== toolId || authorization.risk !== classified.risk ||
-            (classified.requiresApproval && (!authorization.approvalIdentity ||
-              authorization.approvalIdentity.ownerId !== owner.owner_id ||
-              authorization.approvalIdentity.appId !== device.app_id ||
-              authorization.approvalIdentity.deviceId !== device.device_id))) return false;
-        const current = await env.DB.prepare(`
-          SELECT p.enabled, p.risk, p.requires_approval, p.schema_sha256
-          FROM owner_composio_tool_policies p
-          JOIN owner_composio_sessions s ON s.owner_id = p.owner_id AND s.status = 'active'
-          JOIN devices d ON d.device_id = ? AND d.owner_id = p.owner_id AND d.app_id = ?
-          JOIN owners o ON o.owner_id = p.owner_id
-          WHERE p.owner_id = ? AND p.tool_name = ? AND s.session_id = ?
-            AND d.revoked_at IS NULL AND o.status = 'active' AND o.revoked_at IS NULL
-        `).bind(device.device_id, device.app_id, owner.owner_id, toolName, session.session_id)
-          .first<{ enabled: number; risk: string; requires_approval: number; schema_sha256: string }>();
-        if (!current || current.enabled !== 1 || current.risk !== classified.risk ||
-            current.requires_approval !== (classified.requiresApproval ? 1 : 0) ||
-            current.schema_sha256 !== schemaSha256) return false;
+        const approvalMatches = !classified.requiresApproval || (
+          authorization.approvalIdentity?.ownerId === identity.ownerId &&
+          authorization.approvalIdentity?.appId === identity.appId &&
+          authorization.approvalIdentity?.deviceId === identity.deviceId
+        );
+        if (authorization.toolId !== toolId || authorization.risk !== classified.risk || !approvalMatches) {
+          return false;
+        }
+        // The active session, owner-scoped policy, schema fingerprint and device
+        // were revalidated above in this request. The approval store atomically
+        // consumed the exact owner/device/invocation/input binding immediately
+        // before entering the registry. Recheck the global kill switch here.
         const access = await requireCibaGenioAccess(env, "external_tools", device.app_id);
         return access === null;
       },
