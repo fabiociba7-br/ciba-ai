@@ -171,6 +171,65 @@ describe("Composio chat tool adapter", () => {
     expect(authorize).toHaveBeenCalledOnce();
   });
 
+  it("records write proposals for explicit approval without calling the remote tool", async () => {
+    const callTool = vi.fn(async () => ({ content: [], isError: false }));
+    const definitions = await createComposioChatToolDefinitions({
+      remoteTools: [writeTool],
+      enabledToolkits: ["gmail"],
+      savedPolicies: [await policy("GMAIL_SEND_EMAIL")],
+      callTool,
+    });
+    const approvalStore = {
+      request: vi.fn(async () => ({ approvalId: "approval-123", status: "approval_required" as const })),
+      answer: vi.fn(async () => true),
+      consume: vi.fn(async () => true),
+      cancel: vi.fn(async () => true),
+    };
+    const runtime = createGarciaCapabilityToolRuntime({
+      authorize: async () => true,
+      context: { conversationId: "conversation-write", invocationId: "invocation-write" },
+      additionalTools: definitions,
+      approval: {
+        store: approvalStore,
+        identity: { ownerId: "owner-test", appId: "com.ciba.garcia", deviceId: "device-test" },
+      },
+    });
+    const proposal = CIBA_TOOL_PROPOSAL_PREFIX + JSON.stringify({
+      protocol: "ciba.tool.proposal.v1",
+      toolId: "composio.gmail_send_email",
+      input: { to: "person@example.com", subject: "Test", body: "No send yet" },
+    });
+    const provider: ModelProvider = {
+      id: "test-provider",
+      enabled: true,
+      generate: async (_request: InferenceRequest): Promise<InferenceResult> => ({
+        text: proposal,
+        raw: null,
+        provider: "test-provider",
+        model: "test-model",
+      }),
+    };
+    const result = await runCibaOrchestrator({
+      messages: [{ role: "user", content: "Envie um e-mail de teste." }],
+      model: "test-model",
+      maxOutputTokens: 128,
+      provider,
+      toolRuntime: runtime,
+    });
+
+    expect(result.toolProposal).toMatchObject({
+      toolId: "composio.gmail_send_email",
+      risk: "write",
+      requiresApproval: true,
+      input: { to: "person@example.com", subject: "Test", body: "No send yet" },
+    });
+    expect(result.toolApproval).toEqual({ status: "approval_required", approvalId: "approval-123" });
+    expect(result.text).toContain("Nenhuma ação foi executada");
+    expect(approvalStore.request).toHaveBeenCalledOnce();
+    expect(callTool).not.toHaveBeenCalled();
+    expect(approvalStore.consume).not.toHaveBeenCalled();
+  });
+
   it("validates limits and duplicate owner policy rows", async () => {
     const saved = await policy("GMAIL_LIST_EMAILS");
     await expect(createComposioChatToolDefinitions({
