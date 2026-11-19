@@ -50,4 +50,5 @@ export type { TextToSpeechRuntime, TextToSpeechConsent, TextToSpeechRequest, Tex
 export { createDesktopChatterboxAdapter } from "./desktop-chatterbox-bridge";
 export type { DesktopChatterboxAdapterOptions, DesktopChatterboxBridge, DesktopChatterboxBridgeStatus } from "./desktop-chatterbox-bridge";
 
+export { AGENT_QUEUE_LIMITS, isAgentQueueLeaseExpired, canRetryAgentQueueJob, isAgentQueueJobClaimable } from "./agent-queue";
 export { enqueueAgentJob, claimAgentJob, heartbeatAgentJob, completeAgentJob, failAgentJob, cancelAgentJob, getAgentJob } from "./agent-queue-store";
