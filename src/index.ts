@@ -3925,7 +3925,9 @@ const handleRequest = async (
   if (url.pathname === "/v1/owner/pair" && request.method === "POST") {
     return handlePairOwner(request, env);
   }
-  if (url.pathname === "/v1/owner/composio/tools" && request.method === "GET") {\n    return handleOwnerComposioTools(request, env);\n  }\n  if (url.pathname === "/v1/owner/composio/session" && ["GET", "POST", "DELETE"].includes(request.method)) {
+  if (url.pathname === "/v1/owner/composio/tools" && request.method === "GET") {
+    return handleOwnerComposioTools(request, env);
+  }\n  if (url.pathname === "/v1/owner/composio/session" && ["GET", "POST", "DELETE"].includes(request.method)) {
     return handleOwnerComposioSession(request, env);
   }
   if (url.pathname === "/v1/owner/facebook" && request.method === "GET") {
