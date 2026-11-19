@@ -512,6 +512,13 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var agentBusy by remember { mutableStateOf(false) }
     var showAgentRoleMenu by remember { mutableStateOf(false) }
     var agentError by remember { mutableStateOf("") }
+    var composioSessionInfo by remember { mutableStateOf<JSONObject?>(null) }
+    var composioToolsInfo by remember { mutableStateOf<JSONArray?>(null) }
+    var composioSelectedTools by remember { mutableStateOf(setOf<String>()) }
+    var composioToolkitsInput by remember { mutableStateOf("gmail") }
+    var composioConsent by remember { mutableStateOf(false) }
+    var composioBusy by remember { mutableStateOf(false) }
+    var composioError by remember { mutableStateOf("") }
     var showBrowser by remember { mutableStateOf(false) }
     var showLogs by remember { mutableStateOf(false) }
     var showChats by remember { mutableStateOf(false) }
@@ -547,6 +554,35 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             } catch (e: Exception) {
                 agentError = e.message ?: "Não foi possível atualizar a tarefa."
             }
+        }
+    }
+
+
+    LaunchedEffect(showSettings, connected, settingsSection) {
+        if (!showSettings || !connected || settingsSection != "composio") return@LaunchedEffect
+        composioBusy = true
+        composioError = ""
+        try {
+            val session = withContext(Dispatchers.IO) { client.composioSession() }
+            composioSessionInfo = session
+            if (session.optBoolean("configured")) {
+                val discovered = withContext(Dispatchers.IO) { client.composioTools() }
+                val list = discovered.optJSONArray("tools") ?: JSONArray()
+                composioToolsInfo = list
+                composioSelectedTools = buildSet {
+                    for (i in 0 until list.length()) {
+                        val item = list.optJSONObject(i) ?: continue
+                        if (item.optBoolean("enabled")) add(item.optString("name"))
+                    }
+                }
+            } else {
+                composioToolsInfo = null
+                composioSelectedTools = emptySet()
+            }
+        } catch (e: Exception) {
+            composioError = e.message ?: "Não foi possível consultar a conexão Composio."
+        } finally {
+            composioBusy = false
         }
     }
 
@@ -1196,6 +1232,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             "diagnostics" -> "Uso e diagnóstico"
             "privacy" -> "Privacidade e segurança"
             "agents" -> "Agentes e tarefas"
+            "composio" -> "Integrações Composio"
             else -> "Configurações da Garcia"
         }
         AlertDialog(
@@ -1210,6 +1247,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             "voice" to ("Voz e conversação" to "Escolha uma voz, ouça amostras e configure a conversa por voz"),
                             "speech" to ("Transcrição de voz" to "Instalar, reparar ou remover o modelo Whisper"),
                             "accounts" to ("Contas e integrações" to "Facebook e serviços conectados"),
+                            "composio" to ("Composio" to "Conectar Gmail e outros serviços com permissões controladas"),
                             "diagnostics" to ("Uso e diagnóstico" to "Consumo, logs e estado da conexão"),
                             "privacy" to ("Privacidade e segurança" to "Como credenciais, histórico e navegação são tratados"),
                             "agents" to ("Agentes e tarefas" to "Enviar tarefas para agentes especializados e acompanhar a execução")
