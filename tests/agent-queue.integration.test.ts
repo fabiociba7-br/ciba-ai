@@ -4,6 +4,7 @@ import {
   cancelAgentJob, claimAgentJob, completeAgentJob, enqueueAgentJob,
   getAgentJob, heartbeatAgentJob,
 } from "../src/core/agent-queue-store";
+import { runOneAgentQueueJob } from "../src/core/agent-queue-runner";
 
 const db = (env as unknown as { DB: D1Database }).DB;
 const makeOwner = async () => {
@@ -51,6 +52,29 @@ describe("durable agent queue storage", () => {
     expect(await completeAgentJob(db, taskId, "stale-token", JSON.stringify({ ok: true }), new Date().toISOString())).toBe(false);
     expect(await completeAgentJob(db, taskId, claim!.lease_token, JSON.stringify({ ok: true }), new Date().toISOString())).toBe(true);
     expect((await getAgentJob(db, ownerId, taskId))?.status).toBe("completed");
+  });
+
+
+  it("executes a queued job through the isolated orchestrator and stores its result", async () => {
+    const ownerId = await makeOwner();
+    const taskId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const enqueued = await enqueueAgentJob(db, {
+      taskId, ownerId, role: "coding", idempotencyKey: crypto.randomUUID(),
+      payloadJson: JSON.stringify({ prompt: "Explique como organizar testes unitários." }),
+      now, expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    });
+    expect(enqueued.created).toBe(true);
+    const ai = {
+      run: async () => ({ response: "Resposta de teste do agente." }),
+    };
+    expect(await runOneAgentQueueJob(db, ai, "@cf/google/gemma-4-26b-a4b-it")).toBe(true);
+    const stored = await getAgentJob(db, ownerId, taskId);
+    expect(stored?.status).toBe("completed");
+    const result = JSON.parse(stored?.result_json || "{}") as { text?: string; selected_agent?: string };
+    expect(result.text).toBe("Resposta de teste do agente.");
+    expect(result.selected_agent).toBe("coding");
+    await db.prepare("DELETE FROM agent_execution_jobs WHERE owner_id = ? AND task_id = ?").bind(ownerId, taskId).run();
   });
 
   it("cancels only jobs owned by the authenticated owner", async () => {
