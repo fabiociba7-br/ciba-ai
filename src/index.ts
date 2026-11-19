@@ -51,6 +51,7 @@ import { attachComposioOwnerSession, createComposioOwnerSession, deleteComposioO
 import { createComposioMcpDiscoveryClient } from "./core/composio/client";
 import { classifyComposioTool, hashComposioToolSchema } from "./core/composio/policy";
 import { createComposioChatToolDefinitions } from "./core/composio/chat-tools";
+import { getActiveOwnerForDevice, readOwnerFeatureSettings } from "./core/owner-access";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
@@ -1258,7 +1259,6 @@ const handleOwnerFacebookData = async (request: Request, env: Env, url: URL) => 
   }
 };
 
-import { getActiveOwnerForDevice, readOwnerFeatureSettings } from "./core/owner-access";
 
 const handleOwnerAvailableApps = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
