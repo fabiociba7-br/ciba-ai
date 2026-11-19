@@ -25,6 +25,10 @@ A franquia gratuita documentada pela Cloudflare é de 10.000 Neurons por dia. No
 
 A assistente se chama **Garcia**. **Ciba AI** é somente o nome deste repositório e da infraestrutura de servidor Cloudflare que fornece a API. A Garcia é o produto de IA com identidade e aplicativo próprios. O Worker Ciba AI está publicado em `https://ciba-ai.fabiociba7.workers.dev`, com D1 conectado, migrations aplicadas, autenticação por dispositivo e limites de uso. O endpoint `/v1/status` confirmou o serviço pronto e a IA habilitada; uma inferência real ainda deverá ser validada na rodada final com o aplicativo. O projeto Android independente da Garcia está em [garcia-android/](garcia-android/), com interface nativa, conversa, histórico local criptografado e conexão com a API. A rota de pareamento do cliente corresponde a `POST /v1/owner/pair`. Após publicar a configuração que permite `com.ciba.garcia`, execute uma única vez o workflow `Provision Garcia Device`, confirmando a operação, para criar o proprietário privado e emitir os códigos únicos de ativação. O workflow `Ciba AI Deploy` publica automaticamente mudanças de backend na branch `main`, aplica migrations e verifica a saúde do Worker. Mudanças exclusivas no app Android ou na documentação não disparam deploy do servidor. O registro de ferramentas permanece opt-in e ainda não está conectado ao orquestrador ou à chamada do modelo.
 
+## Infraestrutura e expansão
+
+Consulte [INFRASTRUCTURE_AUDIT.md](docs/INFRASTRUCTURE_AUDIT.md) para a auditoria dos limites gratuitos, estado confirmado em produção e critérios de expansão sem custos.
+
 ## Arquitetura
 
 A camada de inteligência unificada está descrita em [UNIFIED_INTELLIGENCE.md](docs/UNIFIED_INTELLIGENCE.md), e a seleção de projetos open source em [OPEN_SOURCE_SELECTION.md](docs/OPEN_SOURCE_SELECTION.md). O núcleo atual usa um único modelo por chamada e seleciona um perfil especialista; não afirma executar vários modelos independentes. O adapter para providers OpenAI-compatible está preparado, mas ainda não conectado nem configurado.
