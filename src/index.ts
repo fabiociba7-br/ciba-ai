@@ -1,3 +1,11 @@
+import { authorizeAdmin } from "./security/admin-auth";
+import { resolveOwnerRoute } from "./http/owner-routes";
+import { resolveAppRoute } from "./http/app-routes";
+import { resolveServiceRoute } from "./http/service-routes";
+import { resolveAccountRoute } from "./http/account-routes";
+import { json, corsHeaders, applyResponseHeaders } from "./http/responses";
+import { resolveAdminRoute } from "./http/routes";
+import { readJson } from "./http/request";
 import { GARCIA_DASHBOARD_HTML } from "./dashboard";
 import { encryptFacebookToken, decryptFacebookToken, facebookGraphGet } from "./facebook";
 export interface Env {
@@ -43,35 +51,13 @@ import { attachComposioOwnerSession, createComposioOwnerSession, deleteComposioO
 import { createComposioMcpDiscoveryClient } from "./core/composio/client";
 import { classifyComposioTool, hashComposioToolSchema } from "./core/composio/policy";
 import { createComposioChatToolDefinitions } from "./core/composio/chat-tools";
+import { getActiveOwnerForDevice, readOwnerFeatureSettings } from "./core/owner-access";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
 
-const json = (data: unknown, status = 200, extra: HeadersInit = {}) =>
-  new Response(JSON.stringify(data), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extra },
-  });
-
-const b64url = (bytes: Uint8Array): string => {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-};
-
-const randomToken = (size = 32): string => {
-  const bytes = new Uint8Array(size);
-  crypto.getRandomValues(bytes);
-  return b64url(bytes);
-};
-
-const sha256 = async (value: string): Promise<string> => {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-};
-
-const nowIso = () => new Date().toISOString();
-const utcDay = () => new Date().toISOString().slice(0, 10);
+import { b64url, randomToken, sha256, nowIso, utcDay } from "./security/crypto";
+import { MESSAGE_MAX_PAYLOAD_CHARS, MESSAGE_MAX_PENDING_PER_DESTINATION, MESSAGE_DEFAULT_TTL_HOURS, MESSAGE_MAX_TTL_HOURS, hasMessageGrant } from "./core/app-messaging";
 
 const allowedApps = (env: Env) =>
   new Set((env.ALLOWED_APP_IDS || "").split(",").map((s) => s.trim()).filter(Boolean));
@@ -102,49 +88,6 @@ const requireCibaGenioAccess = async (
     resource_id: resourceId,
     scope: control?.scope || "global",
   }, 403);
-};
-
-const authorizeAdmin = async (request: Request, env: Env): Promise<Response | null> => {
-  if (!env.ADMIN_TOKEN || env.ADMIN_TOKEN.length < 32) {
-    return json({ error: "admin_auth_not_configured" }, 503);
-  }
-
-  const authorization = request.headers.get("authorization") || "";
-  const supplied = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
-  const candidate = supplied.length <= 256 ? supplied : "";
-  const [expectedHash, candidateHash] = await Promise.all([
-    sha256(env.ADMIN_TOKEN),
-    sha256(candidate),
-  ]);
-
-  // Compare fixed-length digests to avoid leaking a matching token prefix.
-  let difference = 0;
-  for (let index = 0; index < expectedHash.length; index += 1) {
-    difference |= expectedHash.charCodeAt(index) ^ candidateHash.charCodeAt(index);
-  }
-  if (difference === 0 && supplied.length > 0) return null;
-
-  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-  const ipHash = await sha256(`${ip}:${env.ADMIN_TOKEN}`);
-  const minute = new Date().toISOString().slice(0, 16);
-  try {
-    await env.DB.prepare(`
-      INSERT INTO admin_auth_usage(minute, ip_hash, attempts, attempt_limit, updated_at)
-      VALUES(?, ?, 1, ?, ?)
-      ON CONFLICT(minute, ip_hash) DO UPDATE SET
-        attempts = admin_auth_usage.attempts + 1,
-        attempt_limit = excluded.attempt_limit,
-        updated_at = excluded.updated_at
-    `).bind(minute, ipHash, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, nowIso()).run();
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : "";
-    if (reason.includes("admin_auth_rate_exceeded")) {
-      return json({ error: "admin_auth_rate_limited", retry_after_seconds: 60 }, 429, { "retry-after": "60" });
-    }
-    throw error;
-  }
-
-  return json({ error: "unauthorized" }, 401);
 };
 
 const readRuntimeSettings = async (env: Env): Promise<Record<string, string>> => {
@@ -188,71 +131,6 @@ const createRuntimeProviderRegistry = (env: Env, model: string | null, maxOutput
     maxOutputTokens,
     zeroCostApproved: ZERO_COST_MODELS.has(model),
   }] : []);
-};
-
-const corsHeaders = (request: Request, env: Env): HeadersInit => {
-  const origin = request.headers.get("Origin") || "";
-  const allowed = (env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
-  const allowOrigin = origin && (allowed.includes("*") || allowed.includes(origin))
-    ? (allowed.includes("*") ? "*" : origin)
-    : null;
-  return {
-    ...(allowOrigin ? { "access-control-allow-origin": allowOrigin } : {}),
-    "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
-    "access-control-allow-headers": "authorization,content-type",
-    "access-control-max-age": "86400",
-    "vary": "Origin",
-  };
-};
-
-const applyResponseHeaders = (response: Response, cors: HeadersInit): Response => {
-  const headers = new Headers(response.headers);
-  new Headers(cors).forEach((value, key) => headers.set(key, value));
-  headers.set("x-content-type-options", "nosniff");
-  headers.set("referrer-policy", "no-referrer");
-  headers.set("x-frame-options", "DENY");
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-};
-
-const readJson = async (request: Request, maxBytes = 40_000): Promise<Record<string, unknown>> => {
-  const declared = Number(request.headers.get("content-length") || 0);
-  if (Number.isFinite(declared) && declared > maxBytes) throw new Error("body_too_large");
-
-  // Enforce the limit while reading; do not buffer an unbounded body before checking it.
-  const reader = request.body?.getReader();
-  let raw = "";
-  let totalBytes = 0;
-  if (reader) {
-    const decoder = new TextDecoder();
-    try {
-      while (true) {
-        const chunk = await reader.read();
-        if (chunk.done) break;
-        totalBytes += chunk.value.byteLength;
-        if (totalBytes > maxBytes) {
-          await reader.cancel();
-          throw new Error("body_too_large");
-        }
-        raw += decoder.decode(chunk.value, { stream: true });
-      }
-      raw += decoder.decode();
-    } finally {
-      reader.releaseLock();
-    }
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new Error("invalid_json");
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("invalid_json");
-  return parsed as Record<string, unknown>;
 };
 
 const authenticateDevice = async (request: Request, env: Env) => {
@@ -1381,25 +1259,6 @@ const handleOwnerFacebookData = async (request: Request, env: Env, url: URL) => 
   }
 };
 
-const getActiveOwnerForDevice = async (env: Env, ownerId: string | null) => {
-  if (!ownerId) return null;
-  return env.DB.prepare(
-    "SELECT owner_id FROM owners WHERE owner_id = ? AND status = 'active'"
-  ).bind(ownerId).first<{ owner_id: string }>();
-};
-
-
-type OwnerFeatureSettings = { memory_enabled: boolean; app_messaging_enabled: boolean };
-
-const readOwnerFeatureSettings = async (env: Env, ownerId: string): Promise<OwnerFeatureSettings> => {
-  const row = await env.DB.prepare(
-    "SELECT memory_enabled, app_messaging_enabled FROM owner_settings WHERE owner_id = ?"
-  ).bind(ownerId).first<{ memory_enabled: number; app_messaging_enabled: number }>();
-  return {
-    memory_enabled: row?.memory_enabled === 1,
-    app_messaging_enabled: row?.app_messaging_enabled === 1,
-  };
-};
 
 const handleOwnerAvailableApps = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
@@ -3258,32 +3117,7 @@ const handleAdminAiOverview = async (request: Request, env: Env) => {
 };
 
 
-const MESSAGE_MAX_PAYLOAD_CHARS = 8_000;
-const MESSAGE_MAX_PENDING_PER_DESTINATION = 100;
-const MESSAGE_DEFAULT_TTL_HOURS = 24;
-const MESSAGE_MAX_TTL_HOURS = 72;
 
-const hasMessageGrant = async (
-  env: Env,
-  ownerId: string,
-  granteeAppId: string,
-  sourceAppId: string,
-  destinationAppId: string,
-  permission: "send" | "receive",
-  scope: "task" | "context",
-  timestamp: string
-): Promise<boolean> => {
-  const row = await env.DB.prepare(`
-    SELECT grant_id FROM app_access_grants
-    WHERE owner_id = ? AND grantee_app_id = ?
-      AND source_app_id = ? AND destination_app_id = ?
-      AND permission = ? AND scope = ?
-      AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > ?)
-    LIMIT 1
-  `).bind(ownerId, granteeAppId, sourceAppId, destinationAppId, permission, scope, timestamp)
-    .first<{ grant_id: string }>();
-  return Boolean(row);
-};
 
 const handleTaskDispatch = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
@@ -4336,238 +4170,153 @@ const handleRequest = async (
       },
     });
   }
-  if (url.pathname === "/v1/admin/cibagenio" && (request.method === "GET" || request.method === "POST")) {
-    return handleAdminCibaGenio(request, env);
+  const adminRoute = resolveAdminRoute(url.pathname, request.method);
+  if (adminRoute) {
+    switch (adminRoute) {
+      case "cibagenio": return handleAdminCibaGenio(request, env);
+      case "devices": return handleAdminDevices(request, env);
+      case "invitations": return handleAdminInvitations(request, env);
+      case "apps": return handleAdminApps(request, env);
+      case "observability": return handleAdminObservability(request, env);
+      case "ai-overview": return handleAdminAiOverview(request, env);
+      case "settings": return handleAdminSettings(request, env);
+    }
   }
-  if (url.pathname === "/v1/admin/devices" && request.method === "GET") {
-    return handleAdminDevices(request, env);
+  const serviceRoute = resolveServiceRoute(url.pathname, request.method);
+  if (serviceRoute) {
+    switch (serviceRoute) {
+      case "config": {
+        const settings = await readRuntimeSettings(env);
+        return json(publicConfig(settings, env));
+      }
+      case "status": {
+        await env.DB.prepare("SELECT 1").first();
+        const settings = await readRuntimeSettings(env);
+        const maintenanceMode = settings.maintenance_mode === "true";
+        const aiEnabled = settings.ai_enabled !== "false" && Boolean(resolveModel(settings.ai_model, env.AI_MODEL));
+        return json({
+          service: "ciba-ai",
+          status: maintenanceMode ? "maintenance" : aiEnabled ? "ready" : "degraded",
+          database: "connected",
+          ai_enabled: aiEnabled,
+          maintenance_mode: maintenanceMode,
+          inference: "cloudflare-workers-ai",
+        });
+      }
+      case "models": {
+        const settings = await readRuntimeSettings(env);
+        const model = resolveModel(settings.ai_model, env.AI_MODEL);
+        return json({ models: model ? [model] : [], configured: Boolean(model) });
+      }
+      case "ai-capabilities": {
+        const settings = await readRuntimeSettings(env);
+        const model = resolveModel(settings.ai_model, env.AI_MODEL);
+        return json({
+          identity: "ciba-ai",
+          core: "ciba-orchestrator",
+          mode: "single-pass",
+          provider: model ? "cloudflare-workers-ai" : null,
+          model,
+          agents: listAgents(),
+          multi_model_fanout_enabled: false,
+          multi_model_ensemble_available: true,
+          provider_registry_available: true,
+          openai_compatible_adapter_available: true,
+          persistent_memory_enabled: false,
+          persistent_memory_api_available: true,
+          external_tools_enabled: false,
+          tool_contracts_available: true,
+          native_capability_catalog: createNativeCapabilityRegistry().list().map((capability) => ({
+            id: capability.id,
+            name: capability.name,
+            category: capability.category,
+            description: capability.description,
+            source_repositories: capability.sourceRepositories,
+            license_status: capability.licenseStatus,
+            status: capability.status,
+            supported_runtimes: capability.supportedRuntimes,
+            preferred_runtime: capability.preferredRuntime,
+            install_policy: capability.installPolicy,
+            zero_cost_only: capability.zeroCostOnly,
+            requires_gpu: capability.requiresGpu,
+            minimum_ram_mb: capability.minimumRamMb,
+            model_weights_bundled: capability.modelWeightsBundled,
+          })),
+          native_capability_catalog_semantics: {
+            metadata_only: true,
+            models_installed: false,
+            adapters_executable: false,
+            license_review_required_before_incorporation: true,
+          },
+        });
+      }
+      case "mcp": return handleMcpEndpoint(request, env);
+      case "ai-chat": return handleChat(request, env);
+      case "usage": {
+        const device = await authenticateDevice(request, env);
+        if (!device) return json({ error: "unauthorized" }, 401);
+        return json(await usageFor(env, device.app_id, device.device_id));
+      }
+    }
   }
-  if (url.pathname === "/v1/admin/invitations" && request.method === "GET") {
-    return handleAdminInvitations(request, env);
+  const accountRoute = resolveAccountRoute(url.pathname, request.method);
+  if (accountRoute) {
+    switch (accountRoute) {
+      case "auth-register": return handleRegister(request, env);
+      case "admin-create-owner": return handleCreateOwner(request, env);
+      case "admin-create-owner-invitation": return handleCreateOwnerInvitation(request, env);
+      case "owner-pair": return handlePairOwner(request, env);
+      case "admin-create-invitation": return handleCreateInvitation(request, env);
+      case "admin-revoke-device": return handleRevokeDevice(request, env);
+    }
   }
-  if (url.pathname === "/v1/admin/apps" && (request.method === "GET" || request.method === "POST")) {
-    return handleAdminApps(request, env);
+  const ownerRoute = resolveOwnerRoute(url.pathname, request.method);
+  if (ownerRoute) {
+    switch (ownerRoute.route) {
+      case "composio-policy": return handleOwnerComposioPolicy(request, env);
+      case "composio-invoke": return handleOwnerComposioInvoke(request, env);
+      case "composio-tools": return handleOwnerComposioTools(request, env);
+      case "composio-session": return handleOwnerComposioSession(request, env);
+      case "facebook-status": return handleOwnerFacebookStatus(request, env);
+      case "facebook-link": return handleOwnerFacebookLink(request, env);
+      case "facebook-data": return handleOwnerFacebookData(request, env, url);
+      case "available-apps": return handleOwnerAvailableApps(request, env);
+      case "apps-connect": return handleConnectOwnerApp(request, env);
+      case "app-identity": return handleAppIdentity(request, env);
+      case "tool-approvals": return handleOwnerToolApprovals(request, env);
+      case "tool-approval-decision": return handleOwnerToolApprovalDecision(request, env, ownerRoute.id!);
+      case "tool-approval-cancel": return handleOwnerToolApprovalCancel(request, env, ownerRoute.id!);
+      case "observability": return handleOwnerObservability(request, env);
+      case "dashboard": return handleOwnerDashboard(request, env);
+      case "settings": return handleOwnerSettings(request, env);
+      case "access-grants": return handleOwnerAccessGrants(request, env);
+      case "memory-history": return handleMemoryHistory(request, env, url);
+      case "profile": return handleOwnerProfile(request, env);
+      case "memory-insights": return handleMemoryInsights(request, env);
+      case "memory-reviews": return handleMemoryReviews(request, env, url);
+      case "memory-candidates": return handlePrepareMemoryCandidate(request, env);
+      case "memory-retrieve": return handleMemoryRetrieve(request, env);
+      case "memory": return handleOwnerMemory(request, env, url);
+      case "devices-revoke": return handleRevokeOwnerDevice(request, env);
+      case "access-grants-revoke": return handleRevokeOwnerAccessGrant(request, env);
+      case "agent-jobs-create": return handleCreateAgentJob(request, env, ctx);
+      case "agent-job-cancel": return handleCancelAgentJob(request, env, ownerRoute.id!);
+      case "agent-job-status": return handleGetAgentJob(request, env, ownerRoute.id!, ctx);
+    }
   }
-  if (url.pathname === "/v1/admin/observability" && request.method === "GET") {
-    return handleAdminObservability(request, env);
-  }
-  if (url.pathname === "/v1/admin/ai/overview" && request.method === "GET") {
-    return handleAdminAiOverview(request, env);
-  }
-  if (url.pathname === "/v1/admin/settings" && (request.method === "GET" || request.method === "POST")) {
-    return handleAdminSettings(request, env);
-  }
-  if (url.pathname === "/v1/config" && request.method === "GET") {
-    const settings = await readRuntimeSettings(env);
-    return json(publicConfig(settings, env));
-  }
-  if (url.pathname === "/v1/status" && request.method === "GET") {
-    await env.DB.prepare("SELECT 1").first();
-    const settings = await readRuntimeSettings(env);
-    const maintenanceMode = settings.maintenance_mode === "true";
-    const aiEnabled = settings.ai_enabled !== "false" && Boolean(resolveModel(settings.ai_model, env.AI_MODEL));
-    return json({
-      service: "ciba-ai",
-      status: maintenanceMode ? "maintenance" : aiEnabled ? "ready" : "degraded",
-      database: "connected",
-      ai_enabled: aiEnabled,
-      maintenance_mode: maintenanceMode,
-      inference: "cloudflare-workers-ai",
-    });
-  }
-  if (url.pathname === "/v1/models" && request.method === "GET") {
-    const settings = await readRuntimeSettings(env);
-    const model = resolveModel(settings.ai_model, env.AI_MODEL);
-    return json({ models: model ? [model] : [], configured: Boolean(model) });
-  }
-  if (url.pathname === "/v1/ai/capabilities" && request.method === "GET") {
-    const settings = await readRuntimeSettings(env);
-    const model = resolveModel(settings.ai_model, env.AI_MODEL);
-    return json({
-      identity: "ciba-ai",
-      core: "ciba-orchestrator",
-      mode: "single-pass",
-      provider: model ? "cloudflare-workers-ai" : null,
-      model,
-      agents: listAgents(),
-      multi_model_fanout_enabled: false,
-      multi_model_ensemble_available: true,
-      provider_registry_available: true,
-      openai_compatible_adapter_available: true,
-      persistent_memory_enabled: false,
-      persistent_memory_api_available: true,
-      external_tools_enabled: false,
-      tool_contracts_available: true,
-      native_capability_catalog: createNativeCapabilityRegistry().list().map((capability) => ({
-        id: capability.id,
-        name: capability.name,
-        category: capability.category,
-        description: capability.description,
-        source_repositories: capability.sourceRepositories,
-        license_status: capability.licenseStatus,
-        status: capability.status,
-        supported_runtimes: capability.supportedRuntimes,
-        preferred_runtime: capability.preferredRuntime,
-        install_policy: capability.installPolicy,
-        zero_cost_only: capability.zeroCostOnly,
-        requires_gpu: capability.requiresGpu,
-        minimum_ram_mb: capability.minimumRamMb,
-        model_weights_bundled: capability.modelWeightsBundled,
-      })),
-      native_capability_catalog_semantics: {
-        metadata_only: true,
-        models_installed: false,
-        adapters_executable: false,
-        license_review_required_before_incorporation: true,
-      },
-    });
-  }
-  if (url.pathname === "/v1/auth/register" && request.method === "POST") {
-    return handleRegister(request, env);
-  }
-  if (url.pathname === "/v1/admin/owners" && request.method === "POST") {
-    return handleCreateOwner(request, env);
-  }
-  if (url.pathname === "/v1/admin/owner-invitations" && request.method === "POST") {
-    return handleCreateOwnerInvitation(request, env);
-  }
-  if (url.pathname === "/v1/owner/pair" && request.method === "POST") {
-    return handlePairOwner(request, env);
-  }
-  if (url.pathname === "/v1/owner/composio/policy" && ["GET", "POST"].includes(request.method)) {
-    return handleOwnerComposioPolicy(request, env);
-  }
-  if (url.pathname === "/v1/owner/composio/invoke" && request.method === "POST") {
-    return handleOwnerComposioInvoke(request, env);
-  }
-  if (url.pathname === "/v1/owner/composio/tools" && request.method === "GET") {
-    return handleOwnerComposioTools(request, env);
-  }
-  if (url.pathname === "/v1/owner/composio/session" && ["GET", "POST", "DELETE"].includes(request.method)) {
-    return handleOwnerComposioSession(request, env);
-  }
-  if (url.pathname === "/v1/owner/facebook" && request.method === "GET") {
-    return handleOwnerFacebookStatus(request, env);
-  }
-  if (url.pathname === "/v1/owner/facebook/link" && request.method === "POST") {
-    return handleOwnerFacebookLink(request, env);
-  }
-  if (url.pathname.startsWith("/v1/owner/facebook/") && request.method === "GET") {
-    return handleOwnerFacebookData(request, env, url);
-  }
-  if (url.pathname === "/v1/owner/available-apps" && request.method === "GET") {
-    return handleOwnerAvailableApps(request, env);
-  }
-  if (url.pathname === "/v1/owner/apps/connect" && request.method === "POST") {
-    return handleConnectOwnerApp(request, env);
-  }
-  if (url.pathname === "/v1/apps/identity" && request.method === "GET") {
-    return handleAppIdentity(request, env);
-  }
-  if (url.pathname === "/v1/owner/tool-approvals" && request.method === "GET") {
-    return handleOwnerToolApprovals(request, env);
-  }
-  const toolApprovalDecision = url.pathname.match(/^\/v1\/owner\/tool-approvals\/([A-Za-z0-9_-]{16,128})\/decision$/);
-  if (toolApprovalDecision && request.method === "POST") {
-    return handleOwnerToolApprovalDecision(request, env, toolApprovalDecision[1]);
-  }
-  const toolApprovalCancel = url.pathname.match(/^\/v1\/owner\/tool-approvals\/([A-Za-z0-9_-]{16,128})\/cancel$/);
-  if (toolApprovalCancel && request.method === "POST") {
-    return handleOwnerToolApprovalCancel(request, env, toolApprovalCancel[1]);
-  }
-  if (url.pathname === "/v1/owner/observability" && request.method === "GET") {
-    return handleOwnerObservability(request, env);
-  }
-  if (url.pathname === "/v1/owner/dashboard" && request.method === "GET") {
-    return handleOwnerDashboard(request, env);
-  }
-  if (url.pathname === "/v1/owner/settings" && (request.method === "GET" || request.method === "POST")) {
-    return handleOwnerSettings(request, env);
-  }
-  if (url.pathname === "/v1/owner/access-grants" && (request.method === "GET" || request.method === "POST")) {
-    return handleOwnerAccessGrants(request, env);
-  }
-  if (url.pathname === "/v1/owner/memory/history" && request.method === "GET") {
-    return handleMemoryHistory(request, env, url);
-  }
-  if (url.pathname === "/v1/owner/profile" && request.method === "GET") {
-    return handleOwnerProfile(request, env);
-  }
-  if (url.pathname === "/v1/owner/memory/insights" && request.method === "GET") {
-    return handleMemoryInsights(request, env);
-  }
-  if (url.pathname === "/v1/owner/memory/reviews" && ["GET", "POST", "PATCH"].includes(request.method)) {
-    return handleMemoryReviews(request, env, url);
-  }
-  if (url.pathname === "/v1/owner/memory/candidates" && request.method === "POST") {
-    return handlePrepareMemoryCandidate(request, env);
-  }
-  if (url.pathname === "/v1/owner/memory/retrieve" && request.method === "POST") {
-    return handleMemoryRetrieve(request, env);
-  }
-  if (url.pathname === "/v1/owner/memory" && ["GET", "POST", "PATCH", "DELETE"].includes(request.method)) {
-    return handleOwnerMemory(request, env, url);
-  }
-  if (url.pathname === "/v1/owner/devices/revoke" && request.method === "POST") {
-    return handleRevokeOwnerDevice(request, env);
-  }
-  if (url.pathname === "/v1/owner/access-grants/revoke" && request.method === "POST") {
-    return handleRevokeOwnerAccessGrant(request, env);
-  }
-  if (url.pathname === "/v1/mcp") {
-    return handleMcpEndpoint(request, env);
-  }
-  if (url.pathname === "/v1/owner/agent-jobs" && request.method === "POST") {
-    return handleCreateAgentJob(request, env, ctx);
-  }
-  const agentJobCancel = url.pathname.match(/^\/v1\/owner\/agent-jobs\/([A-Za-z0-9_-]{16,128})\/cancel$/);
-  if (agentJobCancel && request.method === "POST") {
-    return handleCancelAgentJob(request, env, agentJobCancel[1]);
-  }
-  const agentJobStatus = url.pathname.match(/^\/v1\/owner\/agent-jobs\/([A-Za-z0-9_-]{16,128})$/);
-  if (agentJobStatus && request.method === "GET") {
-    return handleGetAgentJob(request, env, agentJobStatus[1], ctx);
-  }
-  if (url.pathname === "/v1/apps/tasks/dispatch" && request.method === "POST") {
-    return handleTaskDispatch(request, env);
-  }
-  if (url.pathname === "/v1/apps/tasks/status" && request.method === "GET") {
-    return handleTaskStatus(request, env);
-  }
-  if (url.pathname === "/v1/apps/tasks/results" && request.method === "GET") {
-    return handleTaskResults(request, env);
-  }
-  if (url.pathname === "/v1/apps/tasks/results" && request.method === "POST") {
-    return handleSubmitTaskResult(request, env);
-  }
-  if (url.pathname === "/v1/apps/tasks/synthesize" && request.method === "POST") {
-    return handleTaskSynthesis(request, env);
-  }
-  if (url.pathname === "/v1/apps/context/share" && request.method === "POST") {
-    return handleShareContextPackage(request, env);
-  }
-  if (url.pathname === "/v1/apps/messages" && request.method === "POST") {
-    return handleSendAppMessage(request, env);
-  }
-  if (url.pathname === "/v1/apps/messages/inbox" && request.method === "GET") {
-    return handleAppMessageInbox(request, env);
-  }
-  if (url.pathname === "/v1/apps/messages/ack" && request.method === "POST") {
-    return handleAcknowledgeAppMessages(request, env);
-  }
-  if (url.pathname === "/v1/admin/invitations" && request.method === "POST") {
-    return handleCreateInvitation(request, env);
-  }
-  if (url.pathname === "/v1/admin/devices/revoke" && request.method === "POST") {
-    return handleRevokeDevice(request, env);
-  }
-  if (url.pathname === "/v1/ai/chat" && request.method === "POST") {
-    return handleChat(request, env);
-  }
-  if (url.pathname === "/v1/usage" && request.method === "GET") {
-    const device = await authenticateDevice(request, env);
-    if (!device) return json({ error: "unauthorized" }, 401);
-    return json(await usageFor(env, device.app_id, device.device_id));
+  const appRoute = resolveAppRoute(url.pathname, request.method);
+  if (appRoute) {
+    switch (appRoute) {
+      case "task-dispatch": return handleTaskDispatch(request, env);
+      case "task-status": return handleTaskStatus(request, env);
+      case "task-results": return handleTaskResults(request, env);
+      case "task-results-submit": return handleSubmitTaskResult(request, env);
+      case "task-synthesize": return handleTaskSynthesis(request, env);
+      case "context-share": return handleShareContextPackage(request, env);
+      case "messages-send": return handleSendAppMessage(request, env);
+      case "messages-inbox": return handleAppMessageInbox(request, env);
+      case "messages-ack": return handleAcknowledgeAppMessages(request, env);
+    }
   }
   return json({ error: "not_found" }, 404);
 };

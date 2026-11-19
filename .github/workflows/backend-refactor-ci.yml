@@ -1,0 +1,57 @@
+name: Backend refactor CI
+
+on:
+  push:
+    branches:
+      - refactor/backend-modularization
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "migrations/**"
+      - "package.json"
+      - "tsconfig.json"
+      - "vitest.config.ts"
+      - "wrangler.test.toml"
+      - ".github/workflows/backend-refactor-ci.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "migrations/**"
+      - "package.json"
+      - "tsconfig.json"
+      - "vitest.config.ts"
+      - "wrangler.test.toml"
+      - ".github/workflows/backend-refactor-ci.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-refactor-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Typecheck and tests (no deploy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Use stable npm version
+        run: npm install --global npm@11.6.2
+
+      - name: Install dependencies
+        run: npm install --no-package-lock --no-audit --no-fund
+
+      - name: Typecheck and test
+        run: npm run check
