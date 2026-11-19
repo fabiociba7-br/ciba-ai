@@ -17,14 +17,14 @@ function setup() {
   const metadata: GarciaFileMetadata = {
     ...baseMetadata, ownerId: null, appId: null,
     storageProvider: "cloudflare_r2", status: "available", source: "user",
-    createdAt: input.now, updatedAt: input.now, deletedAt: null,
+    createdAt: input.now, updatedAt: input.now, deletedAt: null, deleteRequestedAt: null,
   };
   const catalog: GarciaFileCatalog = {
     async createPending() { calls.push("pending"); },
     async markAvailable() { calls.push("available"); },
     async markFailed() { calls.push("failed"); },
     async findById() { return metadata; },
-    async markDeleted() { calls.push("deleted"); },
+    async markDeleteRequested() { calls.push("delete-requested"); },\n    async markDeleted() { calls.push("deleted"); },
   };
   const objects: GarciaObjectStore = {
     async put(_key, body) { calls.push("put"); stored = body instanceof ReadableStream ? body : new ReadableStream(); },
@@ -58,6 +58,6 @@ describe("Garcia R2 file lifecycle", () => {
     expect(result.body).toBeInstanceOf(ReadableStream);
     expect(calls).toContain("get");
     expect(await lifecycle.delete("file-1", "garcia:technical", input.now)).toBe(true);
-    expect(calls.slice(-2)).toEqual(["delete", "deleted"]);
+    expect(calls.slice(-3)).toEqual(["delete-requested", "delete", "deleted"]);
   });
 });
