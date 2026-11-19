@@ -15,7 +15,7 @@ describe("usage store", () => {
 
     const result = await usageFor(env, "com.ciba.garcia", "device-123");
 
-    expect(result.day).toMatch(/^\\d{4}-\\d{2}-\\d{2}$/);
+    expect(result.day).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(result.buckets).toEqual(buckets);
     expect(prepare).toHaveBeenCalledWith(
       "SELECT scope_key, requests, request_limit FROM daily_usage WHERE day = ? AND scope_key IN ('global', ?, ?)"
