@@ -37,6 +37,7 @@ describe("durable agent queue storage", () => {
     expect(duplicate.duplicate).toBe(true);
     expect((await getAgentJob(db, ownerId, taskId))?.status).toBe("queued");
     expect(await getAgentJob(db, crypto.randomUUID(), taskId)).toBeNull();
+    await db.prepare("DELETE FROM agent_execution_jobs WHERE owner_id = ? AND task_id = ?").bind(ownerId, taskId).run();
   });
 
   it("claims with a lease, renews it, and completes only with the current token", async () => {
