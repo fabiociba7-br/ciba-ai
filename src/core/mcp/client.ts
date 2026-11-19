@@ -36,7 +36,7 @@ function validateEndpoint(endpoint: string, allowedHosts: string[]): URL {
   }
   const host = url.hostname.toLowerCase();
   const allowedPort = !url.port || url.port === "443";
-  const blockedHost = host === "localhost" || host.endsWith(".localhost") ||
+  const blockedHost = host.startsWith("[") || host === "localhost" || host.endsWith(".localhost") ||
     host.endsWith(".local") || host.endsWith(".internal") ||
     /^(?:127\.|10\.|192\.168\.|169\.254\.)/.test(host) ||
     /^172\.(?:1[6-9]|2\d|3[01])\./.test(host) || host === "::1";
@@ -116,6 +116,7 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
     }
     const response = await fetcher(endpoint.toString(), {
       method: "POST",
+      redirect: "error",
       headers: await requestHeaders(),
       body: serialized,
       redirect: "error",
@@ -159,6 +160,7 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
     }
     const notification = await fetcher(endpoint.toString(), {
       method: "POST",
+      redirect: "error",
       headers: await requestHeaders(),
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
       redirect: "error",
