@@ -74,15 +74,17 @@ async function setupOwner() {
   const schemaSha256 = await hashComposioToolSchema(schema);
   const now = new Date().toISOString();
   await db.batch([
-    db.prepare("INSERT INTO owner_composio_sessions(owner_id, session_id, toolkits_json, status, created_at, updated_at) VALUES(?, ?, '[\"gmail\"]', 'active', ?, ?)")
+    db.prepare("INSERT INTO owner_composio_sessions(owner_id, session_id, toolkits_json, status, created_at, updated_at) VALUES(?, ?, '[\\"gmail\\"]', 'active', ?, ?)")
       .bind(ownerId, sessionId, now, now),
     db.prepare("INSERT INTO owner_composio_tool_policies(owner_id, tool_name, toolkit, risk, requires_approval, schema_sha256, description, enabled, consented_at, updated_at) VALUES(?, ?, 'gmail', 'write', 1, ?, 'Send email', 1, ?, ?)")
       .bind(ownerId, toolName, schemaSha256, now, now),
   ]);
 }
 
-function installComposioMock(remoteSchema: Record<string, unknown> = schema) {
-  const calls: string[] = [];
+function installComposioMock(
+  remoteSchema: Record<string, unknown> = schema,
+  calls: string[] = [],
+) {
   vi.stubGlobal("fetch", (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === "https://backend.composio.dev/api/v3.1/tool_router/session/" + sessionId + "/attach") {
@@ -265,7 +267,7 @@ describe("owner Composio invocation approval boundary", () => {
         body: { type: "string", maxLength: 2_000 },
       },
     };
-    installComposioMock(changedSchema);
+    installComposioMock(changedSchema, calls);
     const executed = await ownerRequest({
       ...invocation, action: "execute", approval_id: proposal.approval_id,
     });
