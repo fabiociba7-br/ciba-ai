@@ -42,3 +42,18 @@ O transporte aceita JSON-RPC 2.0 por POST com `Content-Type: application/json`. 
 ## Escopo inicial
 
 A primeira versão expõe metadados do catálogo de capacidades nativas da Garcia e o estado do vínculo do Facebook. Consultar uma capacidade não instala modelos, baixa pesos, inicia serviços nem altera configurações. Integrações adicionais devem entrar pelo registro de ferramentas, com schemas estritos, allowlist, classificação de risco, autorização do proprietário e aprovação de uso único quando necessária.
+
+
+## Cliente MCP de saída
+
+O módulo `src/core/mcp/client.ts` fornece um cliente HTTP MCP sem estado para futuras conexões com servidores externos. Ele ainda não está conectado ao orquestrador nem há um servidor externo configurado por padrão.
+
+- Exige HTTPS, host exato em `allowedHosts`, porta padrão 443 e URL sem usuário, senha, fragmento ou query string.
+- Bloqueia hosts locais/internos e endereços IPv4 privados conhecidos; redirecionamentos HTTP são tratados manualmente e não são seguidos.
+- O token, quando necessário, é obtido por um callback confiável e enviado somente no cabeçalho Bearer.
+- A descoberta de ferramentas não concede permissão para executá-las.
+- `allowedToolNames` precisa listar explicitamente cada ferramenta que pode ser chamada; sem essa lista, o cliente fica em modo somente descoberta.
+- Mesmo allowlisted, uma ferramenta só pode ser chamada se declarar `readOnlyHint: true` e não declarar `destructiveHint: true`.
+- Requisições são limitadas a 32 KB; respostas têm limite configurável de até 256 KB e timeout máximo de 30 segundos.
+
+O cliente não persiste tokens, não segue redirects e não aceita SSE nesta versão. A integração futura com Composio deve usar o mesmo princípio: credenciais mantidas no backend, host previamente confiável, allowlist explícita e autorização por ferramenta.
