@@ -47,3 +47,9 @@ export function isolateAgentTools(
     .filter((descriptor) => policy.allowedToolRisks.includes(descriptor.risk))
     .slice(0, policy.maxToolDescriptors);
 }
+
+/** Bounds separately supplied memory context; it remains untrusted data. */
+export function isolateAgentMemoryContext(role: CibaRole, memoryContext: string): string {
+  const budget = Math.floor(getAgentIsolationPolicy(role).maxContextChars / 2);
+  return memoryContext.length <= budget ? memoryContext : memoryContext.slice(-budget);
+}
