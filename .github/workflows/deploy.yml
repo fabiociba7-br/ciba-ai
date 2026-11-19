@@ -1,10 +1,21 @@
 name: Ciba AI Deploy
 
-# Deploy automatically after commits to main; manual runs remain available.
+# Backend changes on main are validated and deployed automatically.
+# Android-only and documentation-only changes do not consume deploy runs.
 on:
   push:
     branches:
       - main
+    paths:
+      - "src/**"
+      - "migrations/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "vitest.config.ts"
+      - "wrangler.toml"
+      - "wrangler.test.toml"
+      - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
 permissions:
@@ -23,8 +34,10 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CIBA_AI_ADMIN_TOKEN: ${{ secrets.CIBA_AI_ADMIN_TOKEN }}
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
