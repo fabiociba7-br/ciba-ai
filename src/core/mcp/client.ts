@@ -15,6 +15,8 @@ export interface McpHttpClientOptions {
   endpoint: string;
   allowedHosts: string[];
   getAccessToken?: () => Promise<string | null>;
+  /** Allowlisted auth headers for MCP providers such as Composio (x-api-key). */
+  getAuthHeaders?: () => Promise<Record<string, string>>;
   /** Local policy allowlist. Empty or omitted means discovery-only, with no executable tools. */
   allowedToolNames?: string[];
   fetcher?: typeof fetch;
@@ -26,6 +28,7 @@ const PROTOCOL_VERSION = "2025-11-25";
 const MAX_REQUEST_BYTES = 32_000;
 const MAX_TOOLS = 32;
 const MAX_TOOL_NAME = 64;
+const ALLOWED_AUTH_HEADERS = new Set(["authorization", "x-api-key", "x-user-api-key", "x-org-id", "x-project-id"]);
 
 function validateEndpoint(endpoint: string, allowedHosts: string[]): URL {
   let url: URL;
@@ -45,6 +48,24 @@ function validateEndpoint(endpoint: string, allowedHosts: string[]): URL {
     throw new Error("mcp_endpoint_not_allowed");
   }
   return url;
+}
+
+function parseSseMessages(raw: string): unknown[] {
+  const messages: unknown[] = [];
+  for (const event of raw.split(/\r?\n\r?\n/)) {
+    const data = event.split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).replace(/^ /, ""))
+      .join("\n")
+      .trim();
+    if (!data || data === "[DONE]") continue;
+    try {
+      messages.push(JSON.parse(data));
+    } catch {
+      throw new Error("mcp_response_invalid_sse_json");
+    }
+  }
+  return messages;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -101,10 +122,23 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
       accept: "application/json, text/event-stream",
     });
     if (includeProtocolVersion) headers.set("MCP-Protocol-Version", negotiatedProtocolVersion);
+    if (options.getAuthHeaders) {
+      const authHeaders = await options.getAuthHeaders();
+      for (const [name, value] of Object.entries(authHeaders)) {
+        const normalized = name.toLowerCase();
+        if (!ALLOWED_AUTH_HEADERS.has(normalized)) throw new Error("mcp_auth_header_not_allowed");
+        if (typeof value !== "string" || !value || value.length > 8_192 || /[\r\n]/.test(value)) {
+          throw new Error("mcp_auth_header_invalid");
+        }
+        if (headers.has(normalized)) throw new Error("mcp_auth_header_conflict");
+        headers.set(normalized, value);
+      }
+    }
     if (options.getAccessToken) {
       const token = await options.getAccessToken();
       if (token) {
         if (/[\r\n]/.test(token) || token.length > 8_192) throw new Error("mcp_access_token_invalid");
+        if (headers.has("authorization")) throw new Error("mcp_auth_header_conflict");
         headers.set("authorization", `Bearer ${token}`);
       }
     }
@@ -125,16 +159,21 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
     });
     if (response.status >= 300 && response.status < 400) throw new Error("mcp_redirect_blocked");
     if (!response.ok) throw new Error(`mcp_http_error_${response.status}`);
-    const contentType = response.headers.get("content-type") || "";
-    if (!contentType.toLowerCase().includes("application/json")) {
-      throw new Error("mcp_response_content_type_unsupported");
-    }
+    const contentType = (response.headers.get("content-type") || "").toLowerCase();
     const raw = await readBounded(response, maxResponseBytes);
     let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      throw new Error("mcp_response_invalid_json");
+    if (contentType.includes("application/json")) {
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        throw new Error("mcp_response_invalid_json");
+      }
+    } else if (contentType.includes("text/event-stream")) {
+      const messages = parseSseMessages(raw).filter(isRecord);
+      const expectedId = body.id;
+      parsed = messages.find((message) => message.id === expectedId) ?? messages[messages.length - 1];
+    } else {
+      throw new Error("mcp_response_content_type_unsupported");
     }
     if (!isRecord(parsed) || parsed.jsonrpc !== "2.0") {
       throw new Error("mcp_response_invalid_jsonrpc");
