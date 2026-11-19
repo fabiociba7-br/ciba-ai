@@ -1,3 +1,4 @@
+import { resolveOwnerRoute } from "./http/owner-routes";
 import { json, corsHeaders, applyResponseHeaders } from "./http/responses";
 import { resolveAdminRoute } from "./http/routes";
 import { readJson } from "./http/request";
@@ -4339,85 +4340,39 @@ const handleRequest = async (
   if (url.pathname === "/v1/owner/pair" && request.method === "POST") {
     return handlePairOwner(request, env);
   }
-  if (url.pathname === "/v1/owner/composio/policy" && ["GET", "POST"].includes(request.method)) {
-    return handleOwnerComposioPolicy(request, env);
-  }
-  if (url.pathname === "/v1/owner/composio/invoke" && request.method === "POST") {
-    return handleOwnerComposioInvoke(request, env);
-  }
-  if (url.pathname === "/v1/owner/composio/tools" && request.method === "GET") {
-    return handleOwnerComposioTools(request, env);
-  }
-  if (url.pathname === "/v1/owner/composio/session" && ["GET", "POST", "DELETE"].includes(request.method)) {
-    return handleOwnerComposioSession(request, env);
-  }
-  if (url.pathname === "/v1/owner/facebook" && request.method === "GET") {
-    return handleOwnerFacebookStatus(request, env);
-  }
-  if (url.pathname === "/v1/owner/facebook/link" && request.method === "POST") {
-    return handleOwnerFacebookLink(request, env);
-  }
-  if (url.pathname.startsWith("/v1/owner/facebook/") && request.method === "GET") {
-    return handleOwnerFacebookData(request, env, url);
-  }
-  if (url.pathname === "/v1/owner/available-apps" && request.method === "GET") {
-    return handleOwnerAvailableApps(request, env);
-  }
-  if (url.pathname === "/v1/owner/apps/connect" && request.method === "POST") {
-    return handleConnectOwnerApp(request, env);
-  }
-  if (url.pathname === "/v1/apps/identity" && request.method === "GET") {
-    return handleAppIdentity(request, env);
-  }
-  if (url.pathname === "/v1/owner/tool-approvals" && request.method === "GET") {
-    return handleOwnerToolApprovals(request, env);
-  }
-  const toolApprovalDecision = url.pathname.match(/^\/v1\/owner\/tool-approvals\/([A-Za-z0-9_-]{16,128})\/decision$/);
-  if (toolApprovalDecision && request.method === "POST") {
-    return handleOwnerToolApprovalDecision(request, env, toolApprovalDecision[1]);
-  }
-  const toolApprovalCancel = url.pathname.match(/^\/v1\/owner\/tool-approvals\/([A-Za-z0-9_-]{16,128})\/cancel$/);
-  if (toolApprovalCancel && request.method === "POST") {
-    return handleOwnerToolApprovalCancel(request, env, toolApprovalCancel[1]);
-  }
-  if (url.pathname === "/v1/owner/observability" && request.method === "GET") {
-    return handleOwnerObservability(request, env);
-  }
-  if (url.pathname === "/v1/owner/dashboard" && request.method === "GET") {
-    return handleOwnerDashboard(request, env);
-  }
-  if (url.pathname === "/v1/owner/settings" && (request.method === "GET" || request.method === "POST")) {
-    return handleOwnerSettings(request, env);
-  }
-  if (url.pathname === "/v1/owner/access-grants" && (request.method === "GET" || request.method === "POST")) {
-    return handleOwnerAccessGrants(request, env);
-  }
-  if (url.pathname === "/v1/owner/memory/history" && request.method === "GET") {
-    return handleMemoryHistory(request, env, url);
-  }
-  if (url.pathname === "/v1/owner/profile" && request.method === "GET") {
-    return handleOwnerProfile(request, env);
-  }
-  if (url.pathname === "/v1/owner/memory/insights" && request.method === "GET") {
-    return handleMemoryInsights(request, env);
-  }
-  if (url.pathname === "/v1/owner/memory/reviews" && ["GET", "POST", "PATCH"].includes(request.method)) {
-    return handleMemoryReviews(request, env, url);
-  }
-  if (url.pathname === "/v1/owner/memory/candidates" && request.method === "POST") {
-    return handlePrepareMemoryCandidate(request, env);
-  }
-  if (url.pathname === "/v1/owner/memory/retrieve" && request.method === "POST") {
-    return handleMemoryRetrieve(request, env);
-  }
-  if (url.pathname === "/v1/owner/memory" && ["GET", "POST", "PATCH", "DELETE"].includes(request.method)) {
-    return handleOwnerMemory(request, env, url);
-  }
-  if (url.pathname === "/v1/owner/devices/revoke" && request.method === "POST") {
-    return handleRevokeOwnerDevice(request, env);
-  }
-  if (url.pathname === "/v1/owner/access-grants/revoke" && request.method === "POST") {
-    return handleRevokeOwnerAccessGrant(request, env);
+  const ownerRoute = resolveOwnerRoute(url.pathname, request.method);
+  if (ownerRoute) {
+    switch (ownerRoute.route) {
+      case "composio-policy": return handleOwnerComposioPolicy(request, env);
+      case "composio-invoke": return handleOwnerComposioInvoke(request, env);
+      case "composio-tools": return handleOwnerComposioTools(request, env);
+      case "composio-session": return handleOwnerComposioSession(request, env);
+      case "facebook-status": return handleOwnerFacebookStatus(request, env);
+      case "facebook-link": return handleOwnerFacebookLink(request, env);
+      case "facebook-data": return handleOwnerFacebookData(request, env, url);
+      case "available-apps": return handleOwnerAvailableApps(request, env);
+      case "apps-connect": return handleConnectOwnerApp(request, env);
+      case "app-identity": return handleAppIdentity(request, env);
+      case "tool-approvals": return handleOwnerToolApprovals(request, env);
+      case "tool-approval-decision": return handleOwnerToolApprovalDecision(request, env, ownerRoute.id!);
+      case "tool-approval-cancel": return handleOwnerToolApprovalCancel(request, env, ownerRoute.id!);
+      case "observability": return handleOwnerObservability(request, env);
+      case "dashboard": return handleOwnerDashboard(request, env);
+      case "settings": return handleOwnerSettings(request, env);
+      case "access-grants": return handleOwnerAccessGrants(request, env);
+      case "memory-history": return handleMemoryHistory(request, env, url);
+      case "profile": return handleOwnerProfile(request, env);
+      case "memory-insights": return handleMemoryInsights(request, env);
+      case "memory-reviews": return handleMemoryReviews(request, env, url);
+      case "memory-candidates": return handlePrepareMemoryCandidate(request, env);
+      case "memory-retrieve": return handleMemoryRetrieve(request, env);
+      case "memory": return handleOwnerMemory(request, env, url);
+      case "devices-revoke": return handleRevokeOwnerDevice(request, env);
+      case "access-grants-revoke": return handleRevokeOwnerAccessGrant(request, env);
+      case "agent-jobs-create": return handleCreateAgentJob(request, env, ctx);
+      case "agent-job-cancel": return handleCancelAgentJob(request, env, ownerRoute.id!);
+      case "agent-job-status": return handleGetAgentJob(request, env, ownerRoute.id!, ctx);
+    }
   }
   if (url.pathname === "/v1/mcp") {
     return handleMcpEndpoint(request, env);
