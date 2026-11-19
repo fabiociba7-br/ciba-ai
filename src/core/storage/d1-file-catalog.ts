@@ -33,7 +33,7 @@ export function createD1FileCatalog(db: D1Database): GarciaFileCatalog {
       const row = await db.prepare(`
         SELECT id, namespace, owner_id, app_id, object_key, filename, mime_type,
           byte_size, sha256, storage_provider, bucket_name, status, source,
-          created_at, updated_at, deleted_at
+          created_at, updated_at, deleted_at, delete_requested_at
         FROM garcia_file_objects WHERE id = ? AND namespace = ? AND status != 'deleted'
       `).bind(id, namespace).first<Record<string, unknown>>();
       if (!row) return null;
@@ -48,7 +48,18 @@ export function createD1FileCatalog(db: D1Database): GarciaFileCatalog {
         source: String(row.source), createdAt: String(row.created_at),
         updatedAt: String(row.updated_at),
         deletedAt: typeof row.deleted_at === "string" ? row.deleted_at : null,
+        deleteRequestedAt: typeof row.delete_requested_at === "string" ? row.delete_requested_at : null,
       };
+    },
+    async markDeleteRequested(id, namespace, now = new Date().toISOString()) {
+      if (!isValidStorageId(id) || !isSafeStorageText(namespace, 120) || !isValidStorageDate(now)) {
+        throw new Error("invalid_file_catalog_update");
+      }
+      await db.prepare(`
+        UPDATE garcia_file_objects SET delete_requested_at = ?, updated_at = ?
+        WHERE id = ? AND namespace = ? AND status = 'available'
+          AND delete_requested_at IS NULL
+      `).bind(now, now, id, namespace).run();
     },
     async markDeleted(id, namespace, now = new Date().toISOString()) {
       if (!isValidStorageId(id) || !isSafeStorageText(namespace, 120) || !isValidStorageDate(now)) {
