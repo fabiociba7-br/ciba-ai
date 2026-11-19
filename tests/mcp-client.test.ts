@@ -27,6 +27,11 @@ describe("outbound MCP HTTP client", () => {
     })).toThrow("mcp_endpoint_not_allowed");
 
     expect(() => createMcpHttpClient({
+      endpoint: "https://mcp.example.test/mcp?access_token=secret",
+      allowedHosts: [host],
+    })).toThrow("mcp_endpoint_not_allowed");
+
+    expect(() => createMcpHttpClient({
       endpoint: "https://mcp.example.test:8443/mcp",
       allowedHosts: [host],
     })).toThrow("mcp_endpoint_not_allowed");
@@ -95,6 +100,9 @@ describe("outbound MCP HTTP client", () => {
     expect(requests).toHaveLength(4);
     expect(requests.every((request) => request.headers.get("authorization") === "Bearer test-device-token")).toBe(true);
     expect(requests.every((request) => request.redirect === "error")).toBe(true);
+    expect(requests[0].headers.get("mcp-protocol-version")).toBeNull();
+    expect(requests.slice(1).every((request) => request.headers.get("mcp-protocol-version") === "2025-11-25")).toBe(true);
+    expect(requests.every((request) => request.headers.get("accept")?.includes("text/event-stream"))).toBe(true);
     expect(requests.every((request) => request.redirect === "error")).toBe(true);
     expect(JSON.parse(await requests[0].clone().text())).toMatchObject({
       method: "initialize",
