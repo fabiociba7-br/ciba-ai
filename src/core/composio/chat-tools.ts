@@ -79,7 +79,9 @@ export async function createComposioChatToolDefinitions(
     ids.add(id);
     definitions.push(Object.freeze({
       id,
-      description: `Consulta de leitura autorizada da integração ${classified.toolkit}, ferramenta ${remote.name}.`,
+      description: classified.requiresApproval
+        ? `Proposta de ação ${classified.risk} da integração ${classified.toolkit}, ferramenta ${remote.name}; exige aprovação explícita do proprietário.`
+        : `Consulta de leitura autorizada da integração ${classified.toolkit}, ferramenta ${remote.name}.`,
       risk: classified.risk,
       requiresApproval: classified.requiresApproval,
       inputSchema: remote.inputSchema,
