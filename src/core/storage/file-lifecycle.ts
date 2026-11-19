@@ -75,7 +75,7 @@ export function createGarciaFileLifecycle(
 
     async download(id: string, namespace: string): Promise<GarciaFileDownload> {
       const metadata = await catalog.findById(id, namespace);
-      if (!metadata || metadata.status !== "available") throw new Error("garcia_file_not_available");
+      if (!metadata || metadata.status !== "available" || metadata.deleteRequestedAt) throw new Error("garcia_file_not_available");
       const body = await objects.get(metadata.objectKey);
       if (!body) throw new Error("garcia_file_object_missing");
       return { metadata, body };
@@ -85,6 +85,9 @@ export function createGarciaFileLifecycle(
       const metadata = await catalog.findById(id, namespace);
       if (!metadata) return false;
       if (metadata.status !== "available") throw new Error("garcia_file_not_available");
+      // Persist intent first. If object deletion or the final D1 update fails, a
+      // later retry can safely resume without exposing the object for download.
+      if (!metadata.deleteRequestedAt) await catalog.markDeleteRequested(id, namespace, now);
       await objects.delete(metadata.objectKey);
       await catalog.markDeleted(id, namespace, now);
       return true;
