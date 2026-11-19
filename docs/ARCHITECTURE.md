@@ -26,7 +26,8 @@ O módulo `src/core/agents/isolation.ts` aplica políticas determinísticas por 
 - orçamento independente de contexto e quantidade máxima de mensagens;
 - limite separado para contexto de memória fornecido na requisição;
 - descoberta de ferramentas filtrada por nível de risco e quantidade máxima;
-- perfis gerais, raciocínio, criatividade e verificação recebem apenas ferramentas de leitura;
+- perfis gerais, raciocínio, criatividade e verificação recebem ferramentas de leitura;
+- ferramentas Composio de escrita/externas com aprovação obrigatória podem ser apresentadas como propostas em qualquer perfil, sem execução automática;
 - pesquisa pode descobrir ferramentas externas, e programação pode descobrir ferramentas de escrita/externas, mas isso não concede execução nem aprovação.
 
 O registro de ferramentas e o servidor continuam responsáveis por autorização, validação de entrada e aprovação explícita. O isolamento reduz contexto e superfície de ferramentas; não é um sandbox de sistema operacional nem execução paralela de agentes. O modelo atual continua sendo uma inferência por requisição, sem custo adicional de chamadas.

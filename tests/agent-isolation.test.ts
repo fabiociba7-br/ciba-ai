@@ -28,6 +28,17 @@ describe("agent isolation policies", () => {
       .toEqual(["read.one", "write.one", "external.one"]);
   });
 
+  it("shows approval-gated Composio proposals to general agents without exposing other write tools", () => {
+    const descriptors: CibaToolModelDescriptor[] = [
+      { id: "read.one", description: "read", risk: "read", requiresApproval: false, inputSchema: { type: "object" } },
+      { id: "write.one", description: "write", risk: "write", requiresApproval: true, inputSchema: { type: "object" } },
+      { id: "composio.gmail_send_email", description: "approved action proposal", risk: "write", requiresApproval: true, inputSchema: { type: "object" } },
+      { id: "composio.gmail_search_emails", description: "unapproved write metadata", risk: "write", requiresApproval: false, inputSchema: { type: "object" } },
+    ];
+    expect(isolateAgentTools("general", descriptors).map((item) => item.id))
+      .toEqual(["read.one", "composio.gmail_send_email"]);
+  });
+
   it("does not grant execution authority to higher-risk tools", () => {
     const policy = getAgentIsolationPolicy("coding");
     expect(policy.allowedToolRisks).toContain("write");
