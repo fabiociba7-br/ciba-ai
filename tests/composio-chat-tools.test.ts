@@ -4,6 +4,10 @@ import {
   type SavedComposioChatPolicy,
 } from "../src/core/composio/chat-tools";
 import { hashComposioToolSchema } from "../src/core/composio/policy";
+import { createGarciaCapabilityToolRuntime } from "../src/core/tools/garcia-capability-tools";
+import { runCibaOrchestrator } from "../src/core/orchestrator";
+import { CIBA_TOOL_PROPOSAL_PREFIX } from "../src/core/tools/model-proposal";
+import type { InferenceRequest, InferenceResult, ModelProvider } from "../src/core/types";
 
 const schema = { type: "object", properties: {}, additionalProperties: false };
 const readTool = {
@@ -109,6 +113,56 @@ describe("Composio chat tool adapter", () => {
       callTool: async () => ({ content: [{ type: "text", text: "failure" }], isError: true }),
     });
     await expect(definitions[0].execute({})).rejects.toThrow("composio_read_tool_failed");
+  });
+
+  it("executes an authorized Composio read proposal through Garcia's normal orchestrator registry", async () => {
+    const callTool = vi.fn(async () => ({
+      content: [{ type: "text", text: "three messages" }],
+      isError: false,
+    }));
+    const definitions = await createComposioChatToolDefinitions({
+      remoteTools: [readTool],
+      enabledToolkits: ["gmail"],
+      savedPolicies: [await policy("GMAIL_LIST_EMAILS")],
+      callTool,
+    });
+    const authorize = vi.fn(async (request: { toolId: string; risk: string; requiresApproval: boolean }) =>
+      request.toolId === "composio.gmail_list_emails" &&
+      request.risk === "read" && request.requiresApproval === false);
+    const runtime = createGarciaCapabilityToolRuntime({
+      authorize,
+      context: { conversationId: "conversation-read", invocationId: "invocation-read" },
+      executeReadOnlyProposals: true,
+      additionalTools: definitions,
+    });
+    const proposal = CIBA_TOOL_PROPOSAL_PREFIX + JSON.stringify({
+      protocol: "ciba.tool.proposal.v1",
+      toolId: "composio.gmail_list_emails",
+      input: {},
+    });
+    const provider: ModelProvider = {
+      id: "test-provider",
+      enabled: true,
+      generate: async (_request: InferenceRequest): Promise<InferenceResult> => ({
+        text: proposal,
+        raw: null,
+        provider: "test-provider",
+        model: "test-model",
+      }),
+    };
+    const result = await runCibaOrchestrator({
+      messages: [{ role: "user", content: "Liste meus e-mails recentes." }],
+      model: "test-model",
+      maxOutputTokens: 128,
+      provider,
+      toolRuntime: runtime,
+    });
+
+    expect(result.toolExecution?.toolId).toBe("composio.gmail_list_emails");
+    expect(result.toolExecution?.output).toEqual([{ type: "text", text: "three messages" }]);
+    expect(result.toolExecutionError).toBeUndefined();
+    expect(callTool).toHaveBeenCalledOnce();
+    expect(authorize).toHaveBeenCalledOnce();
   });
 
   it("validates limits and duplicate owner policy rows", async () => {
