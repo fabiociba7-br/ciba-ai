@@ -2923,7 +2923,8 @@ const handleChat = async (request: Request, env: Env) => {
     ...(orchestration.toolApproval
       ? { tool_approval: orchestration.toolApproval }
       : {}),
-    ...(orchestration.toolProposal?.toolId.startsWith("composio.")
+    ...(orchestration.toolProposal?.toolId.startsWith("composio.") &&
+      orchestration.toolProposal.requiresApproval
       ? {
           tool_proposal: {
             tool_id: orchestration.toolProposal.toolId,
@@ -2934,6 +2935,7 @@ const handleChat = async (request: Request, env: Env) => {
             input: orchestration.toolProposal.input,
             conversation_id: orchestration.toolProposal.conversationId,
             invocation_id: orchestration.toolProposal.invocationId,
+            execution_available: env.COMPOSIO_EXECUTION_ENABLED === "true",
           },
         }
       : {}),

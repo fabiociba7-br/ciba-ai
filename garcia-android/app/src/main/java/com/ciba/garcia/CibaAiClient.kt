@@ -77,7 +77,7 @@ class CibaAiClient(private val store: SecureStore) {
         return result
     }
 
-    fun chat(history: JSONArray, images: JSONArray = JSONArray()): String {
+    fun chat(history: JSONArray, images: JSONArray = JSONArray()): JSONObject {
         val selected = mutableListOf<JSONObject>()
         var totalChars = 0
         val start = maxOf(0, history.length() - 12)
@@ -98,13 +98,14 @@ class CibaAiClient(private val store: SecureStore) {
         val response = request("/v1/ai/chat", "POST", JSONObject().put("messages", messages), true)
         val text = response.optString("response").ifBlank { "A Garcia recebeu uma resposta vazia do serviço." }
         val photos = response.optJSONArray("photos")
-        if (photos == null || photos.length() == 0) return text
+        if (photos == null || photos.length() == 0) { response.put("response", text); return response }
         val markers = StringBuilder()
         for (i in 0 until photos.length()) {
             val url = photos.optJSONObject(i)?.optString("url").orEmpty()
             if (url.startsWith("https://")) markers.append("\n[[foto:").append(url).append("]]")
         }
-        return text + markers.toString()
+        response.put("response", text + markers.toString())
+        return response
     }
 
     fun facebookStatus(): JSONObject = request("/v1/owner/facebook", "GET", authenticated = true)

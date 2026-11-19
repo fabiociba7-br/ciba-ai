@@ -526,6 +526,12 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var composioApprovalId by remember { mutableStateOf("") }
     var composioInvocationInfo by remember { mutableStateOf<JSONObject?>(null) }
     var composioApproved by remember { mutableStateOf(false) }
+    var chatComposioProposal by remember { mutableStateOf<JSONObject?>(null) }
+    var chatComposioApprovalId by remember { mutableStateOf("") }
+    var chatComposioApproved by remember { mutableStateOf(false) }
+    var chatComposioBusy by remember { mutableStateOf(false) }
+    var chatComposioResult by remember { mutableStateOf<JSONObject?>(null) }
+    var chatComposioError by remember { mutableStateOf("") }
     var showBrowser by remember { mutableStateOf(false) }
     var showLogs by remember { mutableStateOf(false) }
     var showChats by remember { mutableStateOf(false) }
@@ -730,8 +736,19 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             try {
                 val snapshot = JSONArray()
                 history.forEach { (role, content) -> snapshot.put(JSONObject().put("role", role).put("content", content)) }
-                val answer = withContext(Dispatchers.IO) { client.chat(snapshot, imagePayload) }
+                val chatReply = withContext(Dispatchers.IO) { client.chat(snapshot, imagePayload) }
+                val answer = chatReply.optString("response").ifBlank { "A Garcia recebeu uma resposta vazia do serviço." }
                 history.add("assistant" to answer); persist()
+                val proposal = chatReply.optJSONObject("tool_proposal")
+                val approval = chatReply.optJSONObject("tool_approval")
+                if (proposal != null && proposal.optBoolean("requires_approval") &&
+                    approval?.optString("approvalId").orEmpty().isNotBlank()) {
+                    chatComposioProposal = proposal
+                    chatComposioApprovalId = approval!!.optString("approvalId")
+                    chatComposioApproved = false
+                    chatComposioResult = null
+                    chatComposioError = ""
+                }
                 if (voiceReplies && voiceAvailable) {
                     val spoken = voiceOutput.speak(answer)
                     if (!spoken) autoListenPending = false
@@ -1145,6 +1162,103 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                         Text("Copiar resposta", fontSize = 12.sp)
                                     }
                                 }
+                            }
+                        }
+                    }
+                    if (chatComposioProposal != null) item {
+                        val proposal = chatComposioProposal!!
+                        val toolName = proposal.optString("tool_name")
+                        val conversationId = proposal.optString("conversation_id")
+                        val invocationId = proposal.optString("invocation_id")
+                        val toolInput = proposal.optJSONObject("input") ?: JSONObject()
+                        val executionAvailable = proposal.optBoolean("execution_available", false)
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF5F8))
+                        ) {
+                            Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Ação externa aguardando aprovação", fontWeight = FontWeight.Bold, color = Color(0xFF9C3D67))
+                                Text("Ferramenta: $toolName", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Risco: ${proposal.optString("risk")}", fontSize = 12.sp, color = Muted)
+                                Text("Argumentos que serão enviados:", fontSize = 12.sp, color = Muted)
+                                Text(toolInput.toString(2), fontSize = 11.sp, lineHeight = 16.sp)
+                                Text(
+                                    if (chatComposioApproved) {
+                                        if (executionAvailable) "Aprovada. A execução ainda exige seu comando abaixo."
+                                        else "Aprovação registrada. A execução remota permanece bloqueada pelo servidor."
+                                    } else "Nenhuma ação foi executada. Confira ferramenta e argumentos antes de aprovar.",
+                                    fontSize = 12.sp, color = Muted
+                                )
+                                if (!chatComposioApproved) {
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                chatComposioBusy = true
+                                                scope.launch {
+                                                    try {
+                                                        withContext(Dispatchers.IO) {
+                                                            client.invokeComposio("approve", toolName, conversationId, invocationId, toolInput, chatComposioApprovalId, false)
+                                                        }
+                                                        chatComposioProposal = null
+                                                        chatComposioApprovalId = ""
+                                                        chatComposioApproved = false
+                                                    } catch (e: Exception) {
+                                                        chatComposioError = e.message ?: "Não foi possível rejeitar a ação."
+                                                    } finally { chatComposioBusy = false }
+                                                }
+                                            },
+                                            enabled = !chatComposioBusy,
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text("Rejeitar") }
+                                        Button(
+                                            onClick = {
+                                                chatComposioBusy = true
+                                                scope.launch {
+                                                    try {
+                                                        withContext(Dispatchers.IO) {
+                                                            client.invokeComposio("approve", toolName, conversationId, invocationId, toolInput, chatComposioApprovalId, true)
+                                                        }
+                                                        chatComposioApproved = true
+                                                    } catch (e: Exception) {
+                                                        chatComposioError = e.message ?: "Não foi possível aprovar a ação."
+                                                    } finally { chatComposioBusy = false }
+                                                }
+                                            },
+                                            enabled = !chatComposioBusy,
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text("Aprovar") }
+                                    }
+                                } else if (executionAvailable) {
+                                    Button(
+                                        onClick = {
+                                            chatComposioBusy = true
+                                            scope.launch {
+                                                try {
+                                                    val result = withContext(Dispatchers.IO) {
+                                                        client.invokeComposio("execute", toolName, conversationId, invocationId, toolInput, chatComposioApprovalId)
+                                                    }
+                                                    chatComposioResult = result
+                                                    chatComposioProposal = null
+                                                    chatComposioApprovalId = ""
+                                                } catch (e: Exception) {
+                                                    chatComposioError = e.message ?: "A execução foi recusada ou falhou."
+                                                } finally { chatComposioBusy = false }
+                                            }
+                                        },
+                                        enabled = !chatComposioBusy,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) { Text("Executar ação aprovada") }
+                                }
+                                if (chatComposioBusy) CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                if (chatComposioError.isNotBlank()) Text(chatComposioError, color = Color(0xFFB94F7C), fontSize = 12.sp)
+                            }
+                        }
+                    }
+                    if (chatComposioResult != null) item {
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text("Resultado da integração", fontWeight = FontWeight.Bold)
+                                Text(chatComposioResult!!.toString(2), fontSize = 11.sp)
                             }
                         }
                     }
