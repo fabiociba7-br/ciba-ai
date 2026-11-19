@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  attachComposioOwnerSession,
   createComposioOwnerSession,
   deleteComposioOwnerSession,
 } from "../src/core/composio/sessions";
@@ -117,4 +118,30 @@ describe("Composio owner sessions", () => {
       .rejects.toThrow("composio_configuration_invalid");
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
+
+  it("attaches to an existing session and validates the returned MCP endpoint", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
+      session_id: sessionId,
+      mcp: { type: "http", url: mcpUrl },
+      tool_router_tools: [],
+    }));
+    const result = await attachComposioOwnerSession(validOptions.apiKey, sessionId, fetcher);
+    expect(result).toEqual({ sessionId, mcpUrl });
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe(`https://backend.composio.dev/api/v3.1/tool_router/session/${sessionId}/attach`);
+    expect(init?.method).toBe("POST");
+    expect(init?.redirect).toBe("manual");
+    expect(init?.body).toBe("{}");
+    expect(new Headers(init?.headers).get("x-api-key")).toBe(validOptions.apiKey);
+  });
+
+  it("rejects an attach response for a different session", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
+      session_id: "trs_abcdef1234567890",
+      mcp: { type: "http", url: "https://app.composio.dev/tool_router/v3/trs_abcdef1234567890/mcp" },
+    }));
+    await expect(attachComposioOwnerSession(validOptions.apiKey, sessionId, fetcher))
+      .rejects.toThrow("composio_session_mismatch");
+  });
+
 });
