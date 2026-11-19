@@ -1,4 +1,5 @@
 import { resolveOwnerRoute } from "./http/owner-routes";
+import { resolveAppRoute } from "./http/app-routes";
 import { json, corsHeaders, applyResponseHeaders } from "./http/responses";
 import { resolveAdminRoute } from "./http/routes";
 import { readJson } from "./http/request";
@@ -4388,32 +4389,19 @@ const handleRequest = async (
   if (agentJobStatus && request.method === "GET") {
     return handleGetAgentJob(request, env, agentJobStatus[1], ctx);
   }
-  if (url.pathname === "/v1/apps/tasks/dispatch" && request.method === "POST") {
-    return handleTaskDispatch(request, env);
-  }
-  if (url.pathname === "/v1/apps/tasks/status" && request.method === "GET") {
-    return handleTaskStatus(request, env);
-  }
-  if (url.pathname === "/v1/apps/tasks/results" && request.method === "GET") {
-    return handleTaskResults(request, env);
-  }
-  if (url.pathname === "/v1/apps/tasks/results" && request.method === "POST") {
-    return handleSubmitTaskResult(request, env);
-  }
-  if (url.pathname === "/v1/apps/tasks/synthesize" && request.method === "POST") {
-    return handleTaskSynthesis(request, env);
-  }
-  if (url.pathname === "/v1/apps/context/share" && request.method === "POST") {
-    return handleShareContextPackage(request, env);
-  }
-  if (url.pathname === "/v1/apps/messages" && request.method === "POST") {
-    return handleSendAppMessage(request, env);
-  }
-  if (url.pathname === "/v1/apps/messages/inbox" && request.method === "GET") {
-    return handleAppMessageInbox(request, env);
-  }
-  if (url.pathname === "/v1/apps/messages/ack" && request.method === "POST") {
-    return handleAcknowledgeAppMessages(request, env);
+  const appRoute = resolveAppRoute(url.pathname, request.method);
+  if (appRoute) {
+    switch (appRoute) {
+      case "task-dispatch": return handleTaskDispatch(request, env);
+      case "task-status": return handleTaskStatus(request, env);
+      case "task-results": return handleTaskResults(request, env);
+      case "task-results-submit": return handleSubmitTaskResult(request, env);
+      case "task-synthesize": return handleTaskSynthesis(request, env);
+      case "context-share": return handleShareContextPackage(request, env);
+      case "messages-send": return handleSendAppMessage(request, env);
+      case "messages-inbox": return handleAppMessageInbox(request, env);
+      case "messages-ack": return handleAcknowledgeAppMessages(request, env);
+    }
   }
   if (url.pathname === "/v1/admin/invitations" && request.method === "POST") {
     return handleCreateInvitation(request, env);
