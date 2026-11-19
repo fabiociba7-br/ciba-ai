@@ -101,7 +101,7 @@ async function readBounded(response: Response, maximum: number): Promise<string>
 /**
  * Outbound, stateless MCP JSON-RPC client.
  * The caller must supply an explicit HTTPS host allowlist and trusted credentials.
- * SSE responses are intentionally not accepted in this first transport version.
+ * JSON and SSE responses are supported; authentication headers are strictly allowlisted.
  */
 export function createMcpHttpClient(options: McpHttpClientOptions) {
   if (!options || !Array.isArray(options.allowedHosts) || options.allowedHosts.length === 0) {
