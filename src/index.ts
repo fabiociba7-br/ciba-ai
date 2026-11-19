@@ -1,5 +1,6 @@
 import { resolveOwnerRoute } from "./http/owner-routes";
 import { resolveAppRoute } from "./http/app-routes";
+import { resolveServiceRoute } from "./http/service-routes";
 import { json, corsHeaders, applyResponseHeaders } from "./http/responses";
 import { resolveAdminRoute } from "./http/routes";
 import { readJson } from "./http/request";
@@ -4264,70 +4265,82 @@ const handleRequest = async (
       case "settings": return handleAdminSettings(request, env);
     }
   }
-  if (url.pathname === "/v1/config" && request.method === "GET") {
-    const settings = await readRuntimeSettings(env);
-    return json(publicConfig(settings, env));
-  }
-  if (url.pathname === "/v1/status" && request.method === "GET") {
-    await env.DB.prepare("SELECT 1").first();
-    const settings = await readRuntimeSettings(env);
-    const maintenanceMode = settings.maintenance_mode === "true";
-    const aiEnabled = settings.ai_enabled !== "false" && Boolean(resolveModel(settings.ai_model, env.AI_MODEL));
-    return json({
-      service: "ciba-ai",
-      status: maintenanceMode ? "maintenance" : aiEnabled ? "ready" : "degraded",
-      database: "connected",
-      ai_enabled: aiEnabled,
-      maintenance_mode: maintenanceMode,
-      inference: "cloudflare-workers-ai",
-    });
-  }
-  if (url.pathname === "/v1/models" && request.method === "GET") {
-    const settings = await readRuntimeSettings(env);
-    const model = resolveModel(settings.ai_model, env.AI_MODEL);
-    return json({ models: model ? [model] : [], configured: Boolean(model) });
-  }
-  if (url.pathname === "/v1/ai/capabilities" && request.method === "GET") {
-    const settings = await readRuntimeSettings(env);
-    const model = resolveModel(settings.ai_model, env.AI_MODEL);
-    return json({
-      identity: "ciba-ai",
-      core: "ciba-orchestrator",
-      mode: "single-pass",
-      provider: model ? "cloudflare-workers-ai" : null,
-      model,
-      agents: listAgents(),
-      multi_model_fanout_enabled: false,
-      multi_model_ensemble_available: true,
-      provider_registry_available: true,
-      openai_compatible_adapter_available: true,
-      persistent_memory_enabled: false,
-      persistent_memory_api_available: true,
-      external_tools_enabled: false,
-      tool_contracts_available: true,
-      native_capability_catalog: createNativeCapabilityRegistry().list().map((capability) => ({
-        id: capability.id,
-        name: capability.name,
-        category: capability.category,
-        description: capability.description,
-        source_repositories: capability.sourceRepositories,
-        license_status: capability.licenseStatus,
-        status: capability.status,
-        supported_runtimes: capability.supportedRuntimes,
-        preferred_runtime: capability.preferredRuntime,
-        install_policy: capability.installPolicy,
-        zero_cost_only: capability.zeroCostOnly,
-        requires_gpu: capability.requiresGpu,
-        minimum_ram_mb: capability.minimumRamMb,
-        model_weights_bundled: capability.modelWeightsBundled,
-      })),
-      native_capability_catalog_semantics: {
-        metadata_only: true,
-        models_installed: false,
-        adapters_executable: false,
-        license_review_required_before_incorporation: true,
-      },
-    });
+  const serviceRoute = resolveServiceRoute(url.pathname, request.method);
+  if (serviceRoute) {
+    switch (serviceRoute) {
+      case "config": {
+        const settings = await readRuntimeSettings(env);
+        return json(publicConfig(settings, env));
+      }
+      case "status": {
+        await env.DB.prepare("SELECT 1").first();
+        const settings = await readRuntimeSettings(env);
+        const maintenanceMode = settings.maintenance_mode === "true";
+        const aiEnabled = settings.ai_enabled !== "false" && Boolean(resolveModel(settings.ai_model, env.AI_MODEL));
+        return json({
+          service: "ciba-ai",
+          status: maintenanceMode ? "maintenance" : aiEnabled ? "ready" : "degraded",
+          database: "connected",
+          ai_enabled: aiEnabled,
+          maintenance_mode: maintenanceMode,
+          inference: "cloudflare-workers-ai",
+        });
+      }
+      case "models": {
+        const settings = await readRuntimeSettings(env);
+        const model = resolveModel(settings.ai_model, env.AI_MODEL);
+        return json({ models: model ? [model] : [], configured: Boolean(model) });
+      }
+      case "ai-capabilities": {
+        const settings = await readRuntimeSettings(env);
+        const model = resolveModel(settings.ai_model, env.AI_MODEL);
+        return json({
+          identity: "ciba-ai",
+          core: "ciba-orchestrator",
+          mode: "single-pass",
+          provider: model ? "cloudflare-workers-ai" : null,
+          model,
+          agents: listAgents(),
+          multi_model_fanout_enabled: false,
+          multi_model_ensemble_available: true,
+          provider_registry_available: true,
+          openai_compatible_adapter_available: true,
+          persistent_memory_enabled: false,
+          persistent_memory_api_available: true,
+          external_tools_enabled: false,
+          tool_contracts_available: true,
+          native_capability_catalog: createNativeCapabilityRegistry().list().map((capability) => ({
+            id: capability.id,
+            name: capability.name,
+            category: capability.category,
+            description: capability.description,
+            source_repositories: capability.sourceRepositories,
+            license_status: capability.licenseStatus,
+            status: capability.status,
+            supported_runtimes: capability.supportedRuntimes,
+            preferred_runtime: capability.preferredRuntime,
+            install_policy: capability.installPolicy,
+            zero_cost_only: capability.zeroCostOnly,
+            requires_gpu: capability.requiresGpu,
+            minimum_ram_mb: capability.minimumRamMb,
+            model_weights_bundled: capability.modelWeightsBundled,
+          })),
+          native_capability_catalog_semantics: {
+            metadata_only: true,
+            models_installed: false,
+            adapters_executable: false,
+            license_review_required_before_incorporation: true,
+          },
+        });
+      }
+      case "mcp": return handleMcpEndpoint(request, env);
+      case "ai-chat": return handleChat(request, env);
+      case "usage": {
+        const device = await authenticateDevice(request, env);
+        if (!device) return json({ error: "unauthorized" }, 401);
+        return json(await usageFor(env, device.app_id, device.device_id));
+      }
+    }
   }
   if (url.pathname === "/v1/auth/register" && request.method === "POST") {
     return handleRegister(request, env);
@@ -4375,9 +4388,6 @@ const handleRequest = async (
       case "agent-job-status": return handleGetAgentJob(request, env, ownerRoute.id!, ctx);
     }
   }
-  if (url.pathname === "/v1/mcp") {
-    return handleMcpEndpoint(request, env);
-  }
   if (url.pathname === "/v1/owner/agent-jobs" && request.method === "POST") {
     return handleCreateAgentJob(request, env, ctx);
   }
@@ -4408,14 +4418,6 @@ const handleRequest = async (
   }
   if (url.pathname === "/v1/admin/devices/revoke" && request.method === "POST") {
     return handleRevokeDevice(request, env);
-  }
-  if (url.pathname === "/v1/ai/chat" && request.method === "POST") {
-    return handleChat(request, env);
-  }
-  if (url.pathname === "/v1/usage" && request.method === "GET") {
-    const device = await authenticateDevice(request, env);
-    if (!device) return json({ error: "unauthorized" }, 401);
-    return json(await usageFor(env, device.app_id, device.device_id));
   }
   return json({ error: "not_found" }, 404);
 };
