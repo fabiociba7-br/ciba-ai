@@ -33,6 +33,7 @@ import { createNativeCapabilityRegistry } from "./core/native-capabilities";
 import { createD1ToolApprovalStore } from "./core/tools/durable-consent";
 import { createGarciaCapabilityToolRuntime } from "./core/tools/garcia-capability-tools";
 import { enqueueAgentJob, getAgentJob, cancelAgentJob } from "./core/agent-queue-store";
+import { runOneAgentQueueJob } from "./core/agent-queue-runner";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
@@ -3482,7 +3483,7 @@ const handleAcknowledgeAppMessages = async (request: Request, env: Env) => {
   return json({ acknowledged, requested: ids.length });
 };
 
-const handleCreateAgentJob = async (request: Request, env: Env) => {
+const handleCreateAgentJob = async (request: Request, env: Env, ctx: ExecutionContext) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
   if (device.app_id !== "com.ciba.garcia") return json({ error: "garcia_app_required" }, 403);
@@ -3516,6 +3517,13 @@ const handleCreateAgentJob = async (request: Request, env: Env) => {
   });
   if (result.queueFull) return json({ error: "agent_queue_full", maximum_queued: 20 }, 429);
   if (result.duplicate && result.job) return json({ queued: true, duplicate: true, task: result.job }, 200);
+  ctx.waitUntil((async () => {
+    const runtime = await readRuntimeSettings(env);
+    if (runtime.ai_enabled === "false" || runtime.maintenance_mode === "true") return;
+    const model = resolveModel(runtime.ai_model, env.AI_MODEL);
+    if (!model || !ZERO_COST_MODELS.has(model)) return;
+    await runOneAgentQueueJob(env.DB, env.AI, model);
+  })().catch(() => undefined));
   return json({ queued: true, duplicate: false, task_id: taskId, status: "queued", expires_at: expiresAt }, 201);
 };
 
@@ -3550,7 +3558,7 @@ const handleCancelAgentJob = async (request: Request, env: Env, taskId: string) 
   return json({ cancelled: true, task_id: taskId });
 };
 
-const handleRequest = async (request: Request, env: Env): Promise<Response> => {
+const handleRequest = async (request: Request, env: Env, ctx: ExecutionContext): Promise<Response> => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
   if ((url.pathname === "/privacy" || url.pathname === "/data-deletion") && request.method === "GET") {
@@ -3767,7 +3775,7 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
     return handleRevokeOwnerAccessGrant(request, env);
   }
   if (url.pathname === "/v1/owner/agent-jobs" && request.method === "POST") {
-    return handleCreateAgentJob(request, env);
+    return handleCreateAgentJob(request, env, ctx);
   }
   const agentJobCancel = url.pathname.match(/^\/v1\/owner\/agent-jobs\/([A-Za-z0-9_-]{16,128})\/cancel$/);
   if (agentJobCancel && request.method === "POST") {
@@ -3836,10 +3844,10 @@ export default {
       env.DB.prepare("DELETE FROM memory_audit_events WHERE occurred_at < ?").bind(new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString()),
     ]);
   },
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const cors = corsHeaders(request, env);
     try {
-      return applyResponseHeaders(await handleRequest(request, env), cors);
+      return applyResponseHeaders(await handleRequest(request, env, ctx), cors);
     } catch (error) {
       // Do not expose database errors, tokens, prompts, or provider internals.
       const reason = error instanceof Error ? error.message : "";
