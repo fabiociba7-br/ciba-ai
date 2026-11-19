@@ -58,6 +58,81 @@ const registerDevice = async (invitationCode: string, targetAppId = appId) => {
   return await response.json() as { device_id: string; access_token: string };
 };
 
+describe("owner-scoped operational observability", () => {
+  it("returns only the paired owner's aggregate usage metrics", async () => {
+    const appRegistration = await adminRequest("/v1/admin/apps", "POST", {
+      app_id: appId,
+      display_name: "Observability Test App",
+      enabled: true,
+    });
+    expect(appRegistration.status).toBe(200);
+
+    const ownerResponse = await adminRequest("/v1/admin/owners", "POST", { app_id: appId });
+    expect(ownerResponse.status).toBe(201);
+    const owner = await ownerResponse.json() as { owner_id: string; pairing_invitation_code: string };
+
+    const device = await registerDevice(await createInvitation());
+    const paired = await request("/v1/owner/pair", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${device.access_token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ pairing_invitation_code: owner.pairing_invitation_code }),
+    });
+    expect(paired.status).toBe(200);
+
+    const db = (env as unknown as { DB: D1Database }).DB;
+    const day = new Date().toISOString().slice(0, 10);
+    const minute = new Date().toISOString().slice(0, 16);
+    await db.batch([
+      db.prepare("DELETE FROM daily_usage WHERE day = ? AND scope_key IN ('global', ?, ?)").bind(day, `app:${appId}`, `device:${device.device_id}`),
+      db.prepare("INSERT INTO daily_usage(day, scope_key, requests, request_limit, updated_at) VALUES(?, 'global', 9, 50, ?)").bind(day, new Date().toISOString()),
+      db.prepare("INSERT INTO daily_usage(day, scope_key, requests, request_limit, updated_at) VALUES(?, ?, 8, 25, ?)").bind(day, `app:${appId}`, new Date().toISOString()),
+      db.prepare("INSERT INTO daily_usage(day, scope_key, requests, request_limit, updated_at) VALUES(?, ?, 7, 10, ?)").bind(day, `device:${device.device_id}`, new Date().toISOString()),
+      db.prepare("INSERT INTO minute_usage(minute, device_id, requests, updated_at, request_limit) VALUES(?, ?, 3, ?, 12)").bind(minute, device.device_id, new Date().toISOString()),
+    ]);
+
+    const response = await request("/v1/owner/observability", {
+      headers: { authorization: `Bearer ${device.access_token}` },
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      data_available: boolean;
+      request_metrics: {
+        daily: Array<{ global_bucket_requests: number; app_bucket_requests: number; device_bucket_requests: number }>;
+        last_24_hours: { device_requests: number; peak_requests_per_minute: number };
+      };
+      privacy: { owner_scoped: boolean; prompts_recorded: boolean; responses_recorded: boolean; device_identifiers_exposed: boolean };
+    };
+    expect(body.data_available).toBe(true);
+    expect(body.request_metrics.daily[0]).toMatchObject({
+      global_bucket_requests: 9,
+      app_bucket_requests: 8,
+      device_bucket_requests: 7,
+    });
+    expect(body.request_metrics.last_24_hours).toMatchObject({
+      device_requests: 3,
+      peak_requests_per_minute: 3,
+    });
+    expect(body.privacy).toEqual({
+      owner_scoped: true,
+      prompts_recorded: false,
+      responses_recorded: false,
+      device_identifiers_exposed: false,
+    });
+    expect(JSON.stringify(body)).not.toContain(device.device_id);
+    expect(JSON.stringify(body)).not.toContain(owner.owner_id);
+  });
+
+  it("rejects requests without a paired device token", async () => {
+    const response = await request("/v1/owner/observability");
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "unauthorized" });
+  });
+});
+
+
 describe("Ciba AI Worker integration", () => {
   it("serves the Garcia dashboard shell with restrictive browser security headers", async () => {
     const response = await request("/dashboard");
@@ -78,6 +153,8 @@ describe("Ciba AI Worker integration", () => {
     expect(html).toContain("Aprovações de ferramentas");
     expect(html).toContain("Aprovar não executa a ação; apenas registra sua autorização de uso único.");
     expect(html).toContain("/v1/owner/tool-approvals");
+    expect(html).toContain("Saúde e uso da infraestrutura");
+    expect(html).toContain("/v1/owner/observability");
     const scriptStart = html.indexOf("<script>") + "<script>".length;
     const scriptEnd = html.lastIndexOf("</script>");
     expect(scriptStart).toBeGreaterThan("<script>".length);
