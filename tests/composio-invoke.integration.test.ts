@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import workerModule, { type Env } from "../src/index";
 import { hashComposioToolSchema } from "../src/core/composio/policy";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const adminToken = "integration-test-admin-token-0123456789abcdef";
 const appId = "com.ciba.garcia";
@@ -130,21 +130,14 @@ const ownerRequest = (body: Record<string, unknown>) => request("/v1/owner/compo
   body: JSON.stringify(body),
 });
 
-beforeEach(async () => {
+beforeAll(async () => {
   await db.prepare("INSERT INTO cibagenio_controls(resource_id, scope, scope_id, enabled, reason, updated_by, updated_at) VALUES('external_tools', 'global', '', 1, 'Composio integration test', 'test', ?) ON CONFLICT(resource_id, scope, scope_id) DO UPDATE SET enabled = 1, reason = excluded.reason, updated_by = 'test', updated_at = excluded.updated_at")
     .bind(new Date().toISOString()).run();
   await setupOwner();
 });
 
-afterEach(async () => {
+afterAll(() => {
   vi.unstubAllGlobals();
-  for (const id of ownerIds.splice(0)) {
-    await db.prepare("DELETE FROM tool_approvals WHERE owner_id = ?").bind(id).run();
-    await db.prepare("DELETE FROM owner_composio_tool_policies WHERE owner_id = ?").bind(id).run();
-    await db.prepare("DELETE FROM owner_composio_sessions WHERE owner_id = ?").bind(id).run();
-    await db.prepare("DELETE FROM devices WHERE owner_id = ?").bind(id).run();
-    await db.prepare("DELETE FROM owners WHERE owner_id = ?").bind(id).run();
-  }
 });
 
 describe("owner Composio invocation approval boundary", () => {
@@ -176,7 +169,7 @@ describe("owner Composio invocation approval boundary", () => {
     const executed = await ownerRequest({
       ...invocation, action: "execute", approval_id: proposal.approval_id,
     });
-    expect(executed.status).toBe(200);
+    expect(executed.status, JSON.stringify(await executed.clone().json())).toBe(200);
     expect(calls).toEqual([toolName]);
 
     const replay = await ownerRequest({
