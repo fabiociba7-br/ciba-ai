@@ -52,12 +52,9 @@ export interface GarciaCapabilityToolOptions {
 }
 
 /**
- * Creates Garcia's first read-only native-capability tools.
- *
- * The catalog contains metadata only. These tools cannot install models,
- * download weights, invoke adapters, change capability status, or perform
- * external requests. The explicit allowlist keeps them disabled unless a
- * trusted caller deliberately includes their IDs.
+ * Creates Garcia's read-only capability and trusted adapter tool registry.
+ * Native catalog tools remain metadata-only; additional definitions must be
+ * supplied by a trusted server adapter and are subject to the same authorizer.
  */
 export function createGarciaCapabilityTools(
   options: GarciaCapabilityToolOptions
@@ -125,8 +122,8 @@ export function createGarciaCapabilityTools(
       ...(options.additionalTools ?? []).map((tool) => tool.id),
     ],
     authorize: options.authorize,
-    timeoutMs: 5_000,
-    maxInputBytes: 2_048,
+    timeoutMs: 15_000,
+    maxInputBytes: 32_000,
     maxOutputBytes: 64_000,
     maxConcurrentExecutions: 4,
   });
