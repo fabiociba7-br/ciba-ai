@@ -24,7 +24,8 @@ function setup() {
     async markAvailable() { calls.push("available"); },
     async markFailed() { calls.push("failed"); },
     async findById() { return metadata; },
-    async markDeleteRequested() { calls.push("delete-requested"); },\n    async markDeleted() { calls.push("deleted"); },
+    async markDeleteRequested() { calls.push("delete-requested"); },
+    async markDeleted() { calls.push("deleted"); },
   };
   const objects: GarciaObjectStore = {
     async put(_key, body) { calls.push("put"); stored = body instanceof ReadableStream ? body : new ReadableStream(); },
@@ -60,4 +61,39 @@ describe("Garcia R2 file lifecycle", () => {
     expect(await lifecycle.delete("file-1", "garcia:technical", input.now)).toBe(true);
     expect(calls.slice(-3)).toEqual(["delete-requested", "delete", "deleted"]);
   });
+  it("records deletion intent before removing bytes so failed deletion can be retried", async () => {
+    const calls: string[] = [];
+    let deleteRequestedAt: string | null = null;
+    let firstDelete = true;
+    const metadata: GarciaFileMetadata = {
+      id: "file-retry", namespace: "garcia:technical", ownerId: null, appId: null,
+      objectKey: "garcia-files/docs/retry.txt", filename: "retry.txt", mimeType: "text/plain",
+      byteSize: 1, sha256: "a".repeat(64), storageProvider: "cloudflare_r2",
+      bucketName: "garcia-files", status: "available", source: "user",
+      createdAt: input.now, updatedAt: input.now, deletedAt: null, deleteRequestedAt: null,
+    };
+    const catalog: GarciaFileCatalog = {
+      async createPending() {},
+      async markAvailable() {},
+      async markFailed() {},
+      async findById() { return { ...metadata, deleteRequestedAt }; },
+      async markDeleteRequested() { calls.push("request"); deleteRequestedAt = input.now; },
+      async markDeleted() { calls.push("finalize"); },
+    };
+    const objects: GarciaObjectStore = {
+      async put() {},
+      async get() { return null; },
+      async delete() {
+        calls.push("delete");
+        if (firstDelete) { firstDelete = false; throw new Error("temporary_r2_failure"); }
+      },
+    };
+    const lifecycle = createGarciaFileLifecycle(catalog, objects);
+    await expect(lifecycle.delete("file-retry", "garcia:technical", input.now)).rejects.toThrow("temporary_r2_failure");
+    expect(deleteRequestedAt).toBe(input.now);
+    await expect(lifecycle.download("file-retry", "garcia:technical")).rejects.toThrow("garcia_file_not_available");
+    await expect(lifecycle.delete("file-retry", "garcia:technical", input.now)).resolves.toBe(true);
+    expect(calls).toEqual(["request", "delete", "delete", "finalize"]);
+  });
+
 });
