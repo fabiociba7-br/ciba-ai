@@ -26,12 +26,16 @@ function normalizeToolkit(value: string): string {
 }
 
 function inferToolkit(toolName: string, enabledToolkits: readonly string[]): string | null {
-  const normalizedName = toolName.toUpperCase();
+  const nameTokens = toolName.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
   const candidates = enabledToolkits
     .filter((toolkit) => typeof toolkit === "string" && /^[a-z][a-z0-9_-]{0,63}$/i.test(toolkit))
-    .map((toolkit) => ({ original: toolkit, prefix: normalizeToolkit(toolkit) }))
-    .filter((item) => item.prefix && normalizedName.startsWith(item.prefix + "_"))
-    .sort((a, b) => b.prefix.length - a.prefix.length);
+    .map((toolkit) => ({
+      original: toolkit,
+      tokens: toolkit.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean),
+    }))
+    .filter((item) => item.tokens.length > 0 &&
+      item.tokens.every((token, index) => nameTokens[index] === token))
+    .sort((a, b) => b.tokens.length - a.tokens.length);
   return candidates[0]?.original ?? null;
 }
 
@@ -71,16 +75,32 @@ export function classifyComposioTool(
   });
 }
 
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") {
-    const result = JSON.stringify(value);
-    if (result === undefined) throw new Error("composio_schema_invalid");
-    return result;
+function canonicalJson(
+  value: unknown,
+  depth = 0,
+  budget = { nodes: 0, bytes: 0 },
+): string {
+  if (depth > 12 || ++budget.nodes > 2_000) throw new Error("composio_schema_invalid");
+  if (value === null || typeof value === "boolean") return JSON.stringify(value);
+  if (typeof value === "string") {
+    budget.bytes += value.length;
+    if (budget.bytes > 32_000) throw new Error("composio_schema_too_large");
+    return JSON.stringify(value);
   }
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (typeof value === "number" && Number.isFinite(value)) return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    if (Object.getPrototypeOf(value) !== Array.prototype) throw new Error("composio_schema_invalid");
+    return `[${value.map((item) => canonicalJson(item, depth + 1, budget)).join(",")}]`;
+  }
+  if (typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new Error("composio_schema_invalid");
+  }
   const record = value as Record<string, unknown>;
-  return `{${Object.keys(record).sort().map((key) =>
-    `${JSON.stringify(key)}:${canonicalJson(record[key])}`
+  const keys = Object.keys(record).sort();
+  budget.bytes += keys.reduce((total, key) => total + key.length, 0);
+  if (budget.bytes > 32_000) throw new Error("composio_schema_too_large");
+  return `{${keys.map((key) =>
+    `${JSON.stringify(key)}:${canonicalJson(record[key], depth + 1, budget)}`
   ).join(",")}}`;
 }
 
