@@ -14,7 +14,7 @@ export interface Env {
 }
 
 import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "./policy";
-import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents } from "./core";
+import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents, listGarciaSkills } from "./core";
 import { validateCuratedMemory } from "./core/memory";
 import { prepareMemoryCandidate } from "./core/memory-candidates";
 import { classifyMemoryProposal } from "./core/memory-learning";
@@ -1220,6 +1220,7 @@ const handleOwnerDashboard = async (request: Request, env: Env) => {
       model: config.model,
       configured: Boolean(config.model),
       agents: listAgents(),
+    skills: listGarciaSkills(),
       multi_model_execution_enabled: false,
       ensemble_available_but_disabled: true,
       external_tool_execution_enabled: false,
