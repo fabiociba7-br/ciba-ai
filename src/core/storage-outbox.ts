@@ -26,6 +26,8 @@ export interface StorageOutboxInput {
 }
 
 const MAX_PAYLOAD_BYTES = 256 * 1024;
+const MAX_ATTEMPTS = 8;
+const LEASE_MINUTES = 5;
 const ID_PATTERN = /^[A-Za-z0-9._:-]{1,200}$/;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 
@@ -33,7 +35,7 @@ function validIso(value: string): boolean {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
 
-/** Durable, idempotent queue stored in the existing D1 database. */
+/** Durable, idempotent queue stored in D1, with recovery for abandoned claims. */
 export function createD1StorageOutbox(db: D1Database) {
   return {
     async enqueue(input: StorageOutboxInput): Promise<void> {
@@ -46,48 +48,50 @@ export function createD1StorageOutbox(db: D1Database) {
           !HASH_PATTERN.test(input.payloadSha256) || !validIso(now)) {
         throw new Error("invalid_storage_outbox_event");
       }
-      try {
-        JSON.parse(input.payloadJson);
-      } catch {
-        throw new Error("invalid_storage_outbox_payload");
-      }
+      try { JSON.parse(input.payloadJson); }
+      catch { throw new Error("invalid_storage_outbox_payload"); }
       await db.prepare(`
         INSERT OR IGNORE INTO garcia_storage_outbox (
           id, destination, entity_type, entity_id, payload_json, payload_sha256,
           status, attempts, next_attempt_at, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, ?, 'pending', 0, ?, ?, ?)
-      `).bind(
-        input.id, input.destination, input.entityType, input.entityId,
-        input.payloadJson, input.payloadSha256, now, now, now,
-      ).run();
+      `).bind(input.id, input.destination, input.entityType, input.entityId,
+        input.payloadJson, input.payloadSha256, now, now, now).run();
     },
 
     async claimNext(now = new Date().toISOString()): Promise<StorageOutboxEvent | null> {
       if (!validIso(now)) throw new Error("invalid_storage_outbox_time");
+      // Expired leases are returned to the queue. Repeated worker crashes eventually
+      // dead-letter the event instead of leaving it permanently in processing.
+      await db.prepare(`
+        UPDATE garcia_storage_outbox
+        SET status = CASE WHEN attempts + 1 >= ? THEN 'dead' ELSE 'pending' END,
+            attempts = attempts + 1,
+            lease_expires_at = NULL,
+            next_attempt_at = ?,
+            updated_at = ?
+        WHERE status = 'processing' AND lease_expires_at IS NOT NULL
+          AND lease_expires_at <= ?
+      `).bind(MAX_ATTEMPTS, now, now, now).run();
+
+      const leaseExpiresAt = new Date(Date.parse(now) + LEASE_MINUTES * 60_000).toISOString();
       const row = await db.prepare(`
         UPDATE garcia_storage_outbox
-        SET status = 'processing', updated_at = ?
+        SET status = 'processing', updated_at = ?, lease_expires_at = ?
         WHERE id = (
           SELECT id FROM garcia_storage_outbox
           WHERE status = 'pending' AND next_attempt_at <= ?
-          ORDER BY created_at ASC
-          LIMIT 1
-        )
-        AND status = 'pending'
+          ORDER BY created_at ASC LIMIT 1
+        ) AND status = 'pending'
         RETURNING *
-      `).bind(now, now).first<Record<string, unknown>>();
+      `).bind(now, leaseExpiresAt, now).first<Record<string, unknown>>();
       if (!row) return null;
       return {
-        id: String(row.id),
-        destination: row.destination as GarciaStorageDestination,
-        entityType: String(row.entity_type),
-        entityId: String(row.entity_id),
-        payloadJson: String(row.payload_json),
-        payloadSha256: String(row.payload_sha256),
-        status: row.status as StorageOutboxEvent["status"],
-        attempts: Number(row.attempts),
-        nextAttemptAt: String(row.next_attempt_at),
-        createdAt: String(row.created_at),
+        id: String(row.id), destination: row.destination as GarciaStorageDestination,
+        entityType: String(row.entity_type), entityId: String(row.entity_id),
+        payloadJson: String(row.payload_json), payloadSha256: String(row.payload_sha256),
+        status: row.status as StorageOutboxEvent["status"], attempts: Number(row.attempts),
+        nextAttemptAt: String(row.next_attempt_at), createdAt: String(row.created_at),
         updatedAt: String(row.updated_at),
         deliveredAt: typeof row.delivered_at === "string" ? row.delivered_at : null,
       };
@@ -97,7 +101,8 @@ export function createD1StorageOutbox(db: D1Database) {
       if (!ID_PATTERN.test(id) || !validIso(now)) throw new Error("invalid_storage_outbox_update");
       await db.prepare(`
         UPDATE garcia_storage_outbox
-        SET status = 'delivered', delivered_at = ?, updated_at = ?, last_error_code = NULL
+        SET status = 'delivered', delivered_at = ?, updated_at = ?,
+            last_error_code = NULL, lease_expires_at = NULL
         WHERE id = ? AND status = 'processing'
       `).bind(now, now, id).run();
     },
@@ -109,13 +114,11 @@ export function createD1StorageOutbox(db: D1Database) {
       }
       await db.prepare(`
         UPDATE garcia_storage_outbox
-        SET status = CASE WHEN attempts + 1 >= 8 THEN 'dead' ELSE 'pending' END,
-            attempts = attempts + 1,
-            next_attempt_at = ?,
-            last_error_code = ?,
-            updated_at = ?
+        SET status = CASE WHEN attempts + 1 >= ? THEN 'dead' ELSE 'pending' END,
+            attempts = attempts + 1, next_attempt_at = ?, last_error_code = ?,
+            updated_at = ?, lease_expires_at = NULL
         WHERE id = ? AND status = 'processing'
-      `).bind(nextAttemptAt, errorCode, now, id).run();
+      `).bind(MAX_ATTEMPTS, nextAttemptAt, errorCode, now, id).run();
     },
   };
 }
