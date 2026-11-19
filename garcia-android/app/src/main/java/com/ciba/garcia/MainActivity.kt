@@ -1655,7 +1655,12 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     val invocation = composioInvocationInfo
                                     if (invocation != null) {
                                         Text(
-                                            if (composioApprovalId.isNotBlank()) "Ação aguardando sua aprovação. Nenhuma alteração foi feita." else "Chamada de leitura pronta. Ainda não foi executada.",
+                                            when {
+                                                invocation.optBoolean("executed") -> "Execução concluída."
+                                                composioApproved -> "Ação aprovada. A execução ainda depende do próximo comando."
+                                                composioApprovalId.isNotBlank() -> "Ação aguardando sua aprovação. Nenhuma alteração foi feita."
+                                                else -> "Chamada de leitura validada. Ainda não foi executada."
+                                            },
                                             color = Muted, fontSize = 12.sp
                                         )
                                         if (composioApprovalId.isNotBlank() && !composioApproved) {
@@ -1697,7 +1702,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                                 ) { Text("Aprovar ação") }
                                             }
                                         }
-                                        if (composioApprovalId.isBlank() || composioApproved) {
+                                        if (!invocation.optBoolean("executed") && (composioApprovalId.isBlank() || composioApproved)) {
                                             Button(
                                                 onClick = {
                                                     composioBusy = true
@@ -1722,7 +1727,6 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                                 modifier = Modifier.fillMaxWidth()
                                             ) { Text(if (composioApproved) "Executar ação aprovada" else "Executar chamada de leitura") }
                                         }
-                                        if (invocation.optBoolean("executed")) Text("Execução concluída.", color = Color(0xFF2E8B57), fontWeight = FontWeight.SemiBold)
                                         if (invocation.optBoolean("approved")) Text("Aprovação registrada.", color = Muted, fontSize = 12.sp)
                                     }
                                 }
