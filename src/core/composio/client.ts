@@ -10,6 +10,8 @@ export interface ComposioMcpDiscoveryOptions {
   fetcher?: typeof fetch;
   timeoutMs?: number;
   maxResponseBytes?: number;
+  allowedToolNames?: string[];
+  approvedToolNames?: string[];
 }
 
 /**
@@ -19,6 +21,7 @@ export interface ComposioMcpDiscoveryOptions {
 export function createComposioMcpDiscoveryClient(options: ComposioMcpDiscoveryOptions): {
   initialize: ReturnType<typeof createMcpHttpClient>["initialize"];
   listTools: () => Promise<McpRemoteTool[]>;
+  callTool: ReturnType<typeof createMcpHttpClient>["callTool"];
 } {
   if (!options || typeof options.apiKey !== "string" ||
       options.apiKey.trim().length < 16 || options.apiKey.length > 8_192 ||
@@ -37,7 +40,8 @@ export function createComposioMcpDiscoveryClient(options: ComposioMcpDiscoveryOp
     allowedHosts: ["app.composio.dev"],
     getAccessToken: async () => options.apiKey,
     accessTokenHeader: "x-api-key",
-    allowedToolNames: [],
+    allowedToolNames: options.allowedToolNames ?? [],
+    approvedToolNames: options.approvedToolNames ?? [],
     ...(options.fetcher ? { fetcher: options.fetcher } : {}),
     ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
     ...(options.maxResponseBytes === undefined ? {} : { maxResponseBytes: options.maxResponseBytes }),
@@ -46,5 +50,6 @@ export function createComposioMcpDiscoveryClient(options: ComposioMcpDiscoveryOp
   return Object.freeze({
     initialize: client.initialize,
     listTools: client.listTools,
+    callTool: client.callTool,
   });
 }
