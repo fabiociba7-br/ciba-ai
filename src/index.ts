@@ -3882,7 +3882,8 @@ const handleRequest = async (
   }
   if (url.pathname === "/v1/owner/composio/session" && ["GET", "POST", "DELETE"].includes(request.method)) {
     return handleOwnerComposioSession(request, env);
-  }\n  if (url.pathname === "/v1/owner/facebook" && request.method === "GET") {
+  }
+  if (url.pathname === "/v1/owner/facebook" && request.method === "GET") {
     return handleOwnerFacebookStatus(request, env);
   }
   if (url.pathname === "/v1/owner/facebook/link" && request.method === "POST") {
