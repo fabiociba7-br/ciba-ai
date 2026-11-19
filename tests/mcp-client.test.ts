@@ -99,7 +99,7 @@ describe("outbound MCP HTTP client", () => {
     expect(result).toEqual({ content: [{ type: "text", text: "[]" }], isError: false });
     expect(requests).toHaveLength(4);
     expect(requests.every((request) => request.headers.get("authorization") === "Bearer test-device-token")).toBe(true);
-    expect(requests.every((request) => request.redirect === "error")).toBe(true);
+    expect(requests.every((request) => request.redirect === "manual")).toBe(true);
     expect(requests[0].headers.get("mcp-protocol-version")).toBeNull();
     expect(requests.slice(1).every((request) => request.headers.get("mcp-protocol-version") === "2025-11-25")).toBe(true);
     expect(requests.every((request) => request.headers.get("accept")?.includes("text/event-stream"))).toBe(true);
