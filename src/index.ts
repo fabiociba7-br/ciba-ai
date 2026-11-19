@@ -3558,7 +3558,11 @@ const handleCancelAgentJob = async (request: Request, env: Env, taskId: string) 
   return json({ cancelled: true, task_id: taskId });
 };
 
-const handleRequest = async (request: Request, env: Env, ctx: ExecutionContext): Promise<Response> => {
+const handleRequest = async (
+  request: Request,
+  env: Env,
+  ctx: ExecutionContext = { waitUntil: () => undefined } as unknown as ExecutionContext,
+): Promise<Response> => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
   if ((url.pathname === "/privacy" || url.pathname === "/data-deletion") && request.method === "GET") {
