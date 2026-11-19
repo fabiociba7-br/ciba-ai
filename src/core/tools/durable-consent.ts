@@ -12,6 +12,8 @@ export interface DurableToolApprovalRequest {
   toolId: string;
   risk: Exclude<CibaToolRisk, "read">;
   input: unknown;
+  /** Optional immutable external-tool schema fingerprint, bound into approval CAS. */
+  bindingSha256?: string;
 }
 
 export type DurableToolApprovalStatus =
@@ -128,21 +130,26 @@ function validateIdentity(identity: DurableToolApprovalIdentity): void {
       !validText(identity.deviceId)) throw new Error("invalid_tool_approval_identity");
 }
 
-function validateRequest(request: DurableToolApprovalRequest): { inputJson: string; inputSha256: string } {
+function validateRequest(request: DurableToolApprovalRequest): { inputJson: string; bindingSha256: string | null } {
   if (!request || !validText(request.conversationId) || !validText(request.invocationId) ||
       !validText(request.toolId) || (request.risk !== "write" && request.risk !== "external")) {
     throw new Error("invalid_tool_approval_request");
+  }
+  if (request.bindingSha256 !== undefined &&
+      (typeof request.bindingSha256 !== "string" || !/^[a-f0-9]{64}$/.test(request.bindingSha256))) {
+    throw new Error("invalid_tool_approval_binding");
   }
   const inputJson = canonicalJson(snapshotJson(request.input));
   if (new TextEncoder().encode(inputJson).byteLength > MAX_INPUT_BYTES) {
     throw new Error("invalid_tool_approval_input");
   }
-  return { inputJson, inputSha256: "" };
+  return { inputJson, bindingSha256: request.bindingSha256 ?? null };
 }
 
 /**
  * D1-backed approval storage. Identity must come from an authenticated server
  * context; never construct it from caller-supplied owner/app/device identifiers.
+ * Optional bindingSha256 pins approvals to an external tool schema fingerprint.
  * This module is deliberately not wired into the Worker or tool executor.
  */
 export function createD1ToolApprovalStore(
@@ -160,7 +167,7 @@ export function createD1ToolApprovalStore(
   return Object.freeze<DurableToolApprovalStore>({
     async request(identity, request) {
       validateIdentity(identity);
-      const { inputJson } = validateRequest(request);
+      const { inputJson, bindingSha256 } = validateRequest(request);
       const inputSha256 = await digest(inputJson);
       const timestamp = new Date(now()).toISOString();
       const expiresAt = new Date(now() + ttlMs).toISOString();
@@ -169,10 +176,10 @@ export function createD1ToolApprovalStore(
       await db.prepare(`
         INSERT OR IGNORE INTO tool_approvals(
           approval_id, owner_id, app_id, device_id, conversation_id,
-          invocation_id, tool_id, risk, input_json, input_sha256,
+          invocation_id, tool_id, risk, input_json, input_sha256, binding_sha256,
           status, created_at, expires_at
         )
-        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?
+        SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?
         WHERE EXISTS (
           SELECT 1 FROM devices d JOIN owners o ON o.owner_id = d.owner_id
           WHERE d.device_id = ? AND d.owner_id = ? AND d.app_id = ?
@@ -181,13 +188,13 @@ export function createD1ToolApprovalStore(
       `).bind(
         approvalId, identity.ownerId, identity.appId, identity.deviceId,
         request.conversationId, request.invocationId, request.toolId, request.risk,
-        inputJson, inputSha256, timestamp, expiresAt,
+        inputJson, inputSha256, bindingSha256, timestamp, expiresAt,
         identity.deviceId, identity.ownerId, identity.appId
       ).run();
 
       const existing = await db.prepare(`
         SELECT approval_id, conversation_id, invocation_id, tool_id, risk,
-          input_json, input_sha256, status, expires_at
+          input_json, input_sha256, binding_sha256, status, expires_at
         FROM tool_approvals
         WHERE owner_id = ? AND app_id = ? AND device_id = ? AND invocation_id = ?
           AND EXISTS (
@@ -203,14 +210,14 @@ export function createD1ToolApprovalStore(
         .first<{
           approval_id: string; conversation_id: string; invocation_id: string;
           tool_id: string; risk: string; input_json: string; input_sha256: string;
-          status: DurableToolApprovalStatus; expires_at: string;
+          binding_sha256: string | null; status: DurableToolApprovalStatus; expires_at: string;
         }>();
 
       if (!existing) throw new Error("tool_approval_persistence_failed");
       if (existing.conversation_id !== request.conversationId ||
           existing.invocation_id !== request.invocationId || existing.tool_id !== request.toolId ||
           existing.risk !== request.risk || existing.input_json !== inputJson ||
-          existing.input_sha256 !== inputSha256) {
+          existing.input_sha256 !== inputSha256 || existing.binding_sha256 !== bindingSha256) {
         throw new Error("tool_approval_invocation_conflict");
       }
       if (existing.status === "pending" || existing.status === "approved") {
@@ -232,7 +239,7 @@ export function createD1ToolApprovalStore(
     async answer({ approvalId, identity, request, approverDeviceId, allow }) {
       validateIdentity(identity);
       if (!validText(approvalId) || !validText(approverDeviceId) || typeof allow !== "boolean") return false;
-      const { inputJson } = validateRequest(request);
+      const { inputJson, bindingSha256 } = validateRequest(request);
       const inputSha256 = await digest(inputJson);
       const timestamp = new Date(now()).toISOString();
       const status = allow ? "approved" : "denied";
@@ -242,7 +249,7 @@ export function createD1ToolApprovalStore(
             closed_at = CASE WHEN ? = 'denied' THEN ? ELSE NULL END
         WHERE approval_id = ? AND owner_id = ? AND app_id = ? AND device_id = ?
           AND conversation_id = ? AND invocation_id = ? AND tool_id = ? AND risk = ?
-          AND input_json = ? AND input_sha256 = ? AND status = 'pending' AND expires_at > ?
+          AND input_json = ? AND input_sha256 = ? AND binding_sha256 IS ? AND status = 'pending' AND expires_at > ?
           AND EXISTS (
             SELECT 1 FROM devices source
             JOIN owners owner ON owner.owner_id = source.owner_id
@@ -259,7 +266,7 @@ export function createD1ToolApprovalStore(
         status, timestamp, approverDeviceId, status, timestamp,
         approvalId, identity.ownerId, identity.appId, identity.deviceId,
         request.conversationId, request.invocationId, request.toolId, request.risk,
-        inputJson, inputSha256, timestamp,
+        inputJson, inputSha256, bindingSha256, timestamp,
         identity.deviceId, identity.ownerId, identity.appId,
         approverDeviceId, identity.ownerId, identity.appId
       ).run();
@@ -284,7 +291,7 @@ export function createD1ToolApprovalStore(
         SET status = 'consumed', consumed_at = ?, closed_at = ?
         WHERE approval_id = ? AND owner_id = ? AND app_id = ? AND device_id = ?
           AND conversation_id = ? AND invocation_id = ? AND tool_id = ? AND risk = ?
-          AND input_json = ? AND input_sha256 = ? AND status = 'approved' AND expires_at > ?
+          AND input_json = ? AND input_sha256 = ? AND binding_sha256 IS ? AND status = 'approved' AND expires_at > ?
           AND EXISTS (
             SELECT 1 FROM devices d JOIN owners o ON o.owner_id = d.owner_id
             WHERE d.device_id = ? AND d.owner_id = ? AND d.app_id = ?
@@ -293,7 +300,7 @@ export function createD1ToolApprovalStore(
       `).bind(
         timestamp, timestamp, approvalId, identity.ownerId, identity.appId, identity.deviceId,
         request.conversationId, request.invocationId, request.toolId, request.risk,
-        inputJson, inputSha256, timestamp,
+        inputJson, inputSha256, bindingSha256, timestamp,
         identity.deviceId, identity.ownerId, identity.appId
       ).run();
       if ((result.meta?.changes ?? 0) === 1) return true;
