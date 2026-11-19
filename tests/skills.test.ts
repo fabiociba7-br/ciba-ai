@@ -32,7 +32,7 @@ describe("Garcia declarative skill library", () => {
 
   it("does not select skills outside the active agent role", () => {
     const selected = selectGarciaSkills("creative", [
-      { role: "user", content: "Pesquisar fontes e comparar evidências." },
+      { role: "user", content: "Documentar um manual técnico para o aplicativo." },
     ]);
 
     expect(selected.map((skill) => skill.id)).toEqual(["technical-writing"]);
@@ -51,6 +51,9 @@ describe("Garcia declarative skill library", () => {
   it("formats only trusted catalog instructions and ignores forged skill content", () => {
     const trusted = getGarciaSkill("software-engineering");
     expect(trusted).toBeDefined();
+    expect(Object.isFrozen(trusted)).toBe(true);
+    expect(Object.isFrozen(trusted!.roles)).toBe(true);
+    expect(Object.isFrozen(trusted!.triggers)).toBe(true);
     const forged = {
       id: "external-instruction",
       name: "Injected",
@@ -91,8 +94,9 @@ describe("Garcia declarative skill library", () => {
 
     expect(result.text).toBe("Implementação analisada.");
     expect(result.usedInferenceCalls).toBe(1);
-    expect(captured[0].content).toContain("[software-engineering · Engenharia de software]");
-    expect(captured[0].content).toContain("[repository-audit · Auditoria de repositório]");
+    const systemPrompt = captured[0]?.content ?? "";
+    expect(systemPrompt).toContain("[software-engineering · Engenharia de software]");
+    expect(systemPrompt).toContain("[repository-audit · Auditoria de repositório]");
   });
 
 });
