@@ -1586,6 +1586,16 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                             val risk = item.optString("risk", "external")
                                             val approval = if (item.optBoolean("requires_approval", true)) "aprovação obrigatória" else "somente leitura"
                                             Text(risk + " · " + approval + if (!eligible) " · integração não reconhecida" else "", color = Muted, fontSize = 10.sp)
+                                            if (checked) {
+                                                TextButton(onClick = {
+                                                    composioInvocationTool = name
+                                                    composioInvocationInput = "{}"
+                                                    composioInvocationId = ""
+                                                    composioApprovalId = ""
+                                                    composioInvocationInfo = null
+                                                    composioApproved = false
+                                                }) { Text(if (composioInvocationTool == name) "Selecionada para chamada" else "Preparar chamada") }
+                                            }
                                         }
                                     }
                                     HorizontalDivider()
@@ -1607,6 +1617,115 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     enabled = !composioBusy,
                                     modifier = Modifier.fillMaxWidth()
                                 ) { Text("Salvar permissões selecionadas") }
+                                if (composioInvocationTool.isNotBlank() && composioInvocationTool in composioSelectedTools) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Text("Chamada controlada: " + composioInvocationTool, fontWeight = FontWeight.Bold)
+                                    OutlinedTextField(
+                                        value = composioInvocationInput,
+                                        onValueChange = { composioInvocationInput = it.take(32_000) },
+                                        modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp),
+                                        label = { Text("Argumentos JSON") },
+                                        placeholder = { Text("{ }") },
+                                        minLines = 3,
+                                        maxLines = 8
+                                    )
+                                    Button(
+                                        onClick = {
+                                            composioBusy = true
+                                            composioError = ""
+                                            scope.launch {
+                                                try {
+                                                    val input = JSONObject(composioInvocationInput)
+                                                    val invocation = UUID.randomUUID().toString()
+                                                    val result = withContext(Dispatchers.IO) {
+                                                        client.invokeComposio("propose", composioInvocationTool, currentChatId, invocation, input)
+                                                    }
+                                                    composioInvocationId = invocation
+                                                    composioApprovalId = result.optString("approval_id")
+                                                    composioInvocationInfo = result
+                                                    composioApproved = false
+                                                } catch (e: Exception) {
+                                                    composioError = e.message ?: "Não foi possível preparar a chamada."
+                                                } finally { composioBusy = false }
+                                            }
+                                        },
+                                        enabled = !composioBusy && composioInvocationInput.isNotBlank(),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) { Text("Validar e propor chamada") }
+                                    val invocation = composioInvocationInfo
+                                    if (invocation != null) {
+                                        Text(
+                                            if (composioApprovalId.isNotBlank()) "Ação aguardando sua aprovação. Nenhuma alteração foi feita." else "Chamada de leitura pronta. Ainda não foi executada.",
+                                            color = Muted, fontSize = 12.sp
+                                        )
+                                        if (composioApprovalId.isNotBlank() && !composioApproved) {
+                                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        composioBusy = true
+                                                        scope.launch {
+                                                            try {
+                                                                withContext(Dispatchers.IO) {
+                                                                    client.invokeComposio("approve", composioInvocationTool, currentChatId, composioInvocationId, JSONObject(composioInvocationInput), composioApprovalId, false)
+                                                                }
+                                                                composioApprovalId = ""
+                                                                composioInvocationInfo = null
+                                                            } catch (e: Exception) {
+                                                                composioError = e.message ?: "Não foi possível rejeitar a aprovação."
+                                                            } finally { composioBusy = false }
+                                                        }
+                                                    },
+                                                    enabled = !composioBusy,
+                                                    modifier = Modifier.weight(1f)
+                                                ) { Text("Rejeitar") }
+                                                Button(
+                                                    onClick = {
+                                                        composioBusy = true
+                                                        scope.launch {
+                                                            try {
+                                                                withContext(Dispatchers.IO) {
+                                                                    client.invokeComposio("approve", composioInvocationTool, currentChatId, composioInvocationId, JSONObject(composioInvocationInput), composioApprovalId, true)
+                                                                }
+                                                                composioApproved = true
+                                                            } catch (e: Exception) {
+                                                                composioError = e.message ?: "Não foi possível aprovar a ação."
+                                                            } finally { composioBusy = false }
+                                                        }
+                                                    },
+                                                    enabled = !composioBusy,
+                                                    modifier = Modifier.weight(1f)
+                                                ) { Text("Aprovar ação") }
+                                            }
+                                        }
+                                        if (composioApprovalId.isBlank() || composioApproved) {
+                                            Button(
+                                                onClick = {
+                                                    composioBusy = true
+                                                    scope.launch {
+                                                        try {
+                                                            val result = withContext(Dispatchers.IO) {
+                                                                client.invokeComposio(
+                                                                    "execute", composioInvocationTool, currentChatId,
+                                                                    composioInvocationId, JSONObject(composioInvocationInput),
+                                                                    composioApprovalId.takeIf { it.isNotBlank() }
+                                                                )
+                                                            }
+                                                            composioInvocationInfo = result
+                                                            composioApprovalId = ""
+                                                            composioApproved = false
+                                                        } catch (e: Exception) {
+                                                            composioError = e.message ?: "A execução foi recusada ou falhou."
+                                                        } finally { composioBusy = false }
+                                                    }
+                                                },
+                                                enabled = !composioBusy,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) { Text(if (composioApproved) "Executar ação aprovada" else "Executar chamada de leitura") }
+                                        }
+                                        if (invocation.optBoolean("executed")) Text("Execução concluída.", color = Color(0xFF2E8B57), fontWeight = FontWeight.SemiBold)
+                                        if (invocation.optBoolean("approved")) Text("Aprovação registrada.", color = Muted, fontSize = 12.sp)
+                                    }
+                                }
                             }
                             OutlinedButton(
                                 onClick = {
