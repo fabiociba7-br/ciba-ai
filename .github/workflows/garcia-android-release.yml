@@ -1,12 +1,6 @@
 name: Garcia Android Release
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "garcia-android/gradle.properties"
-      - ".github/workflows/garcia-android-release.yml"
   workflow_dispatch:
     inputs:
       version_name:
@@ -39,7 +33,7 @@ jobs:
       - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
+          ref: main
           fetch-depth: 1
 
       - name: Resolve release version
