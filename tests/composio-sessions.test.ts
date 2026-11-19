@@ -43,6 +43,7 @@ describe("Composio owner sessions", () => {
         enable_connection_removal: false,
       },
       workbench: { enable: false },
+      proxy_execute: { enable: false },
       search: { enable: true },
       execute: { enable_multi_execute: false },
     });
