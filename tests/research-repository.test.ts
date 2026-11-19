@@ -39,7 +39,7 @@ const entry: ResearchLearningEntry = {
   findings: ["A API recebe requisições."],
   newInsights: ["O contrato define entradas e saídas."],
   uncertainties: [],
-  reusableProcedure: null,
+  reusableProcedure: "Validar entrada e responder conforme o contrato.",
   status: "new",
   confidence: 0.85,
 };
@@ -52,16 +52,20 @@ describe("D1 research repository", () => {
     expect(getBatchSize()).toBe(2);
   });
 
-  it("returns null when a fingerprint is not yet known", async () => {
-    const { db } = fakeD1();
-    const repository = createD1ResearchKnowledgeRepository(db);
-    await expect(repository.findByFingerprint("unknown")).resolves.toBeNull();
+  it("scopes fingerprint lookup to the configured knowledge namespace", async () => {
+    const { db, calls } = fakeD1();
+    const repository = createD1ResearchKnowledgeRepository(db, { namespace: "garcia:apis" });
+    await repository.findByFingerprint("api-fingerprint");
+    expect(calls[0].values).toEqual(["garcia:apis", "api-fingerprint"]);
+    expect(calls[0].sql).toContain("namespace = ? AND fingerprint = ?");
   });
 
-  it("rejects empty or oversized fingerprints", async () => {
+  it("rejects invalid namespaces and research records", async () => {
     const { db } = fakeD1();
+    expect(() => createD1ResearchKnowledgeRepository(db, { namespace: " " })).toThrow("invalid_research_repository_namespace");
     const repository = createD1ResearchKnowledgeRepository(db);
     await expect(repository.save(entry, "")).rejects.toThrow("invalid_research_repository_record");
+    await expect(repository.save({ ...entry, confidence: 1.5 }, "api-fingerprint")).rejects.toThrow("invalid_research_repository_record");
     await expect(repository.findByFingerprint("x".repeat(8_001))).resolves.toBeNull();
   });
 });
