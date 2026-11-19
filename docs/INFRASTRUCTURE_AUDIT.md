@@ -89,6 +89,19 @@ Foi adicionada a rota administrativa protegida `GET /v1/admin/observability`.
 
 A rota foi coberta por testes de integração para autenticação, agregação e proteção de dados. A validação de CI é necessária antes de considerar a alteração pronta para produção.
 
+## Painel Garcia integrado
+
+O painel privado da Garcia agora contém a seção **Saúde e uso da infraestrutura**, alimentada por `GET /v1/owner/observability`.
+
+- A rota exige o token de um dispositivo pareado ao proprietário ativo.
+- Retorna apenas agregados do dispositivo autenticado, seu aplicativo e a cota global.
+- Mostra atividade das últimas 24 horas e histórico disponível dos últimos 14 dias.
+- Não revela IDs de dispositivos, IDs de proprietários, prompts ou respostas.
+- O painel diferencia ausência de dados de consumo zero.
+- Links para métricas de latência, erros HTTP, Neurons e D1 abrem o painel Cloudflare, pois esses indicadores pertencem à camada do provedor.
+
+A integração foi validada pelo workflow de deploy, incluindo a suíte `npm run check`, e o Worker foi publicado com health check aprovado.
+
 ## Próximo trabalho técnico
 
 Antes de expandir capacidade, implementar observabilidade operacional de baixo custo: registrar contadores agregados de requisições, erros, latência, limites internos e consumo de D1 sem armazenar prompts ou respostas. Expor uma visão administrativa protegida e alertas quando os limites internos se aproximarem do teto.
