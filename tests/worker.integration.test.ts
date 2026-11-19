@@ -1523,7 +1523,7 @@ describe("Composio discovery endpoint security", () => {
     expect(policy.status).toBe(401);
     expect(await policy.json()).toEqual({ error: "unauthorized" });
 
-    const invoke = await request("/v1/owner/composio/invoke", {
+    const unauthenticatedInvokeRequest = await request("/v1/owner/composio/invoke", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -1534,8 +1534,8 @@ describe("Composio discovery endpoint security", () => {
         input: {},
       }),
     });
-    expect(invoke.status).toBe(401);
-    expect(await invoke.json()).toEqual({ error: "unauthorized" });
+    expect(unauthenticatedInvokeRequest.status).toBe(401);
+    expect(await unauthenticatedInvokeRequest.json()).toEqual({ error: "unauthorized" });
   });
 });
 
