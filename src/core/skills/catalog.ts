@@ -1,14 +1,14 @@
 import type { CibaRole, ChatTurn } from "../types";
 
 export interface GarciaSkillDefinition {
-  id: string;
-  name: string;
-  description: string;
-  version: string;
-  roles: readonly CibaRole[];
-  triggers: readonly string[];
-  priority: number;
-  instructions: string;
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly version: string;
+  readonly roles: readonly CibaRole[];
+  readonly triggers: readonly string[];
+  readonly priority: number;
+  readonly instructions: string;
 }
 
 export interface GarciaSkillSummary {
@@ -19,12 +19,11 @@ export interface GarciaSkillSummary {
   roles: CibaRole[];
 }
 
-const ROLE_DEFAULT_SKILL: Record<CibaRole, string> = {
+const ROLE_DEFAULT_SKILL: Partial<Record<CibaRole, string>> = {
   general: "task-planning",
   reasoning: "task-planning",
   research: "research-synthesis",
   coding: "software-engineering",
-  creative: "technical-writing",
   verification: "repository-audit",
 };
 
@@ -79,7 +78,11 @@ const SKILLS: readonly GarciaSkillDefinition[] = Object.freeze([
     priority: 60,
     instructions: "Escreva para quem precisa operar ou manter o sistema. Inclua pré-requisitos, passos reproduzíveis, contratos, limites, segurança e exemplos mínimos. Não documente como disponível algo que esteja apenas planejado; marque claramente o que ainda não foi conectado ou validado.",
   },
-]);
+].map((skill) => Object.freeze({
+  ...skill,
+  roles: Object.freeze([...skill.roles]),
+  triggers: Object.freeze([...skill.triggers]),
+})));
 
 const MAX_ACTIVE_SKILLS = 2;
 const MAX_SKILL_INSTRUCTION_CHARS = 4_000;
@@ -103,7 +106,10 @@ export function selectGarciaSkills(role: CibaRole, messages: ChatTurn[]): Garcia
   const latestUserMessage = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
   const normalized = normalize(latestUserMessage);
   const applicable = SKILLS.filter((skill) => skill.roles.includes(role));
-  const defaultSkill = getGarciaSkill(ROLE_DEFAULT_SKILL[role]);
+  const defaultSkillId = Object.prototype.hasOwnProperty.call(ROLE_DEFAULT_SKILL, role)
+    ? ROLE_DEFAULT_SKILL[role]
+    : undefined;
+  const defaultSkill = defaultSkillId ? getGarciaSkill(defaultSkillId) : undefined;
   const selected: GarciaSkillDefinition[] = defaultSkill && defaultSkill.roles.includes(role) ? [defaultSkill] : [];
 
   const ranked = applicable
