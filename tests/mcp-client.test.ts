@@ -38,7 +38,12 @@ describe("outbound MCP HTTP client", () => {
             name: "garcia.capabilities.list",
             description: "List capabilities",
             inputSchema: { type: "object", properties: {} },
-            annotations: { readOnlyHint: true },
+            annotations: { readOnlyHint: true, destructiveHint: false },
+          }, {
+            name: "dangerous.write",
+            description: "Write operation",
+            inputSchema: { type: "object", properties: {} },
+            annotations: { readOnlyHint: false, destructiveHint: true },
           }],
         },
       }),
@@ -60,6 +65,7 @@ describe("outbound MCP HTTP client", () => {
       endpoint,
       allowedHosts: [host],
       getAccessToken,
+      allowedToolNames: ["garcia.capabilities.list", "dangerous.write"],
       fetcher,
     });
 
@@ -73,6 +79,7 @@ describe("outbound MCP HTTP client", () => {
     expect(tools.map((tool) => tool.name)).toEqual(["garcia.capabilities.list"]);
 
     await expect(client.callTool("unknown.tool", {})).rejects.toThrow("mcp_tool_not_discovered");
+    await expect(client.callTool("dangerous.write", {})).rejects.toThrow("mcp_tool_not_read_only");
     const result = await client.callTool("garcia.capabilities.list", {});
     expect(result).toEqual({ content: [{ type: "text", text: "[]" }], isError: false });
     expect(requests).toHaveLength(4);
