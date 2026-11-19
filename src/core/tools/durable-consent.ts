@@ -283,7 +283,7 @@ export function createD1ToolApprovalStore(
     async consume({ approvalId, identity, request }) {
       validateIdentity(identity);
       if (!validText(approvalId)) return false;
-      const { inputJson } = validateRequest(request);
+      const { inputJson, bindingSha256 } = validateRequest(request);
       const inputSha256 = await digest(inputJson);
       const timestamp = new Date(now()).toISOString();
       const result = await db.prepare(`
