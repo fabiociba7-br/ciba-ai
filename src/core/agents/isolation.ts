@@ -1,5 +1,5 @@
-import type { CibaRole, ChatTurn } from "./types";
-import type { CibaToolModelDescriptor } from "./tools/contracts";
+import type { CibaRole, ChatTurn } from "../types";
+import type { CibaToolModelDescriptor } from "../tools/contracts";
 
 export interface AgentIsolationPolicy {
   maxContextChars: number;
