@@ -21,10 +21,6 @@ const WRITE_ACTIONS = new Set([
   "TRANSFER", "PAY", "CANCEL", "ARCHIVE", "FORWARD", "REPLY",
 ]);
 
-function normalizeToolkit(value: string): string {
-  return value.toUpperCase().replace(/[^A-Z0-9]/g, "");
-}
-
 function inferToolkit(toolName: string, enabledToolkits: readonly string[]): string | null {
   const nameTokens = toolName.toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean);
   const candidates = enabledToolkits
