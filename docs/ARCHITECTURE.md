@@ -31,7 +31,7 @@ O módulo `src/core/agents/isolation.ts` aplica políticas determinísticas por 
 
 O registro de ferramentas e o servidor continuam responsáveis por autorização, validação de entrada e aprovação explícita. O isolamento reduz contexto e superfície de ferramentas; não é um sandbox de sistema operacional nem execução paralela de agentes. O modelo atual continua sendo uma inferência por requisição, sem custo adicional de chamadas.
 
-## Próximas etapas
+## Fila durável de execução dos agentes\n\nA migration `0021_agent_execution_queue.sql` cria uma fila interna separada de `app_messages`. Cada job é vinculado ao proprietário, perfil do agente e chave de idempotência; possui TTL, tentativas limitadas, prioridade, lease, heartbeat e campos de resultado/erro. Índices atendem claim, recuperação de lease e consultas por proprietário.\n\nA política inicial é conservadora: até duas execuções globais e uma por proprietário, no máximo três tentativas, lease de 90 segundos e heartbeat previsto a cada 30 segundos. Os helpers em `src/core/agent-queue.ts` validam elegibilidade, expiração e retry. Esta entrega estabelece o esquema e as regras puras; não liga ainda o processamento automático nem o fan-out de inferência. O claim atômico, endpoints autenticados, heartbeat/cancelamento e recuperação serão implementados antes de habilitar consumidores. Nenhuma fila gerenciada paga ou novo cron foi adicionado.\n\n## Próximas etapas
 
 1. Validar o modelo e o binding AI na conta Cloudflare real.
 2. Executar migrations e testes de integração no ambiente de staging.
