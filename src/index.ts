@@ -2393,6 +2393,74 @@ const handleAdminSettings = async (request: Request, env: Env) => {
   return json({ saved: entries.map(([key]) => key), settings: await readRuntimeSettings(env) });
 };
 
+const handleAdminObservability = async (request: Request, env: Env) => {
+  const authError = await authorizeAdmin(request, env);
+  if (authError) return authError;
+
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const dailyCutoff = new Date(now.getTime() - 34 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const minuteCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 16);
+
+  const [daily, minute, auth] = await Promise.all([
+    env.DB.prepare(`
+      SELECT day,
+        COALESCE(SUM(CASE WHEN scope_key = 'global' THEN requests ELSE 0 END), 0) AS global_requests,
+        COALESCE(SUM(CASE WHEN scope_key LIKE 'app:%' THEN requests ELSE 0 END), 0) AS app_bucket_requests,
+        COALESCE(SUM(CASE WHEN scope_key LIKE 'device:%' THEN requests ELSE 0 END), 0) AS device_bucket_requests
+      FROM daily_usage
+      WHERE day >= ?
+      GROUP BY day
+      ORDER BY day DESC
+      LIMIT 35
+    `).bind(dailyCutoff).all<{
+      day: string; global_requests: number; app_bucket_requests: number; device_bucket_requests: number;
+    }>(),
+    env.DB.prepare(`
+      SELECT COUNT(DISTINCT minute) AS active_minutes,
+        COALESCE(SUM(requests), 0) AS device_requests,
+        COALESCE(MAX(requests), 0) AS peak_requests_per_device_minute
+      FROM minute_usage WHERE minute >= ?
+    `).bind(minuteCutoff).first<{
+      active_minutes: number; device_requests: number; peak_requests_per_device_minute: number;
+    }>(),
+    env.DB.prepare(`
+      SELECT COALESCE(SUM(attempts), 0) AS failed_admin_auth_attempts
+      FROM admin_auth_usage WHERE minute >= ?
+    `).bind(minuteCutoff).first<{ failed_admin_auth_attempts: number }>(),
+  ]);
+
+  return json({
+    service: "ciba-ai",
+    generated_at: now.toISOString(),
+    window: { daily_usage_days: 35, minute_usage_hours: 24 },
+    privacy: {
+      prompts_recorded: false,
+      responses_recorded: false,
+      device_identifiers_exposed: false,
+      aggregation_only: true,
+    },
+    request_metrics: {
+      daily: daily.results || [],
+      last_24_hours: {
+        active_minutes: minute?.active_minutes || 0,
+        device_requests: minute?.device_requests || 0,
+        peak_requests_per_device_minute: minute?.peak_requests_per_device_minute || 0,
+      },
+    },
+    security_metrics: {
+      failed_admin_auth_attempts_last_24_hours: auth?.failed_admin_auth_attempts || 0,
+    },
+    infrastructure_metrics: {
+      request_latency_and_http_status: "cloudflare_workers_observability",
+      workers_ai_neurons: "cloudflare_workers_ai_dashboard",
+      d1_storage_and_platform_usage: "cloudflare_d1_dashboard",
+      note: "Provider-level metrics are not estimated from application request counts.",
+    },
+  });
+};
+
+
 const handleAdminAiOverview = async (request: Request, env: Env) => {
   const authError = await authorizeAdmin(request, env);
   if (authError) return authError;
@@ -3408,6 +3476,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   }
   if (url.pathname === "/v1/admin/apps" && (request.method === "GET" || request.method === "POST")) {
     return handleAdminApps(request, env);
+  }
+  if (url.pathname === "/v1/admin/observability" && request.method === "GET") {
+    return handleAdminObservability(request, env);
   }
   if (url.pathname === "/v1/admin/ai/overview" && request.method === "GET") {
     return handleAdminAiOverview(request, env);
