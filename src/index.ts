@@ -4068,7 +4068,8 @@ const handleRequest = async (
   }
   if (url.pathname === "/v1/owner/composio/policy" && ["GET", "POST"].includes(request.method)) {
     return handleOwnerComposioPolicy(request, env);
-  }\n  if (url.pathname === "/v1/owner/composio/tools" && request.method === "GET") {
+  }
+  if (url.pathname === "/v1/owner/composio/tools" && request.method === "GET") {
     return handleOwnerComposioTools(request, env);
   }
   if (url.pathname === "/v1/owner/composio/session" && ["GET", "POST", "DELETE"].includes(request.method)) {
