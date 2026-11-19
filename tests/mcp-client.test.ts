@@ -94,7 +94,7 @@ describe("outbound MCP HTTP client", () => {
     expect(tools.map((tool) => tool.name)).toEqual(["garcia.capabilities.list", "dangerous.write"]);
 
     await expect(client.callTool("unknown.tool", {})).rejects.toThrow("mcp_tool_not_discovered");
-    await expect(client.callTool("dangerous.write", {})).rejects.toThrow("mcp_tool_not_read_only");
+    await expect(client.callTool("dangerous.write", {})).rejects.toThrow("mcp_tool_not_read_only_or_approved");
     const result = await client.callTool("garcia.capabilities.list", {});
     expect(result).toEqual({ content: [{ type: "text", text: "[]" }], isError: false });
     expect(requests).toHaveLength(4);
