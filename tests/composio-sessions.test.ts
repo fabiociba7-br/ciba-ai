@@ -96,6 +96,15 @@ describe("Composio owner sessions", () => {
       .rejects.toThrow("composio_api_error_401");
   });
 
+  it("bounds provider response bodies before JSON parsing", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response("x".repeat(64_001), {
+      status: 201,
+      headers: { "content-type": "application/json" },
+    }));
+    await expect(createComposioOwnerSession({ ...validOptions, fetcher }))
+      .rejects.toThrow("composio_response_too_large");
+  });
+
   it("deletes only a validated session identifier with the project API key", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
     await deleteComposioOwnerSession(validOptions.apiKey, sessionId, fetcher);
