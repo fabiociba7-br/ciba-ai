@@ -9,24 +9,50 @@ A integração Garcia↔Composio é independente da conexão ChatGPT↔Composio 
 - O proprietário informa uma lista explícita de até dez toolkits; lista vazia é válida.
 - O backend guarda apenas o session ID e a lista de toolkits. A chave de API fica exclusivamente no secret `COMPOSIO_API_KEY` do Worker.
 - Revogação remota e marcação local da sessão como revogada.
-- Descoberta de ferramentas por `GET /v1/owner/composio/tools`, autenticada e limitada à sessão ativa do proprietário.
-- A descoberta retorna no máximo 32 descrições e schemas, sem expor chave, URL MCP ou session ID.
+- Reanexação à sessão existente antes da descoberta MCP; URL e session ID são validados e nunca enviados ao aplicativo.
+- Descoberta de até 32 ferramentas por `GET /v1/owner/composio/tools`.
+- Catálogo de permissões individual por proprietário, persistido em D1 pela migração `0023_owner_composio_tool_policies.sql`.
+- Classificação local de risco e fingerprint SHA-256 do schema de cada ferramenta.
+- Revogar ou substituir uma sessão desativa as permissões locais antigas.
+
+## Política por ferramenta
+
+O endpoint `GET /v1/owner/composio/tools` lista as ferramentas descobertas e informa:
+
+- `toolkit`: toolkit de origem reconhecido pela sessão ativa;
+- `risk`: `read`, `write` ou `external`;
+- `requires_approval`: exigência de aprovação individual;
+- `eligible`: se o namespace da ferramenta corresponde a um toolkit explicitamente habilitado;
+- `enabled`: se o proprietário já autorizou localmente aquela ferramenta.
+
+A classificação é conservadora e calculada no servidor:
+- Ferramenta só é `read` quando o nome contém uma ação conhecida de leitura e o provedor marca `readOnlyHint: true`, sem `destructiveHint`.
+- Verbos de escrita ou destruição são classificados como `write`, mesmo se a anotação remota alegar somente leitura.
+- Ação desconhecida, nome não reconhecido ou falta de anotação confiável resulta em `external`.
+- `write` e `external` sempre recebem `requires_approval: true`.
+- Anotações, nomes, descrições e schemas vindos do provedor são dados não confiáveis; não podem reduzir a classificação nem conceder permissões.
+
+O proprietário seleciona a allowlist individual com:
+
+`POST /v1/owner/composio/policy`
+
+Corpo esperado:
+
+```json
+{
+  "consent": true,
+  "tools": ["GMAIL_LIST_EMAILS", "GMAIL_SEND_EMAIL"]
+}
+```
+
+A lista substitui a allowlist anterior. Nomes duplicados, desconhecidos ou que não pertençam a um toolkit da sessão são recusados. O servidor recalcula risco e hash do schema; o cliente não pode definir esses valores. Enviar `tools: []` com `consent: true` revoga todas as permissões locais sem depender de disponibilidade da API Composio.
+
+`GET /v1/owner/composio/policy` consulta as permissões gravadas. As rotas exigem dispositivo Garcia autenticado, proprietário ativo e `external_tools` habilitado.
 
 ## Execução desativada
 
-Nesta etapa, a integração é somente de gerenciamento de sessão e descoberta. O adaptador Composio não expõe `callTool`. A criação de sessão envia `proxy_execute: false`, `workbench: false`, `execute.enable_multi_execute: false` e desativa tags de escrita/destruição. Nenhuma ferramenta remota é executada pela Garcia.
+**Nenhuma ferramenta Composio é executada pela Garcia nesta etapa.** O adaptador MCP de Composio continua somente com `initialize` e `listTools`; não expõe `callTool`. O endpoint de política apenas grava consentimento, allowlist, risco e hash do schema.
 
-A descoberta de ferramentas externas é dado não confiável. Antes de qualquer execução futura, cada ferramenta deverá passar por allowlist local explícita, classificação de risco, autorização do proprietário, aprovação quando necessária, validação de schema e limites de execução.
+A integração existente de aprovação durável D1 já oferece base para aprovações de uso único, vinculadas à identidade, chamada e parâmetros exatos. A próxima etapa será ligar a execução Composio a essa base, revalidar schema e fingerprint em cada chamada e aplicar limites de tempo, tamanho e concorrência. Nenhuma execução deve ser habilitada antes disso.
 
-## Endpoints
-
-- `GET /v1/owner/composio/session`: consulta o estado da sessão do proprietário.
-- `POST /v1/owner/composio/session`: cria sessão; exige `consent: true` e `toolkits: string[]`.
-- `DELETE /v1/owner/composio/session`: revoga a sessão ativa.
-- `GET /v1/owner/composio/tools`: inicializa a sessão MCP e lista ferramentas; não executa chamadas.
-
-Todos exigem dispositivo Garcia autenticado, proprietário ativo e `external_tools` habilitado. Se `COMPOSIO_API_KEY` não estiver configurada como secret do Worker, as operações remotas retornam `composio_server_not_configured`. Nenhuma chave deve ser colocada no aplicativo Android, no repositório ou em memória comum. A chave do projeto também precisa das permissões Composio **Session management** para criar/revogar sessões e **Session tool execution** para acessar o endpoint MCP; não habilite Proxy execute ou Workbench para esta etapa. [Documentação oficial: sessions via MCP](https://docs.composio.dev/docs/sessions-via-mcp)
-
-## Próxima fronteira
-
-A próxima etapa é desenhar a política local de ferramentas: seleção individual por nome, classificação read/write/destructive, consentimento por toolkit e aprovação por chamada. Só depois dessa revisão será possível habilitar execução de ferramentas, sem ativá-la por padrão.
+A criação da sessão envia `proxy_execute: false`, `workbench: false`, `execute.enable_multi_execute: false` e desativa tags de escrita/destruição. Nenhuma chave deve ser colocada no aplicativo Android, no repositório ou em memória comum. A chave do projeto precisa das permissões Composio **Session management** para criar/revogar sessões e **Session tool execution** para acessar o endpoint MCP; não habilite Proxy execute ou Workbench nesta etapa. [Documentação oficial: sessions via MCP](https://docs.composio.dev/docs/sessions-via-mcp)
