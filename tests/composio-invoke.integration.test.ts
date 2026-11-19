@@ -241,6 +241,70 @@ describe("owner Composio invocation approval boundary", () => {
     expect(calls).toEqual([toolName]);
   });
 
+  it("does not let an approval authorize modified arguments", async () => {
+    const calls = installComposioMock();
+    const invocation = {
+      tool_name: toolName,
+      conversation_id: "conversation-approval-input-binding",
+      invocation_id: crypto.randomUUID(),
+      input: {
+        to: "recipient@example.com",
+        subject: "Original subject",
+        body: "Original body",
+      },
+    };
+    const proposed = await ownerRequest({ ...invocation, action: "propose" });
+    expect(proposed.status).toBe(202);
+    const proposal = await proposed.json() as { approval_id: string };
+    const approved = await ownerRequest({
+      ...invocation, action: "approve", approval_id: proposal.approval_id, allow: true,
+    });
+    expect(approved.status).toBe(200);
+
+    const tampered = await ownerRequest({
+      ...invocation,
+      action: "execute",
+      approval_id: proposal.approval_id,
+      input: { ...invocation.input, to: "attacker@example.com" },
+    });
+    expect(tampered.status).toBe(403);
+    expect(calls).toEqual([]);
+
+    const original = await ownerRequest({
+      ...invocation, action: "execute", approval_id: proposal.approval_id,
+    });
+    expect(original.status).toBe(200);
+    expect(calls).toEqual([toolName]);
+  });
+
+  it("does not execute a denied approval", async () => {
+    const calls = installComposioMock();
+    const invocation = {
+      tool_name: toolName,
+      conversation_id: "conversation-denied-approval",
+      invocation_id: crypto.randomUUID(),
+      input: {
+        to: "recipient@example.com",
+        subject: "Denied",
+        body: "Must not be sent",
+      },
+    };
+    const proposed = await ownerRequest({ ...invocation, action: "propose" });
+    expect(proposed.status).toBe(202);
+    const proposal = await proposed.json() as { approval_id: string };
+    const denied = await ownerRequest({
+      ...invocation, action: "approve", approval_id: proposal.approval_id, allow: false,
+    });
+    expect(denied.status).toBe(200);
+    expect(await denied.json()).toMatchObject({ approved: false });
+
+    const executed = await ownerRequest({
+      ...invocation, action: "execute", approval_id: proposal.approval_id,
+    });
+    expect(executed.status).toBe(403);
+    expect(calls).toEqual([]);
+  });
+
   it("rejects schema drift before consuming approval or calling the remote tool", async () => {
     const calls = installComposioMock();
     const invocation = {
