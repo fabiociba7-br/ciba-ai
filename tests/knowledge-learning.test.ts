@@ -70,6 +70,7 @@ describe("research always creates a cumulative learning record", () => {
     expect(result).toMatchObject({ status: "new", confidence: 0.85 });
     expect(repo.records).toHaveLength(1);
     expect(repo.records[0].sources[0].reference).toBe(source.reference);
+    expect(repo.fingerprints[0]).toMatch(/^[a-f0-9]{64}$/);
   });
   it("retains repeated research events instead of discarding them", async () => {
     const repo = repository();
