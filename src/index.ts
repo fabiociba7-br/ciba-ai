@@ -647,7 +647,7 @@ const handleOwnerComposioTools = async (request: Request, env: Env) => {
   if (!env.COMPOSIO_API_KEY) return json({ error: "composio_server_not_configured" }, 503);
 
   const session = await env.DB.prepare(
-    "SELECT session_id FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
+    "SELECT session_id, toolkits_json FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
   ).bind(owner.owner_id).first<{ session_id: string }>();
   if (!session) return json({ error: "composio_session_not_found" }, 404);
 
