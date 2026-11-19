@@ -2713,7 +2713,7 @@ const handleChat = async (request: Request, env: Env) => {
   }
 
   const composioChatPolicies = new Map<string, {
-    toolName: string; toolkit: string; schemaSha256: string;
+    toolName: string; toolkit: string; schemaSha256: string; sessionId: string;
   }>();
   let composioChatTools: Awaited<ReturnType<typeof createComposioChatToolDefinitions>> = [];
 
@@ -2765,6 +2765,7 @@ const handleChat = async (request: Request, env: Env) => {
             toolName: saved.tool_name,
             toolkit: saved.toolkit,
             schemaSha256: saved.schema_sha256,
+            sessionId: attached.sessionId,
           });
         }
       }
@@ -2813,7 +2814,7 @@ const handleChat = async (request: Request, env: Env) => {
               schema_sha256: string; enabled: number;
             }>(),
           ]);
-          return Boolean(activeSession?.session_id && currentPolicy &&
+          return Boolean(activeSession?.session_id === composioPolicy.sessionId && currentPolicy &&
             currentPolicy.enabled === 1 && currentPolicy.toolkit === composioPolicy.toolkit &&
             currentPolicy.risk === "read" && currentPolicy.requires_approval === 0 &&
             currentPolicy.schema_sha256 === composioPolicy.schemaSha256);
