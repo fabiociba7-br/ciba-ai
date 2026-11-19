@@ -656,19 +656,41 @@ const handleOwnerComposioTools = async (request: Request, env: Env) => {
     });
     const server = await client.initialize();
     const tools = await client.listTools();
+    const savedRows = await env.DB.prepare(
+      "SELECT tool_name FROM owner_composio_tool_policies WHERE owner_id = ? AND enabled = 1"
+    ).bind(owner.owner_id).all<{ tool_name: string }>();
+    const enabledNames = new Set((savedRows.results || []).map((row) => row.tool_name));
+    const enabledToolkitsRow = await env.DB.prepare(
+      "SELECT toolkits_json FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
+    ).bind(owner.owner_id).first<{ toolkits_json: string }>();
+    let enabledToolkits: string[] = [];
+    try {
+      const parsed = JSON.parse(enabledToolkitsRow?.toolkits_json || "[]");
+      if (Array.isArray(parsed)) enabledToolkits = parsed.filter((item): item is string => typeof item === "string");
+    } catch { enabledToolkits = []; }
     return json({
       discovered: true,
       server,
       execution_enabled: false,
-      tools: tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description || "",
-        input_schema: tool.inputSchema,
-        annotations: tool.annotations || {},
-      })),
+      tools: tools.map((tool) => {
+        let policy;
+        try { policy = classifyComposioTool(tool, enabledToolkits); }
+        catch { policy = null; }
+        return {
+          name: tool.name,
+          description: tool.description || "",
+          input_schema: tool.inputSchema,
+          annotations: tool.annotations || {},
+          risk: policy?.risk || "external",
+          requires_approval: policy?.requiresApproval ?? true,
+          toolkit: policy?.toolkit || null,
+          eligible: policy !== null,
+          enabled: enabledNames.has(tool.name),
+        };
+      }),
       count: tools.length,
       maximum: 32,
-      note: "Descoberta apenas. A execução de ferramentas Composio permanece desativada nesta etapa.",
+      note: "Classificação local conservadora. O proprietário precisa selecionar explicitamente cada ferramenta; execução permanece desativada.",
     });
   } catch (error) {
     const reason = error instanceof Error && /^[a-z0-9_:-]{1,80}$/i.test(error.message)
@@ -719,8 +741,6 @@ const handleOwnerComposioPolicy = async (request: Request, env: Env) => {
   if (request.method !== "POST") {
     return json({ error: "method_not_allowed", allowed: ["GET", "POST"] }, 405, { allow: "GET, POST" });
   }
-  if (!env.COMPOSIO_API_KEY) return json({ error: "composio_server_not_configured" }, 503);
-
   let body: Record<string, unknown>;
   try { body = await readJson(request, 8_000); } catch {
     return json({ error: "invalid_json" }, 400);
@@ -734,6 +754,21 @@ const handleOwnerComposioPolicy = async (request: Request, env: Env) => {
   if (new Set(requestedNames).size !== requestedNames.length) {
     return json({ error: "composio_tool_allowlist_duplicate" }, 400);
   }
+
+  if (requestedNames.length === 0) {
+    const timestamp = nowIso();
+    const result = await env.DB.prepare(
+      "UPDATE owner_composio_tool_policies SET enabled = 0, updated_at = ? WHERE owner_id = ? AND enabled = 1"
+    ).bind(timestamp, owner.owner_id).run();
+    return json({
+      saved: true,
+      execution_enabled: false,
+      policies: [],
+      disabled_count: result.meta.changes || 0,
+      note: "Todas as permissões locais Composio foram desativadas. Nenhuma ferramenta foi executada.",
+    });
+  }
+  if (!env.COMPOSIO_API_KEY) return json({ error: "composio_server_not_configured" }, 503);
 
   const session = await env.DB.prepare(
     "SELECT session_id, toolkits_json FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
