@@ -179,7 +179,7 @@ export async function attachComposioOwnerSession(
   fetcher: typeof fetch = fetch,
 ): Promise<ComposioSessionResult> {
   if (typeof apiKey !== "string" || apiKey.trim().length < 16 ||
-      apiKey.length > 8_192 || /[\\r\\n]/.test(apiKey) ||
+      apiKey.length > 8_192 || /[\r\n]/.test(apiKey) ||
       typeof sessionId !== "string" || !/^trs_[A-Za-z0-9_-]{8,128}$/.test(sessionId)) {
     throw new Error("composio_configuration_invalid");
   }
