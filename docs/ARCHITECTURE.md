@@ -119,13 +119,27 @@ A migration `0012_app_identity_profiles.sql` adiciona descrição, tipo, capacid
 
 O módulo `src/core/mcp/client.ts` fornece a base para a Garcia atuar como cliente de servidores MCP remotos por HTTP:
 - exige HTTPS e uma allowlist explícita de hosts definida pelo chamador confiável;
-- aceita credencial por callback, sem persistir tokens ou expô-los em logs;
+- aceita credencial por callback, incluindo Bearer e cabeçalhos de API Composio permitidos, sem persistir tokens ou expô-los em logs;
 - negocia inicialização JSON-RPC, descobre ferramentas e só permite chamar ferramentas previamente descobertas;
 - limita tamanho de requisição, resposta, catálogo de ferramentas e tempo de chamada;
 - exige allowlist local explícita por nome e bloqueia chamadas que não estejam marcadas como somente leitura; a anotação remota é apenas um filtro adicional, nunca substitui a autorização local;
 - não repete chamadas automaticamente e não segue redirecionamentos por conta própria;
-- a primeira versão aceita respostas JSON; respostas SSE ainda não são suportadas.
+- aceita respostas JSON e eventos SSE do transporte HTTP MCP;
 
 Esse transporte é uma primitiva interna e ainda não habilita conexões remotas por configuração do usuário, não armazena credenciais e não executa ferramentas externas por padrão. A política de risco, o consentimento e a autorização permanecem sob controle do registro de ferramentas da Garcia. O endpoint de entrada `/v1/mcp` continua separado e oferece somente as ferramentas de leitura autorizadas.
 
 A integração Garcia–Composio continua desacoplada: a conexão Composio disponível no ChatGPT não transfere credenciais para o Worker. Uma integração própria exige configuração explícita de credenciais no ambiente da Garcia, revisão dos limites gratuitos e autorização do proprietário; nenhum segredo ou conexão paga foi habilitado nesta etapa.
+
+### Integração Composio — desenho e limites
+
+A integração própria deverá criar uma sessão Composio por proprietário autenticado, usando o identificador estável do proprietário como `user_id`, e limitar a sessão aos toolkits explicitamente habilitados. O cliente MCP suporta os cabeçalhos de sessão documentados pelo Composio, incluindo `x-api-key`, sem expor a chave ao Android ou ao modelo.
+
+A configuração de produção deverá:
+- manter a chave de projeto apenas como Worker secret `COMPOSIO_API_KEY`;
+- desabilitar `instant` e ferramentas de cobrança por uso;
+- permitir somente toolkits e ações escolhidos pelo proprietário;
+- exigir aprovação explícita da Garcia para qualquer ação de escrita;
+- manter sessões e conexões isoladas por proprietário;
+- parar sem fallback pago quando a cota gratuita for atingida.
+
+A conexão Composio existente no ChatGPT não fornece automaticamente uma chave de projeto nem transfere as contas vinculadas para a Garcia. A criação da integração própria depende da chave de projeto Composio e de autorização OAuth separada para as contas que serão usadas pela Garcia.
