@@ -18,6 +18,7 @@ export interface GarciaFileMetadata {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  deleteRequestedAt: string | null;
 }
 
 export interface GarciaFileCreateInput {
@@ -40,6 +41,7 @@ export interface GarciaFileCatalog {
   markAvailable(id: string, now?: string): Promise<void>;
   markFailed(id: string, now?: string): Promise<void>;
   findById(id: string, namespace: string): Promise<GarciaFileMetadata | null>;
+  markDeleteRequested(id: string, namespace: string, now?: string): Promise<void>;
   markDeleted(id: string, namespace: string, now?: string): Promise<void>;
 }
 
