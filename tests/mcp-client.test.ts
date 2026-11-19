@@ -20,6 +20,11 @@ describe("outbound MCP HTTP client", () => {
       endpoint: "https://localhost/mcp",
       allowedHosts: ["localhost"],
     })).toThrow("mcp_endpoint_not_allowed");
+
+    expect(() => createMcpHttpClient({
+      endpoint: "https://mcp.example.test:8443/mcp",
+      allowedHosts: [host],
+    })).toThrow("mcp_endpoint_not_allowed");
   });
 
   it("initializes, discovers tools, and calls only a previously discovered tool", async () => {
@@ -84,6 +89,7 @@ describe("outbound MCP HTTP client", () => {
     expect(result).toEqual({ content: [{ type: "text", text: "[]" }], isError: false });
     expect(requests).toHaveLength(4);
     expect(requests.every((request) => request.headers.get("authorization") === "Bearer test-device-token")).toBe(true);
+    expect(requests.every((request) => request.redirect === "error")).toBe(true);
     expect(JSON.parse(await requests[0].clone().text())).toMatchObject({
       method: "initialize",
       params: { clientInfo: { name: "garcia-mcp-client" } },
