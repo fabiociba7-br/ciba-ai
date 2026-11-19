@@ -522,6 +522,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var composioInvocationTool by remember { mutableStateOf("") }
     var composioInvocationInput by remember { mutableStateOf("{}") }
     var composioInvocationId by remember { mutableStateOf("") }
+    var composioInvocationConversationId by remember { mutableStateOf("") }
     var composioApprovalId by remember { mutableStateOf("") }
     var composioInvocationInfo by remember { mutableStateOf<JSONObject?>(null) }
     var composioApproved by remember { mutableStateOf(false) }
@@ -1591,6 +1592,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                                     composioInvocationTool = name
                                                     composioInvocationInput = "{}"
                                                     composioInvocationId = ""
+                                                    composioInvocationConversationId = ""
                                                     composioApprovalId = ""
                                                     composioInvocationInfo = null
                                                     composioApproved = false
@@ -1623,6 +1625,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     OutlinedTextField(
                                         value = composioInvocationInput,
                                         onValueChange = { composioInvocationInput = it.take(32_000) },
+                                        enabled = composioInvocationInfo == null && !composioBusy,
                                         modifier = Modifier.fillMaxWidth().heightIn(min = 100.dp),
                                         label = { Text("Argumentos JSON") },
                                         placeholder = { Text("{ }") },
@@ -1637,10 +1640,12 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                                 try {
                                                     val input = JSONObject(composioInvocationInput)
                                                     val invocation = UUID.randomUUID().toString()
+                                                    val proposalConversationId = currentChatId
                                                     val result = withContext(Dispatchers.IO) {
-                                                        client.invokeComposio("propose", composioInvocationTool, currentChatId, invocation, input)
+                                                        client.invokeComposio("propose", composioInvocationTool, proposalConversationId, invocation, input)
                                                     }
                                                     composioInvocationId = invocation
+                                                    composioInvocationConversationId = proposalConversationId
                                                     composioApprovalId = result.optString("approval_id")
                                                     composioInvocationInfo = result
                                                     composioApproved = false
@@ -1671,9 +1676,10 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                                         scope.launch {
                                                             try {
                                                                 withContext(Dispatchers.IO) {
-                                                                    client.invokeComposio("approve", composioInvocationTool, currentChatId, composioInvocationId, JSONObject(composioInvocationInput), composioApprovalId, false)
+                                                                    client.invokeComposio("approve", composioInvocationTool, composioInvocationConversationId, composioInvocationId, JSONObject(composioInvocationInput), composioApprovalId, false)
                                                                 }
                                                                 composioApprovalId = ""
+                                                                composioInvocationConversationId = ""
                                                                 composioInvocationInfo = null
                                                             } catch (e: Exception) {
                                                                 composioError = e.message ?: "Não foi possível rejeitar a aprovação."
@@ -1689,7 +1695,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                                         scope.launch {
                                                             try {
                                                                 withContext(Dispatchers.IO) {
-                                                                    client.invokeComposio("approve", composioInvocationTool, currentChatId, composioInvocationId, JSONObject(composioInvocationInput), composioApprovalId, true)
+                                                                    client.invokeComposio("approve", composioInvocationTool, composioInvocationConversationId, composioInvocationId, JSONObject(composioInvocationInput), composioApprovalId, true)
                                                                 }
                                                                 composioApproved = true
                                                             } catch (e: Exception) {
@@ -1710,13 +1716,14 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                                         try {
                                                             val result = withContext(Dispatchers.IO) {
                                                                 client.invokeComposio(
-                                                                    "execute", composioInvocationTool, currentChatId,
+                                                                    "execute", composioInvocationTool, composioInvocationConversationId,
                                                                     composioInvocationId, JSONObject(composioInvocationInput),
                                                                     composioApprovalId.takeIf { it.isNotBlank() }
                                                                 )
                                                             }
                                                             composioInvocationInfo = result
                                                             composioApprovalId = ""
+                                                            composioInvocationConversationId = ""
                                                             composioApproved = false
                                                         } catch (e: Exception) {
                                                             composioError = e.message ?: "A execução foi recusada ou falhou."
