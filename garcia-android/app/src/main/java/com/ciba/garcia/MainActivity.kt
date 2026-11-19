@@ -1580,7 +1580,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                             onCheckedChange = { enabled ->
                                                 composioSelectedTools = if (enabled) composioSelectedTools + name else composioSelectedTools - name
                                             },
-                                            enabled = eligible && name.isNotBlank()
+                                            enabled = eligible && name.isNotBlank() && !composioBusy
                                         )
                                         Column(Modifier.weight(1f)) {
                                             Text(name, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
@@ -1596,7 +1596,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                                     composioApprovalId = ""
                                                     composioInvocationInfo = null
                                                     composioApproved = false
-                                                }) { Text(if (composioInvocationTool == name) "Selecionada para chamada" else "Preparar chamada") }
+                                                }, enabled = !composioBusy) { Text(if (composioInvocationTool == name) "Selecionada para chamada" else "Preparar chamada") }
                                             }
                                         }
                                     }
