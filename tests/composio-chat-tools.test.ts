@@ -16,10 +16,20 @@ const readTool = {
   inputSchema: schema,
   annotations: { readOnlyHint: true, destructiveHint: false },
 };
+const writeSchema = {
+  type: "object",
+  properties: {
+    to: { type: "string", minLength: 3, maxLength: 200 },
+    subject: { type: "string", maxLength: 200 },
+    body: { type: "string", maxLength: 4_000 },
+  },
+  required: ["to", "subject", "body"],
+  additionalProperties: false,
+};
 const writeTool = {
   name: "GMAIL_SEND_EMAIL",
   description: "Send an email",
-  inputSchema: schema,
+  inputSchema: writeSchema,
   annotations: { readOnlyHint: true, destructiveHint: false },
 };
 
@@ -32,7 +42,7 @@ async function policy(
     toolkit: "gmail",
     risk: name === "GMAIL_LIST_EMAILS" ? "read" : "write",
     requires_approval: name === "GMAIL_LIST_EMAILS" ? 0 : 1,
-    schema_sha256: await hashComposioToolSchema(schema),
+    schema_sha256: await hashComposioToolSchema(name === "GMAIL_SEND_EMAIL" ? writeSchema : schema),
     enabled: 1,
     ...overrides,
   };
