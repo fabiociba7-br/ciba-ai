@@ -144,6 +144,14 @@ A configuração de produção deverá:
 
 A conexão Composio existente no ChatGPT não fornece automaticamente uma chave de projeto nem transfere as contas vinculadas para a Garcia. A criação da integração própria depende da chave de projeto Composio e de autorização OAuth separada para as contas que serão usadas pela Garcia.
 
+## Composio no chat da Garcia
+
+O runtime conversacional pode descobrir ferramentas Composio consentidas individualmente. Ferramentas classificadas localmente como leitura podem ser executadas pelo registro normal de ferramentas. Ferramentas de escrita ou externas aparecem como propostas, com entrada validada e solicitação de aprovação durável vinculada ao proprietário, dispositivo, conversa, invocação e conteúdo exato dos argumentos.
+
+A resposta do chat retorna `tool_proposal` e `tool_approval` em campos JSON próprios para o cliente Android. A aprovação não dispara a execução automaticamente. O cliente deve mostrar a operação e os argumentos para confirmação explícita; a execução continua sendo uma chamada separada. A rota Composio revalida sessão ativa, consentimento, toolkit, classificação e fingerprint do schema antes de aprovar ou executar. A chave de projeto nunca é enviada ao aplicativo.
+
+A execução remota continua bloqueada pelo kill switch `COMPOSIO_EXECUTION_ENABLED` até habilitação operacional explícita. Portanto, a integração conversacional pode preparar e registrar aprovações, mas não executa ações externas enquanto esse controle estiver desligado.
+
 ## Sessões Composio por proprietário
 
 O módulo `src/core/composio/sessions.ts` cria e revoga sessões pela API v3.1 oficial do Composio, usando somente a chave de projeto do Worker (`COMPOSIO_API_KEY`). Cada proprietário recebe um `user_id` pseudonimizado e estável derivado por SHA-256 do owner ID; identificadores pessoais não são enviados.

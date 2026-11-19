@@ -986,7 +986,6 @@ const handleOwnerComposioInvoke = async (request: Request, env: Env) => {
       toolId,
       risk: classified.risk === "read" ? "external" as const : classified.risk,
       input: plan.input,
-      bindingSha256: schemaSha256,
     };
 
     if (action === "propose") {
@@ -2929,7 +2928,8 @@ const handleChat = async (request: Request, env: Env) => {
       ? {
           tool_proposal: {
             tool_id: orchestration.toolProposal.toolId,
-            tool_name: orchestration.toolProposal.toolId.slice("composio.".length),
+            tool_name: composioChatPolicies.get(orchestration.toolProposal.toolId)?.toolName ??
+              orchestration.toolProposal.toolId.slice("composio.".length),
             risk: orchestration.toolProposal.risk,
             requires_approval: orchestration.toolProposal.requiresApproval,
             input: orchestration.toolProposal.input,
