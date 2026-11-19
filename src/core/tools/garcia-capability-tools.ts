@@ -47,6 +47,8 @@ export interface GarciaCapabilityToolOptions {
   authorize: GarciaCapabilityToolAuthorizer;
   /** Optional owner-scoped Facebook connection status reader supplied by the trusted backend. */
   getFacebookConnectionStatus?: () => Promise<{ linked: boolean; linkedAt: string | null }>;
+  /** Additional trusted, pre-authorized definitions supplied by server adapters. */
+  additionalTools?: CibaToolDefinition[];
 }
 
 /**
@@ -113,12 +115,14 @@ export function createGarciaCapabilityTools(
         };
       },
     }] : []),
+    ...(options.additionalTools ?? []),
   ];
   return createCibaToolRegistry(definitions, {
     allowlist: [
       "garcia.capabilities.list",
       "garcia.capabilities.get",
       ...(options.getFacebookConnectionStatus ? ["facebook.connection.status"] : []),
+      ...(options.additionalTools ?? []).map((tool) => tool.id),
     ],
     authorize: options.authorize,
     timeoutMs: 5_000,
@@ -132,6 +136,7 @@ export interface GarciaCapabilityToolRuntimeOptions extends GarciaCapabilityTool
   context: CibaToolInvocationContext;
   /** Defaults to false. Set true only in a trusted application runtime. */
   executeReadOnlyProposals?: boolean;
+  additionalTools?: CibaToolDefinition[];
 }
 
 export interface GarciaCapabilityToolRuntime {
@@ -172,6 +177,7 @@ export function createGarciaCapabilityToolRuntime(
     registry: createGarciaCapabilityTools({
       authorize: options.authorize,
       getFacebookConnectionStatus: options.getFacebookConnectionStatus,
+      additionalTools: options.additionalTools,
     }),
     context: Object.freeze({
       conversationId: descriptors.conversationId.value,
