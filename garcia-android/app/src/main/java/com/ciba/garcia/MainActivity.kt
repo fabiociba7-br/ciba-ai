@@ -519,6 +519,12 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var composioConsent by remember { mutableStateOf(false) }
     var composioBusy by remember { mutableStateOf(false) }
     var composioError by remember { mutableStateOf("") }
+    var composioInvocationTool by remember { mutableStateOf("") }
+    var composioInvocationInput by remember { mutableStateOf("{}") }
+    var composioInvocationId by remember { mutableStateOf("") }
+    var composioApprovalId by remember { mutableStateOf("") }
+    var composioInvocationInfo by remember { mutableStateOf<JSONObject?>(null) }
+    var composioApproved by remember { mutableStateOf(false) }
     var showBrowser by remember { mutableStateOf(false) }
     var showLogs by remember { mutableStateOf(false) }
     var showChats by remember { mutableStateOf(false) }
