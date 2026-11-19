@@ -446,8 +446,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
 
     val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
-            if (input.isNotBlank() || attachment != null || busy || whisperBusy) {
-                error = "Envie ou limpe o texto pendente antes de iniciar outra captura."
+            if (attachment != null || busy || whisperBusy) {
+                error = "Conclua a operação atual e remova o anexo antes de iniciar outra captura."
             } else if (continuousVoice && streamingSpeech.isAvailable && !streamingUnavailable) {
                 streamingTranscript = ""
                 error = ""
@@ -953,12 +953,26 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     }
                     IconButton(
                         onClick = {
-                            if (whisperModelInfo == null) error = "Instale o modelo Whisper nas Configurações para ditar mensagens."
-                            else if (!whisperBusy && !busy && !continuousVoice) microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                            if (whisperRecording) {
+                                stopAndTranscribe()
+                            } else if (whisperModelInfo == null) {
+                                error = "Instale o modelo Whisper nas Configurações para ditar mensagens."
+                            } else if (!whisperBusy && !busy && !continuousVoice) {
+                                microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                            }
                         },
                         enabled = !busy && !whisperBusy && !continuousVoice && whisperModelInfo != null,
-                        modifier = Modifier.size(44.dp).background(Color(0xFFE8EEF8), CircleShape)
-                    ) { Icon(Icons.Default.Mic, contentDescription = "Falar para digitar", tint = Blue) }
+                        modifier = Modifier.size(44.dp).background(
+                            if (whisperRecording) Color(0xFFFCE4EC) else Color(0xFFE8EEF8),
+                            CircleShape
+                        )
+                    ) {
+                        Icon(
+                            if (whisperRecording) Icons.Default.Stop else Icons.Default.Mic,
+                            contentDescription = if (whisperRecording) "Parar e transcrever" else "Falar para digitar",
+                            tint = if (whisperRecording) Color(0xFFB94F7C) else Blue
+                        )
+                    }
                     BasicTextField(value = input, onValueChange = { input = it; if (it.isNotBlank()) autoListenPending = false },
                         modifier = Modifier.weight(1f).background(Color(0xFFF6EDF2), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 12.dp),
                         textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF303030), fontSize = 15.sp, lineHeight = 21.sp),
