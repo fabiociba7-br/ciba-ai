@@ -136,8 +136,15 @@ beforeAll(async () => {
   await setupOwner();
 });
 
-afterAll(() => {
+afterAll(async () => {
   vi.unstubAllGlobals();
+  for (const id of ownerIds.splice(0)) {
+    await db.prepare("DELETE FROM tool_approvals WHERE owner_id = ?").bind(id).run();
+    await db.prepare("DELETE FROM owner_composio_tool_policies WHERE owner_id = ?").bind(id).run();
+    await db.prepare("DELETE FROM owner_composio_sessions WHERE owner_id = ?").bind(id).run();
+    await db.prepare("DELETE FROM devices WHERE owner_id = ?").bind(id).run();
+    await db.prepare("DELETE FROM owners WHERE owner_id = ?").bind(id).run();
+  }
 });
 
 describe("owner Composio invocation approval boundary", () => {
