@@ -36,7 +36,7 @@ import { createGarciaCapabilityToolRuntime } from "./core/tools/garcia-capabilit
 import { handleMcpRequest } from "./core/mcp/protocol";
 import { enqueueAgentJob, getAgentJob, cancelAgentJob } from "./core/agent-queue-store";
 import { runOneAgentQueueJob } from "./core/agent-queue-runner";
-import { createComposioOwnerSession, deleteComposioOwnerSession } from "./core/composio/sessions";
+import { attachComposioOwnerSession, createComposioOwnerSession, deleteComposioOwnerSession } from "./core/composio/sessions";
 import { createComposioMcpDiscoveryClient } from "./core/composio/client";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
@@ -629,9 +629,11 @@ const handleOwnerComposioTools = async (request: Request, env: Env) => {
   if (!session) return json({ error: "composio_session_not_found" }, 404);
 
   try {
+    const attached = await attachComposioOwnerSession(env.COMPOSIO_API_KEY, session.session_id);
     const client = createComposioMcpDiscoveryClient({
       apiKey: env.COMPOSIO_API_KEY,
-      sessionId: session.session_id,
+      sessionId: attached.sessionId,
+      mcpUrl: attached.mcpUrl,
     });
     const server = await client.initialize();
     const tools = await client.listTools();
