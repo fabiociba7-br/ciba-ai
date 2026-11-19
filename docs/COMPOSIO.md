@@ -25,7 +25,7 @@ A descoberta de ferramentas externas é dado não confiável. Antes de qualquer 
 - `DELETE /v1/owner/composio/session`: revoga a sessão ativa.
 - `GET /v1/owner/composio/tools`: inicializa a sessão MCP e lista ferramentas; não executa chamadas.
 
-Todos exigem dispositivo Garcia autenticado, proprietário ativo e `external_tools` habilitado. Se `COMPOSIO_API_KEY` não estiver configurada como secret do Worker, as operações remotas retornam `composio_server_not_configured`. Nenhuma chave deve ser colocada no aplicativo Android, no repositório ou em memória comum.
+Todos exigem dispositivo Garcia autenticado, proprietário ativo e `external_tools` habilitado. Se `COMPOSIO_API_KEY` não estiver configurada como secret do Worker, as operações remotas retornam `composio_server_not_configured`. Nenhuma chave deve ser colocada no aplicativo Android, no repositório ou em memória comum. A chave do projeto também precisa das permissões Composio **Session management** para criar/revogar sessões e **Session tool execution** para acessar o endpoint MCP; não habilite Proxy execute ou Workbench para esta etapa. <Link url="https://docs.composio.dev/docs/sessions-via-mcp" title="Documentação oficial: sessions via MCP" />
 
 ## Próxima fronteira
 
