@@ -9,7 +9,7 @@ function mockDb() {
       return {
         bind(...args: unknown[]) { values = args; return this; },
         async run() {
-          if (sql.includes("INSERT OR IGNORE")) {
+          if (sql.includes("lease_expires_at <= ?")) {\n            for (const row of rows) {\n              if (row.status === "processing" && typeof row.lease_expires_at === "string" && row.lease_expires_at <= String(values[3])) {\n                row.attempts = Number(row.attempts) + 1;\n                row.status = Number(row.attempts) >= 8 ? "dead" : "pending";\n                row.lease_expires_at = null;\n                row.next_attempt_at = values[1];\n              }\n            }\n          } else if (sql.includes("INSERT OR IGNORE")) {
             if (!rows.some((row) => row.id === values[0])) rows.push({
               id: values[0], destination: values[1], entity_type: values[2], entity_id: values[3],
               payload_json: values[4], payload_sha256: values[5], status: "pending", attempts: 0,
@@ -33,7 +33,7 @@ function mockDb() {
           const row = rows.filter((item) => item.status === "pending" && String(item.next_attempt_at) <= String(values[1]))
             .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))[0];
           if (!row) return null;
-          Object.assign(row, { status: "processing", updated_at: values[0] });
+          Object.assign(row, { status: "processing", updated_at: values[0], lease_expires_at: values[1] });
           return row as T;
         },
       };
@@ -57,7 +57,7 @@ describe("D1 storage outbox", () => {
     expect(rows).toHaveLength(1);
     const claimed = await outbox.claimNext(event.now);
     expect(claimed).toMatchObject({ id: "evt-1", status: "processing", destination: "turso" });
-    expect(await outbox.claimNext(event.now)).toBeNull();
+    expect(rows[0].lease_expires_at).toBe("2026-11-18T20:05:00.000Z");\n    expect(await outbox.claimNext(event.now)).toBeNull();
   });
 
   it("marks a delivered event and retries transient failures", async () => {
