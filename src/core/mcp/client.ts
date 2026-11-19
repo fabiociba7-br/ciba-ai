@@ -15,6 +15,7 @@ export interface McpHttpClientOptions {
   endpoint: string;
   allowedHosts: string[];
   getAccessToken?: () => Promise<string | null>;
+  accessTokenHeader?: "authorization" | "x-api-key";
   /** Allowlisted auth headers for MCP providers such as Composio (x-api-key). */
   getAuthHeaders?: () => Promise<Record<string, string>>;
   /** Local policy allowlist. Empty or omitted means discovery-only, with no executable tools. */
@@ -139,7 +140,8 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
       if (token) {
         if (/[\r\n]/.test(token) || token.length > 8_192) throw new Error("mcp_access_token_invalid");
         if (headers.has("authorization")) throw new Error("mcp_auth_header_conflict");
-        headers.set("authorization", `Bearer ${token}`);
+        if (options.accessTokenHeader === "x-api-key") headers.set("x-api-key", token);
+        else headers.set("authorization", `Bearer ${token}`);
       }
     }
     return headers;
