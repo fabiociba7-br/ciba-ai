@@ -1587,7 +1587,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                             val risk = item.optString("risk", "external")
                                             val approval = if (item.optBoolean("requires_approval", true)) "aprovação obrigatória" else "somente leitura"
                                             Text(risk + " · " + approval + if (!eligible) " · integração não reconhecida" else "", color = Muted, fontSize = 10.sp)
-                                            if (checked) {
+                                            if (checked && item.optBoolean("enabled")) {
                                                 TextButton(onClick = {
                                                     composioInvocationTool = name
                                                     composioInvocationInput = "{}"
@@ -1597,6 +1597,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                                     composioInvocationInfo = null
                                                     composioApproved = false
                                                 }, enabled = !composioBusy) { Text(if (composioInvocationTool == name) "Selecionada para chamada" else "Preparar chamada") }
+                                            } else if (checked) {
+                                                Text("Salve as permissões antes de preparar uma chamada.", color = Muted, fontSize = 10.sp)
                                             }
                                         }
                                     }
