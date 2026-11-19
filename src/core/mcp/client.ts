@@ -118,7 +118,7 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
   const allowedToolNames = new Set(options.allowedToolNames ?? []);
   const approvedToolNames = new Set(options.approvedToolNames ?? []);
   if ([...allowedToolNames, ...approvedToolNames].some((name) =>
-      typeof name !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(name))) {
+      typeof name !== "string" || !/^[A-Za-z][A-Za-z0-9_.-]{0,127}$/.test(name))) {
     throw new Error("mcp_tool_allowlist_invalid");
   }
   if ([...approvedToolNames].some((name) => !allowedToolNames.has(name))) {
