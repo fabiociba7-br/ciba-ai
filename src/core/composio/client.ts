@@ -15,8 +15,8 @@ export interface ComposioMcpDiscoveryOptions {
 }
 
 /**
- * Read-only discovery adapter for an owner-scoped Composio session.
- * Tool execution is deliberately not exposed in this stage.
+ * Guarded MCP adapter for an owner-scoped Composio session.
+ * Execution is limited to an explicit tool allowlist and one-shot approval names.
  */
 export function createComposioMcpDiscoveryClient(options: ComposioMcpDiscoveryOptions): {
   initialize: ReturnType<typeof createMcpHttpClient>["initialize"];
