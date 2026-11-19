@@ -1524,13 +1524,6 @@ describe("Composio discovery endpoint security", () => {
     expect(await policy.json()).toEqual({ error: "unauthorized" });
 
     const invoke = await request("/v1/owner/composio/invoke", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "propose", tool_name: "GMAIL_LIST_EMAILS", conversation_id: "c1", invocation_id: "i1", input: {} }),
-    });
-    expect(invoke.status).toBe(401);
-    expect(await invoke.json()).toEqual({ error: "unauthorized" });
-
-    const invoke = await request("/v1/owner/composio/invoke", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
