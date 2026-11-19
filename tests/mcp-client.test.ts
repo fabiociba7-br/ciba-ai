@@ -76,7 +76,7 @@ describe("outbound MCP HTTP client", () => {
       serverInfo: { name: "test-mcp", version: "1" },
     });
     const tools = await client.listTools();
-    expect(tools.map((tool) => tool.name)).toEqual(["garcia.capabilities.list"]);
+    expect(tools.map((tool) => tool.name)).toEqual(["garcia.capabilities.list", "dangerous.write"]);
 
     await expect(client.callTool("unknown.tool", {})).rejects.toThrow("mcp_tool_not_discovered");
     await expect(client.callTool("dangerous.write", {})).rejects.toThrow("mcp_tool_not_read_only");
