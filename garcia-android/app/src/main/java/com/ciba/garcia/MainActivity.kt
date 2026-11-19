@@ -504,6 +504,13 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var pairingCode by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
     var settingsSection by remember { mutableStateOf("menu") }
+    var agentRole by remember { mutableStateOf("general") }
+    var agentPrompt by remember { mutableStateOf("") }
+    var agentTaskId by remember { mutableStateOf("") }
+    var agentTaskInfo by remember { mutableStateOf<JSONObject?>(null) }
+    var agentBusy by remember { mutableStateOf(false) }
+    var showAgentRoleMenu by remember { mutableStateOf(false) }
+    var agentError by remember { mutableStateOf("") }
     var showBrowser by remember { mutableStateOf(false) }
     var showLogs by remember { mutableStateOf(false) }
     var showChats by remember { mutableStateOf(false) }
@@ -1171,6 +1178,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             "accounts" -> "Contas e integrações"
             "diagnostics" -> "Uso e diagnóstico"
             "privacy" -> "Privacidade e segurança"
+            "agents" -> "Agentes e tarefas"
             else -> "Configurações da Garcia"
         }
         AlertDialog(
@@ -1186,7 +1194,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             "speech" to ("Transcrição de voz" to "Instalar, reparar ou remover o modelo Whisper"),
                             "accounts" to ("Contas e integrações" to "Facebook e serviços conectados"),
                             "diagnostics" to ("Uso e diagnóstico" to "Consumo, logs e estado da conexão"),
-                            "privacy" to ("Privacidade e segurança" to "Como credenciais, histórico e navegação são tratados")
+                            "privacy" to ("Privacidade e segurança" to "Como credenciais, histórico e navegação são tratados"),
+                            "agents" to ("Agentes e tarefas" to "Enviar tarefas para agentes especializados e acompanhar a execução")
                         ).forEach { (key, item) ->
                             ListItem(
                                 headlineContent = { Text(item.first, fontWeight = FontWeight.SemiBold) },
@@ -1309,6 +1318,114 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         if (usage.isNotBlank()) { Text("Uso diário", fontWeight = FontWeight.Bold); Text(usage, color = Muted, fontSize = 13.sp) }
                         if (usageError.isNotBlank()) Text(usageError, color = Color(0xFFB94F7C), fontSize = 13.sp)
                         OutlinedButton(onClick = { logs = GarciaLog.read(context); showSettings = false; showLogs = true }, modifier = Modifier.fillMaxWidth()) { Text("Ver logs de diagnóstico") }
+                    } else if (settingsSection == "agents") {
+                        Text("Execute uma tarefa em segundo plano usando um agente isolado da Garcia.", color = Muted, fontSize = 12.sp)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Perfil do agente", fontWeight = FontWeight.SemiBold)
+                        Box {
+                            OutlinedButton(onClick = { showAgentRoleMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                                Text(agentRole.replaceFirstChar { it.uppercase() })
+                            }
+                            DropdownMenu(expanded = showAgentRoleMenu, onDismissRequest = { showAgentRoleMenu = false }) {
+                                listOf(
+                                    "general" to "Geral",
+                                    "reasoning" to "Raciocínio",
+                                    "research" to "Pesquisa",
+                                    "coding" to "Programação",
+                                    "creative" to "Criativo",
+                                    "verification" to "Verificação"
+                                ).forEach { (key, label) ->
+                                    DropdownMenuItem(text = { Text(label) }, onClick = {
+                                        agentRole = key
+                                        showAgentRoleMenu = false
+                                    })
+                                }
+                            }
+                        }
+                        OutlinedTextField(
+                            value = agentPrompt,
+                            onValueChange = { agentPrompt = it.take(12_000) },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 110.dp),
+                            label = { Text("Descreva a tarefa") },
+                            placeholder = { Text("O que você quer que o agente faça?") },
+                            minLines = 3,
+                            maxLines = 6
+                        )
+                        Text("${agentPrompt.length}/12000 caracteres", color = Muted, fontSize = 10.sp)
+                        Button(
+                            onClick = {
+                                agentBusy = true
+                                agentError = ""
+                                scope.launch {
+                                    try {
+                                        val response = withContext(Dispatchers.IO) {
+                                            client.enqueueAgentJob(agentRole, agentPrompt.trim())
+                                        }
+                                        val task = response.optJSONObject("task")
+                                        agentTaskId = response.optString("task_id").ifBlank { task?.optString("task_id").orEmpty() }
+                                        if (agentTaskId.isBlank()) error("O servidor não retornou o identificador da tarefa.")
+                                        agentTaskInfo = JSONObject()
+                                            .put("task_id", agentTaskId)
+                                            .put("status", response.optString("status", task?.optString("status") ?: "queued"))
+                                            .put("agent_role", agentRole)
+                                        agentPrompt = ""
+                                    } catch (e: Exception) {
+                                        agentError = e.message ?: "Não foi possível enviar a tarefa."
+                                    } finally { agentBusy = false }
+                                }
+                            },
+                            enabled = connected && !agentBusy && agentPrompt.isNotBlank() && agentPrompt.length <= 12_000,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text(if (agentBusy) "Enviando tarefa…" else "Enviar para o agente") }
+                        if (agentTaskId.isNotBlank()) {
+                            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                            Text("Tarefa atual", fontWeight = FontWeight.Bold)
+                            Text("ID: ${agentTaskId.take(8)}…", color = Muted, fontSize = 11.sp)
+                            val currentStatus = agentTaskInfo?.optString("status").orEmpty()
+                            Text("Estado: ${currentStatus.ifBlank { "Aguardando consulta" }}", fontWeight = FontWeight.SemiBold)
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = {
+                                        agentBusy = true
+                                        agentError = ""
+                                        scope.launch {
+                                            try {
+                                                agentTaskInfo = withContext(Dispatchers.IO) { client.agentJobStatus(agentTaskId) }
+                                            } catch (e: Exception) {
+                                                agentError = e.message ?: "Não foi possível consultar a tarefa."
+                                            } finally { agentBusy = false }
+                                        }
+                                    },
+                                    enabled = !agentBusy,
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Atualizar") }
+                                OutlinedButton(
+                                    onClick = {
+                                        agentBusy = true
+                                        agentError = ""
+                                        scope.launch {
+                                            try {
+                                                withContext(Dispatchers.IO) { client.cancelAgentJob(agentTaskId) }
+                                                agentTaskInfo = (agentTaskInfo ?: JSONObject()).put("status", "cancelled")
+                                            } catch (e: Exception) {
+                                                agentError = e.message ?: "Não foi possível cancelar a tarefa."
+                                            } finally { agentBusy = false }
+                                        }
+                                    },
+                                    enabled = !agentBusy && currentStatus in setOf("queued", "running"),
+                                    modifier = Modifier.weight(1f)
+                                ) { Text("Cancelar") }
+                            }
+                            val resultText = agentTaskInfo?.optJSONObject("result")?.optString("text").orEmpty()
+                            if (resultText.isNotBlank()) {
+                                Text("Resultado", fontWeight = FontWeight.Bold)
+                                Text(resultText, fontSize = 13.sp)
+                            }
+                            val failure = agentTaskInfo?.optString("error_code").orEmpty()
+                            if (failure.isNotBlank() && failure != "null") Text("Falha: $failure", color = Color(0xFFB94F7C), fontSize = 12.sp)
+                        }
+                        if (agentError.isNotBlank()) Text(agentError, color = Color(0xFFB94F7C), fontSize = 12.sp)
+                        Text("O envio exige a permissão task_dispatch no CibaGênio. A execução usa apenas o modelo gratuito configurado.", color = Muted, fontSize = 11.sp)
                     } else if (settingsSection == "privacy") {
                         Text("Histórico e credenciais locais são protegidos pelo Android Keystore. A navegação em sites acontece em uma janela interna; quando um site exigir login, digite seus dados diretamente no próprio site.", color = Muted, fontSize = 13.sp)
                         Spacer(Modifier.height(8.dp))
