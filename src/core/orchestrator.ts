@@ -37,6 +37,7 @@ type OrchestratorInput = {
   model: string;
   maxOutputTokens: number;
   provider: ModelProvider;
+  agentRole?: keyof typeof AGENTS;
   memoryContext?: string;
   toolRuntime?: {
   registry: ExecutableCibaToolRegistry;
@@ -196,6 +197,7 @@ function snapshotInput(value: unknown): {
   model: string;
   maxOutputTokens: number;
   provider: ModelProvider;
+  agentRole?: keyof typeof AGENTS;
   memoryContext?: string;
   toolRuntime?: {
   registry: ExecutableCibaToolRegistry;
@@ -206,16 +208,18 @@ function snapshotInput(value: unknown): {
 } {
   const fields = readPlainRecord(
     value,
-    ["messages", "model", "maxOutputTokens", "provider", "memoryContext", "toolRuntime"],
+    ["messages", "model", "maxOutputTokens", "provider", "agentRole", "memoryContext", "toolRuntime"],
     ["messages", "model", "maxOutputTokens", "provider"]
   );
   const messages = snapshotChatMessages(fields.messages);
   const provider = snapshotProvider(fields.provider);
+  const agentRole = fields.agentRole;
   const model = fields.model;
   const maxOutputTokens = fields.maxOutputTokens;
   const memoryContext = fields.memoryContext;
   const toolRuntime = fields.toolRuntime === undefined ? undefined : snapshotToolRuntime(fields.toolRuntime);
-  if (typeof model !== "string" || !model.trim() || model.length > MAX_MODEL_ID_CHARS ||
+  if ((agentRole !== undefined && (typeof agentRole !== "string" || !Object.prototype.hasOwnProperty.call(AGENTS, agentRole))) ||
+      typeof model !== "string" || !model.trim() || model.length > MAX_MODEL_ID_CHARS ||
       !Number.isInteger(maxOutputTokens) || (maxOutputTokens as number) < 1 ||
       (maxOutputTokens as number) > MAX_OUTPUT_TOKENS ||
       (memoryContext !== undefined &&
@@ -227,6 +231,7 @@ function snapshotInput(value: unknown): {
     model,
     maxOutputTokens: maxOutputTokens as number,
     provider,
+    ...(agentRole === undefined ? {} : { agentRole: agentRole as keyof typeof AGENTS }),
     ...(memoryContext === undefined ? {} : { memoryContext: memoryContext as string }),
     ...(toolRuntime === undefined ? {} : { toolRuntime })
   });
@@ -328,7 +333,7 @@ export async function runCibaOrchestrator(input: OrchestratorInput): Promise<Orc
   validateInput(safeInput);
   const safeMessages = safeInput.messages;
 
-  const selectedAgent = routeTask(safeMessages);
+  const selectedAgent = safeInput.agentRole ?? routeTask(safeMessages);
   const profile = AGENTS[selectedAgent];
   const context = isolateAgentContext(selectedAgent, buildWorkingContext(safeMessages));
   const toolCatalog: ReturnType<ExecutableCibaToolRegistry["describe"]> = [];
