@@ -1482,6 +1482,146 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         }
                         if (agentError.isNotBlank()) Text(agentError, color = Color(0xFFB94F7C), fontSize = 12.sp)
                         Text("O envio exige a permissão task_dispatch no CibaGênio. A execução usa apenas o modelo gratuito configurado.", color = Muted, fontSize = 11.sp)
+                    } else if (settingsSection == "composio") {
+                        Text("A Garcia conecta-se ao Composio pelo servidor. A chave de API nunca fica neste aparelho.", color = Muted, fontSize = 12.sp)
+                        Spacer(Modifier.height(8.dp))
+                        if (!connected) {
+                            Text("Ative este dispositivo e vincule um proprietário antes de configurar integrações.", color = Muted)
+                        } else if (composioBusy) {
+                            CircularProgressIndicator()
+                            Text("Consultando conexão Composio…", color = Muted, fontSize = 12.sp)
+                        } else if (composioSessionInfo?.optBoolean("configured") != true) {
+                            Text("Nenhuma sessão Composio ativa.", fontWeight = FontWeight.SemiBold)
+                            OutlinedTextField(
+                                value = composioToolkitsInput,
+                                onValueChange = { composioToolkitsInput = it.take(500) },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Integrações (slugs separados por vírgula)") },
+                                placeholder = { Text("gmail, googlecalendar, slack") },
+                                supportingText = { Text("Informe os identificadores de toolkit do Composio. Até 10.") }
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = composioConsent, onCheckedChange = { composioConsent = it })
+                                Text("Autorizo criar uma sessão Composio para esta conta.", fontSize = 12.sp)
+                            }
+                            Button(
+                                onClick = {
+                                    composioBusy = true
+                                    composioError = ""
+                                    scope.launch {
+                                        try {
+                                            val toolkits = composioToolkitsInput.split(",").map { it.trim().lowercase() }.filter { it.isNotBlank() }
+                                            val created = withContext(Dispatchers.IO) { client.createComposioSession(toolkits) }
+                                            composioSessionInfo = created.put("configured", true)
+                                            composioConsent = false
+                                            val discovered = withContext(Dispatchers.IO) { client.composioTools() }
+                                            val list = discovered.optJSONArray("tools") ?: JSONArray()
+                                            composioToolsInfo = list
+                                            composioSelectedTools = emptySet()
+                                        } catch (e: Exception) {
+                                            composioError = e.message ?: "Não foi possível criar a sessão Composio."
+                                        } finally { composioBusy = false }
+                                    }
+                                },
+                                enabled = composioConsent && composioToolkitsInput.isNotBlank() && !composioBusy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Criar conexão Composio") }
+                        } else {
+                            val toolkits = composioSessionInfo?.optJSONArray("toolkits")
+                            Text("Sessão ativa", fontWeight = FontWeight.Bold)
+                            Text(
+                                (0 until (toolkits?.length() ?: 0)).mapNotNull { toolkits?.optString(it) }.joinToString(", ").ifBlank { "Nenhuma integração selecionada" },
+                                color = Muted, fontSize = 12.sp
+                            )
+                            OutlinedButton(
+                                onClick = {
+                                    composioBusy = true
+                                    scope.launch {
+                                        try {
+                                            val discovered = withContext(Dispatchers.IO) { client.composioTools() }
+                                            val list = discovered.optJSONArray("tools") ?: JSONArray()
+                                            composioToolsInfo = list
+                                            composioSelectedTools = buildSet {
+                                                for (i in 0 until list.length()) {
+                                                    val item = list.optJSONObject(i) ?: continue
+                                                    if (item.optBoolean("enabled")) add(item.optString("name"))
+                                                }
+                                            }
+                                        } catch (e: Exception) {
+                                            composioError = e.message ?: "Falha ao atualizar ferramentas."
+                                        } finally { composioBusy = false }
+                                    }
+                                },
+                                enabled = !composioBusy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Atualizar lista de ferramentas") }
+                            val tools = composioToolsInfo
+                            if (tools != null) {
+                                Text("Permissões por ferramenta", fontWeight = FontWeight.Bold)
+                                Text("Marque somente as ações que a Garcia poderá solicitar. Escrita e ações externas continuam exigindo aprovação individual.", color = Muted, fontSize = 11.sp)
+                                for (i in 0 until tools.length()) {
+                                    val item = tools.optJSONObject(i) ?: continue
+                                    val name = item.optString("name")
+                                    val eligible = item.optBoolean("eligible")
+                                    val checked = name in composioSelectedTools
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = checked,
+                                            onCheckedChange = { enabled ->
+                                                composioSelectedTools = if (enabled) composioSelectedTools + name else composioSelectedTools - name
+                                            },
+                                            enabled = eligible && name.isNotBlank()
+                                        )
+                                        Column(Modifier.weight(1f)) {
+                                            Text(name, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                            val risk = item.optString("risk", "external")
+                                            val approval = if (item.optBoolean("requires_approval", true)) "aprovação obrigatória" else "somente leitura"
+                                            Text(risk + " · " + approval + if (!eligible) " · integração não reconhecida" else "", color = Muted, fontSize = 10.sp)
+                                        }
+                                    }
+                                    HorizontalDivider()
+                                }
+                                Button(
+                                    onClick = {
+                                        composioBusy = true
+                                        scope.launch {
+                                            try {
+                                                withContext(Dispatchers.IO) { client.saveComposioPolicy(composioSelectedTools.toList()) }
+                                                val discovered = withContext(Dispatchers.IO) { client.composioTools() }
+                                                composioToolsInfo = discovered.optJSONArray("tools") ?: JSONArray()
+                                                composioError = ""
+                                            } catch (e: Exception) {
+                                                composioError = e.message ?: "Não foi possível salvar as permissões."
+                                            } finally { composioBusy = false }
+                                        }
+                                    },
+                                    enabled = !composioBusy,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("Salvar permissões selecionadas") }
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    composioBusy = true
+                                    scope.launch {
+                                        try {
+                                            withContext(Dispatchers.IO) { client.revokeComposioSession() }
+                                            composioSessionInfo = JSONObject().put("configured", false).put("toolkits", JSONArray())
+                                            composioToolsInfo = null
+                                            composioSelectedTools = emptySet()
+                                        } catch (e: Exception) {
+                                            composioError = e.message ?: "Não foi possível desconectar Composio."
+                                        } finally { composioBusy = false }
+                                    }
+                                },
+                                enabled = !composioBusy,
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("Desconectar Composio") }
+                        }
+                        if (composioError.isNotBlank()) Text(composioError, color = Color(0xFFB94F7C), fontSize = 12.sp)
+                        Text("O aplicativo nunca recebe a chave de API nem a URL MCP. Nenhuma ferramenta é executada ao conectar ou salvar permissões.", color = Muted, fontSize = 11.sp)
                     } else if (settingsSection == "privacy") {
                         Text("Histórico e credenciais locais são protegidos pelo Android Keystore. A navegação em sites acontece em uma janela interna; quando um site exigir login, digite seus dados diretamente no próprio site.", color = Muted, fontSize = 13.sp)
                         Spacer(Modifier.height(8.dp))
