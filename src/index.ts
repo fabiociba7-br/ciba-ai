@@ -54,6 +54,7 @@ import { createComposioChatToolDefinitions } from "./core/composio/chat-tools";
 import { getActiveOwnerForDevice, readOwnerFeatureSettings } from "./core/owner-access";
 import { authenticateDevice } from "./security/device-auth";
 import { usageFor } from "./core/usage";
+import { isAppAllowed } from "./core/apps/access";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
@@ -61,16 +62,7 @@ type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatI
 import { b64url, randomToken, sha256, nowIso } from "./security/crypto";
 import { MESSAGE_MAX_PAYLOAD_CHARS, MESSAGE_MAX_PENDING_PER_DESTINATION, MESSAGE_DEFAULT_TTL_HOURS, MESSAGE_MAX_TTL_HOURS, hasMessageGrant } from "./core/app-messaging";
 
-const allowedApps = (env: Env) =>
-  new Set((env.ALLOWED_APP_IDS || "").split(",").map((s) => s.trim()).filter(Boolean));
 
-const isAppAllowed = async (env: Env, appId: string): Promise<boolean> => {
-  const row = await env.DB.prepare(
-    "SELECT enabled FROM app_registry WHERE app_id = ?"
-  ).bind(appId).first<{ enabled: number }>();
-  if (row) return row.enabled === 1;
-  return allowedApps(env).has(appId);
-};
 
 const requireCibaGenioAccess = async (
   env: Env,
