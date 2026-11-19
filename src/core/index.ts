@@ -62,6 +62,8 @@ export type { GarciaStorageDestination, StorageOutboxEvent, StorageOutboxInput }
 
 
 export { createD1FileCatalog, createR2ObjectStore, validateGarciaFileInput } from "./storage-contracts";
+export { createGarciaFileLifecycle } from "./storage/file-lifecycle";
+export type { GarciaFileUploadInput, GarciaFileDownload } from "./storage/file-lifecycle";
 export type { GarciaStorageProvider, GarciaFileStatus, GarciaFileMetadata, GarciaFileCreateInput, GarciaFileCatalog, GarciaObjectStore, R2BucketLike } from "./storage-contracts";
 
 
