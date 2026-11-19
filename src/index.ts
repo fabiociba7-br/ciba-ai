@@ -738,16 +738,13 @@ const handleOwnerComposioPolicy = async (request: Request, env: Env) => {
     });
     await client.initialize();
     const discovered = await client.listTools();
-    const selected = requestedNames.map((name) => {
+    const policies = await Promise.all(requestedNames.map(async (name) => {
       const tool = discovered.find((item) => item.name === name);
       if (!tool) throw new Error("composio_tool_not_discovered");
       const classified = classifyComposioTool(tool, enabledToolkits);
-      return { ...classified, schemaSha256: hashComposioToolSchema(tool.inputSchema) };
-    });
-    const policies = await Promise.all(selected.map(async (item) => ({
-      ...item,
-      schemaSha256: await item.schemaSha256,
-    })));
+      const schemaSha256 = await hashComposioToolSchema(tool.inputSchema);
+      return { ...classified, schemaSha256 };
+    }));
     const timestamp = nowIso();
     const statements = [
       env.DB.prepare(
@@ -4069,7 +4066,9 @@ const handleRequest = async (
   if (url.pathname === "/v1/owner/pair" && request.method === "POST") {
     return handlePairOwner(request, env);
   }
-  if (url.pathname === "/v1/owner/composio/policy" && ["GET", "POST"].includes(request.method)) {\n    return handleOwnerComposioPolicy(request, env);\n  }\n  if (url.pathname === "/v1/owner/composio/tools" && request.method === "GET") {
+  if (url.pathname === "/v1/owner/composio/policy" && ["GET", "POST"].includes(request.method)) {
+    return handleOwnerComposioPolicy(request, env);
+  }\n  if (url.pathname === "/v1/owner/composio/tools" && request.method === "GET") {
     return handleOwnerComposioTools(request, env);
   }
   if (url.pathname === "/v1/owner/composio/session" && ["GET", "POST", "DELETE"].includes(request.method)) {
