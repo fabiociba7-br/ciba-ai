@@ -7,6 +7,7 @@ export interface Env {
   };
   ADMIN_TOKEN: string;
   FACEBOOK_APP_SECRET?: string;
+  COMPOSIO_API_KEY?: string;
   AI_MODEL?: string;
   ALLOWED_APP_IDS?: string;
   MAX_OUTPUT_TOKENS?: string;
@@ -35,6 +36,7 @@ import { createGarciaCapabilityToolRuntime } from "./core/tools/garcia-capabilit
 import { handleMcpRequest } from "./core/mcp/protocol";
 import { enqueueAgentJob, getAgentJob, cancelAgentJob } from "./core/agent-queue-store";
 import { runOneAgentQueueJob } from "./core/agent-queue-runner";
+import { createComposioOwnerSession, deleteComposioOwnerSession } from "./core/composio/sessions";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
@@ -492,6 +494,123 @@ const facebookCapabilities = (permissions: string[]) => ({
   page_features: false,
   personal_messenger_inbox: false,
 });
+
+const handleOwnerComposioSession = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  if (device.app_id !== "com.ciba.garcia") return json({ error: "garcia_app_required" }, 403);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const resourceAccess = await requireCibaGenioAccess(env, "external_tools", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
+  if (request.method === "GET") {
+    const row = await env.DB.prepare(`
+      SELECT toolkits_json, status, created_at, updated_at
+      FROM owner_composio_sessions WHERE owner_id = ?
+    `).bind(owner.owner_id).first<{
+      toolkits_json: string; status: "active" | "revoked";
+      created_at: string; updated_at: string;
+    }>();
+    if (!row) return json({ configured: false, connected: false, toolkits: [] });
+    let toolkits: string[] = [];
+    try {
+      const parsed = JSON.parse(row.toolkits_json);
+      if (Array.isArray(parsed)) toolkits = parsed.filter((item): item is string => typeof item === "string");
+    } catch { toolkits = []; }
+    return json({
+      configured: row.status === "active",
+      connected: row.status === "active" && toolkits.length > 0,
+      status: row.status,
+      toolkits,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    });
+  }
+
+  if (request.method === "POST") {
+    if (!env.COMPOSIO_API_KEY) return json({ error: "composio_server_not_configured" }, 503);
+    let body: Record<string, unknown>;
+    try { body = await readJson(request, 4_000); } catch {
+      return json({ error: "invalid_json" }, 400);
+    }
+    if (body.consent !== true) return json({ error: "explicit_consent_required" }, 400);
+    if (!Array.isArray(body.toolkits)) return json({ error: "composio_toolkits_required" }, 400);
+    const existing = await env.DB.prepare(
+      "SELECT status FROM owner_composio_sessions WHERE owner_id = ?"
+    ).bind(owner.owner_id).first<{ status: string }>();
+    if (existing?.status === "active") return json({ error: "composio_session_exists" }, 409);
+
+    const userId = `garcia_${(await sha256(owner.owner_id)).slice(0, 32)}`;
+    let session: Awaited<ReturnType<typeof createComposioOwnerSession>>;
+    try {
+      session = await createComposioOwnerSession({
+        apiKey: env.COMPOSIO_API_KEY,
+        userId,
+        toolkits: body.toolkits as string[],
+      });
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "composio_session_create_failed";
+      if (code === "composio_toolkits_invalid" || code === "composio_toolkits_duplicate") {
+        return json({ error: code }, 400);
+      }
+      if (code === "composio_api_error_401" || code === "composio_api_error_403") {
+        return json({ error: "composio_credentials_rejected" }, 502);
+      }
+      return json({ error: "composio_session_create_failed", reason: code }, 502);
+    }
+
+    const timestamp = nowIso();
+    const stored = await env.DB.prepare(`
+      INSERT INTO owner_composio_sessions(
+        owner_id, session_id, toolkits_json, status, created_at, updated_at, revoked_at
+      ) VALUES(?, ?, ?, 'active', ?, ?, NULL)
+      ON CONFLICT(owner_id) DO UPDATE SET
+        session_id = excluded.session_id,
+        toolkits_json = excluded.toolkits_json,
+        status = 'active',
+        created_at = excluded.created_at,
+        updated_at = excluded.updated_at,
+        revoked_at = NULL
+      WHERE owner_composio_sessions.status = 'revoked'
+    `).bind(owner.owner_id, session.sessionId, JSON.stringify(session.toolkits), timestamp, timestamp).run();
+    if (stored.meta.changes !== 1) {
+      await deleteComposioOwnerSession(env.COMPOSIO_API_KEY, session.sessionId).catch(() => undefined);
+      return json({ error: "composio_session_storage_conflict" }, 409);
+    }
+    return json({
+      configured: true,
+      status: "active",
+      toolkits: session.toolkits,
+      created_at: timestamp,
+      note: "A sessão foi criada. A URL MCP e as credenciais permanecem somente no servidor.",
+    }, 201);
+  }
+
+  if (request.method === "DELETE") {
+    if (!env.COMPOSIO_API_KEY) return json({ error: "composio_server_not_configured" }, 503);
+    const row = await env.DB.prepare(
+      "SELECT session_id FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
+    ).bind(owner.owner_id).first<{ session_id: string }>();
+    if (!row) return json({ error: "composio_session_not_found" }, 404);
+    try {
+      await deleteComposioOwnerSession(env.COMPOSIO_API_KEY, row.session_id);
+    } catch {
+      return json({ error: "composio_session_revoke_failed" }, 502);
+    }
+    const timestamp = nowIso();
+    await env.DB.prepare(`
+      UPDATE owner_composio_sessions
+      SET status = 'revoked', revoked_at = ?, updated_at = ?
+      WHERE owner_id = ? AND session_id = ? AND status = 'active'
+    `).bind(timestamp, timestamp, owner.owner_id, row.session_id).run();
+    return json({ configured: false, revoked: true });
+  }
+
+  return json({ error: "method_not_allowed", allowed: ["GET", "POST", "DELETE"] }, 405, {
+    allow: "GET, POST, DELETE",
+  });
+};
 
 const handleOwnerFacebookStatus = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
@@ -3761,7 +3880,7 @@ const handleRequest = async (
   if (url.pathname === "/v1/owner/pair" && request.method === "POST") {
     return handlePairOwner(request, env);
   }
-  if (url.pathname === "/v1/owner/facebook" && request.method === "GET") {
+  if (url.pathname === "/v1/owner/composio/session" && ["GET", "POST", "DELETE"].includes(request.method)) {\n    return handleOwnerComposioSession(request, env);\n  }\n  if (url.pathname === "/v1/owner/facebook" && request.method === "GET") {
     return handleOwnerFacebookStatus(request, env);
   }
   if (url.pathname === "/v1/owner/facebook/link" && request.method === "POST") {
