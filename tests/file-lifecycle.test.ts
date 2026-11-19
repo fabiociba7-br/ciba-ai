@@ -13,8 +13,9 @@ const input = {
 function setup() {
   const calls: string[] = [];
   let stored: ReadableStream | null = null;
+  const { bytes: _bytes, ...baseMetadata } = input;
   const metadata: GarciaFileMetadata = {
-    ...input, bytes: undefined as never, ownerId: null, appId: null,
+    ...baseMetadata, ownerId: null, appId: null,
     storageProvider: "cloudflare_r2", status: "available", source: "user",
     createdAt: input.now, updatedAt: input.now, deletedAt: null,
   };
