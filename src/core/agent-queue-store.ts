@@ -110,7 +110,7 @@ export async function claimAgentJob(db: D1Database, now: string): Promise<AgentQ
     RETURNING task_id, owner_id, agent_role, payload_json, attempts, max_attempts,
               lease_token, lease_expires_at
   `).bind(
-    token, leaseExpiresAt, now, now, now, now, now,
+    token, leaseExpiresAt, now, now, now, now, now, now,
     AGENT_QUEUE_LIMITS.maxConcurrentGlobal, now, AGENT_QUEUE_LIMITS.maxConcurrentPerOwner
   ).first<AgentQueueClaim>();
 }
