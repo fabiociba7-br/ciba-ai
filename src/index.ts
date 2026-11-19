@@ -605,7 +605,7 @@ const handleOwnerComposioSession = async (request: Request, env: Env) => {
   if (request.method === "DELETE") {
     if (!env.COMPOSIO_API_KEY) return json({ error: "composio_server_not_configured" }, 503);
     const row = await env.DB.prepare(
-      "SELECT session_id FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
+      "SELECT session_id, toolkits_json FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
     ).bind(owner.owner_id).first<{ session_id: string }>();
     if (!row) return json({ error: "composio_session_not_found" }, 404);
     try {
@@ -2805,7 +2805,7 @@ const handleChat = async (request: Request, env: Env) => {
           const [activeSession, currentPolicy] = await Promise.all([
             env.DB.prepare(
               "SELECT session_id FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
-            ).bind(owner.owner_id).first<{ session_id: string }>(),
+            ).bind(owner.owner_id).first<{ session_id: string; toolkits_json: string }>(),
             env.DB.prepare(`
               SELECT toolkit, risk, requires_approval, schema_sha256, enabled
               FROM owner_composio_tool_policies WHERE owner_id = ? AND tool_name = ?
@@ -2814,7 +2814,14 @@ const handleChat = async (request: Request, env: Env) => {
               schema_sha256: string; enabled: number;
             }>(),
           ]);
-          return Boolean(activeSession?.session_id === composioPolicy.sessionId && currentPolicy &&
+          let toolkitStillEnabled = false;
+          try {
+            const currentToolkits: unknown = activeSession ? JSON.parse(activeSession.toolkits_json) : null;
+            toolkitStillEnabled = Array.isArray(currentToolkits) &&
+              currentToolkits.includes(composioPolicy.toolkit);
+          } catch { toolkitStillEnabled = false; }
+          return Boolean(activeSession?.session_id === composioPolicy.sessionId &&
+            toolkitStillEnabled && currentPolicy &&
             currentPolicy.enabled === 1 && currentPolicy.toolkit === composioPolicy.toolkit &&
             currentPolicy.risk === "read" && currentPolicy.requires_approval === 0 &&
             currentPolicy.schema_sha256 === composioPolicy.schemaSha256);
