@@ -4388,17 +4388,6 @@ const handleRequest = async (
       case "agent-job-status": return handleGetAgentJob(request, env, ownerRoute.id!, ctx);
     }
   }
-  if (url.pathname === "/v1/owner/agent-jobs" && request.method === "POST") {
-    return handleCreateAgentJob(request, env, ctx);
-  }
-  const agentJobCancel = url.pathname.match(/^\/v1\/owner\/agent-jobs\/([A-Za-z0-9_-]{16,128})\/cancel$/);
-  if (agentJobCancel && request.method === "POST") {
-    return handleCancelAgentJob(request, env, agentJobCancel[1]);
-  }
-  const agentJobStatus = url.pathname.match(/^\/v1\/owner\/agent-jobs\/([A-Za-z0-9_-]{16,128})$/);
-  if (agentJobStatus && request.method === "GET") {
-    return handleGetAgentJob(request, env, agentJobStatus[1], ctx);
-  }
   const appRoute = resolveAppRoute(url.pathname, request.method);
   if (appRoute) {
     switch (appRoute) {
