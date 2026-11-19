@@ -4,7 +4,7 @@ export const MESSAGE_DEFAULT_TTL_HOURS = 24;
 export const MESSAGE_MAX_TTL_HOURS = 72;
 
 export const hasMessageGrant = async (
-  db: D1Database,
+  env: { DB: D1Database },
   ownerId: string,
   granteeAppId: string,
   sourceAppId: string,
@@ -13,7 +13,7 @@ export const hasMessageGrant = async (
   scope: "task" | "context",
   timestamp: string
 ): Promise<boolean> => {
-  const row = await db.prepare(`
+  const row = await env.DB.prepare(`
     SELECT grant_id FROM app_access_grants
     WHERE owner_id = ? AND grantee_app_id = ?
       AND source_app_id = ? AND destination_app_id = ?
