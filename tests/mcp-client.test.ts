@@ -113,6 +113,64 @@ describe("outbound MCP HTTP client", () => {
     expect(getAccessToken).toHaveBeenCalledTimes(4);
   });
 
+  it("supports Composio-style API-key headers and Streamable HTTP SSE replies", async () => {
+    const requests: Request[] = [];
+    let callCount = 0;
+    const fetcher: typeof fetch = async (input, init) => {
+      const request = new Request(input, init);
+      requests.push(request);
+      const body = request.method === "POST" ? await request.clone().json() as Record<string, unknown> : {};
+      callCount += 1;
+      if (callCount === 1) {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: body.id,
+          result: { protocolVersion: "2025-11-25", serverInfo: { name: "composio", version: "1" } },
+        });
+      }
+      if (callCount === 2) return new Response(null, { status: 202 });
+      const result = callCount === 3
+        ? { tools: [{
+            name: "GMAIL_FETCH_EMAILS",
+            description: "Fetch emails",
+            inputSchema: { type: "object", properties: {} },
+            annotations: { readOnlyHint: true, destructiveHint: false },
+          }] }
+        : { content: [{ type: "text", text: "emails" }], isError: false };
+      return new Response(`event: message\\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: body.id, result })}\\n\\n`, {
+        headers: { "content-type": "text/event-stream; charset=utf-8" },
+      });
+    };
+    const client = createMcpHttpClient({
+      endpoint,
+      allowedHosts: [host],
+      getAuthHeaders: async () => ({ "x-api-key": "composio-project-key" }),
+      allowedToolNames: ["GMAIL_FETCH_EMAILS"],
+      fetcher,
+    });
+
+    await client.initialize();
+    const tools = await client.listTools();
+    expect(tools.map((tool) => tool.name)).toEqual(["GMAIL_FETCH_EMAILS"]);
+    const result = await client.callTool("GMAIL_FETCH_EMAILS", {});
+    expect(result).toEqual({ content: [{ type: "text", text: "emails" }], isError: false });
+    expect(requests.every((request) => request.headers.get("x-api-key") === "composio-project-key")).toBe(true);
+    expect(requests.every((request) => request.headers.get("authorization") === null)).toBe(true);
+    expect(requests.slice(1).every((request) => request.headers.get("mcp-protocol-version") === "2025-11-25")).toBe(true);
+  });
+
+  it("rejects auth headers outside the explicit provider allowlist", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    const client = createMcpHttpClient({
+      endpoint,
+      allowedHosts: [host],
+      getAuthHeaders: async () => ({ host: "attacker.example" }),
+      fetcher,
+    });
+    await expect(client.initialize()).rejects.toThrow("mcp_auth_header_not_allowed");
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("rejects oversized remote responses", async () => {
     const replies = [
       Response.json({
