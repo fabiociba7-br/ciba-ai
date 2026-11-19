@@ -52,6 +52,7 @@ import { createComposioMcpDiscoveryClient } from "./core/composio/client";
 import { classifyComposioTool, hashComposioToolSchema } from "./core/composio/policy";
 import { createComposioChatToolDefinitions } from "./core/composio/chat-tools";
 import { getActiveOwnerForDevice, readOwnerFeatureSettings } from "./core/owner-access";
+import { authenticateDevice } from "./security/device-auth";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
@@ -133,16 +134,7 @@ const createRuntimeProviderRegistry = (env: Env, model: string | null, maxOutput
   }] : []);
 };
 
-const authenticateDevice = async (request: Request, env: Env) => {
-  const header = request.headers.get("authorization") || "";
-  if (!header.startsWith("Bearer ")) return null;
-  const token = header.slice(7).trim();
-  if (token.length < 32 || token.length > 256) return null;
-  const tokenHash = await sha256(token);
-  return env.DB.prepare(
-    "SELECT device_id, app_id, owner_id FROM devices WHERE token_hash = ? AND revoked_at IS NULL"
-  ).bind(tokenHash).first<{ device_id: string; app_id: string; owner_id: string | null }>();
-};
+
 
 const usageFor = async (env: Env, appId: string, deviceId: string) => {
   const day = utcDay();
