@@ -6,6 +6,7 @@ import {
 export interface ComposioMcpDiscoveryOptions {
   apiKey: string;
   sessionId: string;
+  mcpUrl?: string;
   fetcher?: typeof fetch;
   timeoutMs?: number;
   maxResponseBytes?: number;
@@ -27,8 +28,12 @@ export function createComposioMcpDiscoveryClient(options: ComposioMcpDiscoveryOp
     throw new Error("composio_configuration_invalid");
   }
 
+  const expectedEndpoint = `https://app.composio.dev/tool_router/v3/${options.sessionId}/mcp`;
+  const endpoint = options.mcpUrl ?? expectedEndpoint;
+  if (endpoint !== expectedEndpoint) throw new Error("composio_mcp_endpoint_invalid");
+
   const client = createMcpHttpClient({
-    endpoint: `https://app.composio.dev/tool_router/v3/${options.sessionId}/mcp`,
+    endpoint,
     allowedHosts: ["app.composio.dev"],
     getAccessToken: async () => options.apiKey,
     accessTokenHeader: "x-api-key",
