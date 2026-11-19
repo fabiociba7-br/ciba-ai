@@ -54,3 +54,16 @@ export type { DesktopChatterboxAdapterOptions, DesktopChatterboxBridge, DesktopC
 
 export { AGENT_QUEUE_LIMITS, isAgentQueueLeaseExpired, canRetryAgentQueueJob, isAgentQueueJobClaimable } from "./agent-queue";
 export { enqueueAgentJob, claimAgentJob, heartbeatAgentJob, completeAgentJob, failAgentJob, cancelAgentJob, getAgentJob } from "./agent-queue-store";
+
+
+export { evaluateKnowledge, isKnowledgeCurrent, recordKnowledgeOutcome, learnFromResearch } from "./knowledge-learning";
+export type { KnowledgeDecision, KnowledgeEvidence, KnowledgeEvidenceKind, KnowledgeRecord, KnowledgeStatus, ResearchSource, ResearchLearningEntry, ResearchKnowledgeRepository, ResearchLearningInput } from "./knowledge-learning";
+export { authorizeLearningApiCall, evaluateApiInternalization, evaluateIndependentCapability, validateLearningApiResponse } from "./learning-api-policy";
+export type { LearningApiPricing, LearningApiPolicy, LearningApiUsage, LearningApiDecision, ApiLearningArtifact, CapabilityBehaviorSpec } from "./learning-api-policy";
+export { createD1StorageOutbox } from "./storage-outbox";
+export type { GarciaStorageDestination, StorageOutboxEvent, StorageOutboxInput } from "./storage-outbox";
+export { createD1FileCatalog, createR2ObjectStore, validateGarciaFileInput } from "./storage-contracts";
+export { createGarciaFileLifecycle } from "./storage/file-lifecycle";
+export type { GarciaFileUploadInput, GarciaFileDownload } from "./storage/file-lifecycle";
+export type { GarciaStorageProvider, GarciaFileStatus, GarciaFileMetadata, GarciaFileCreateInput, GarciaFileCatalog, GarciaObjectStore, R2BucketLike } from "./storage-contracts";
+export { createD1ResearchKnowledgeRepository } from "./research-repository";
