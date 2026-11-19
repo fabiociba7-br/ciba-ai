@@ -311,6 +311,46 @@ describe("owner Composio invocation approval boundary", () => {
     expect(calls).toEqual([]);
   });
 
+
+  it("invalidates an approved action when its local tool consent is revoked", async () => {
+    const calls = installComposioMock();
+    const invocation = {
+      tool_name: toolName,
+      conversation_id: "conversation-revoked-tool-consent",
+      invocation_id: crypto.randomUUID(),
+      input: {
+        to: "recipient@example.com",
+        subject: "Consent revoked",
+        body: "Must not be sent",
+      },
+    };
+    const proposed = await ownerRequest({ ...invocation, action: "propose" });
+    expect(proposed.status).toBe(202);
+    const proposal = await proposed.json() as { approval_id: string };
+    const approved = await ownerRequest({
+      ...invocation, action: "approve", approval_id: proposal.approval_id, allow: true,
+    });
+    expect(approved.status).toBe(200);
+    expect(calls).toEqual([]);
+
+    await db.prepare(
+      "UPDATE owner_composio_tool_policies SET enabled = 0 WHERE owner_id = ? AND tool_name = ?"
+    ).bind(ownerId, toolName).run();
+
+    const previousFlag = workerEnv.COMPOSIO_EXECUTION_ENABLED;
+    workerEnv.COMPOSIO_EXECUTION_ENABLED = "true";
+    try {
+      const executed = await ownerRequest({
+        ...invocation, action: "execute", approval_id: proposal.approval_id,
+      });
+      expect(executed.status).toBe(403);
+      expect(await executed.json()).toMatchObject({ error: "composio_tool_not_enabled" });
+      expect(calls).toEqual([]);
+    } finally {
+      workerEnv.COMPOSIO_EXECUTION_ENABLED = previousFlag;
+    }
+  });
+
   it("rejects schema drift before consuming approval or calling the remote tool", async () => {
     const calls = installComposioMock();
     const invocation = {
