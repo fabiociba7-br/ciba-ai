@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feature/garcia-chatterbox-voice-profiles
     paths:
       - "garcia-android/gradle.properties"
       - ".github/workflows/garcia-android-release.yml"
