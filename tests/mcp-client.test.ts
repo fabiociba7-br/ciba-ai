@@ -137,7 +137,7 @@ describe("outbound MCP HTTP client", () => {
             annotations: { readOnlyHint: true, destructiveHint: false },
           }] }
         : { content: [{ type: "text", text: "emails" }], isError: false };
-      return new Response(`event: message\\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: body.id, result })}\\n\\n`, {
+      return new Response(`event: message\ndata: ${JSON.stringify({ jsonrpc: "2.0", id: body.id, result })}\n\n`, {
         headers: { "content-type": "text/event-stream; charset=utf-8" },
       });
     };
