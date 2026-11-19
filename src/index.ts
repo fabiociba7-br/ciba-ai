@@ -42,6 +42,7 @@ import { runOneAgentQueueJob } from "./core/agent-queue-runner";
 import { attachComposioOwnerSession, createComposioOwnerSession, deleteComposioOwnerSession } from "./core/composio/sessions";
 import { createComposioMcpDiscoveryClient } from "./core/composio/client";
 import { classifyComposioTool, hashComposioToolSchema } from "./core/composio/policy";
+import { createComposioChatToolDefinitions } from "./core/composio/chat-tools";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
@@ -2711,6 +2712,70 @@ const handleChat = async (request: Request, env: Env) => {
     }
   }
 
+  const composioChatPolicies = new Map<string, {
+    toolName: string; toolkit: string; schemaSha256: string;
+  }>();
+  let composioChatTools: Awaited<ReturnType<typeof createComposioChatToolDefinitions>> = [];
+
+  if (owner && device.app_id === "com.ciba.garcia" && env.COMPOSIO_API_KEY &&
+      await isAppAllowed(env, device.app_id) &&
+      await requireCibaGenioAccess(env, "external_tools", device.app_id) === null) {
+    try {
+      const session = await env.DB.prepare(
+        "SELECT session_id, toolkits_json FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
+      ).bind(owner.owner_id).first<{ session_id: string; toolkits_json: string }>();
+      const savedPolicies = await env.DB.prepare(`
+        SELECT tool_name, toolkit, risk, requires_approval, schema_sha256, enabled
+        FROM owner_composio_tool_policies
+        WHERE owner_id = ? AND enabled = 1 AND risk = 'read' AND requires_approval = 0
+        ORDER BY tool_name LIMIT 32
+      `).bind(owner.owner_id).all<{
+        tool_name: string; toolkit: string; risk: "read" | "write" | "external";
+        requires_approval: number; schema_sha256: string; enabled: number;
+      }>();
+
+      if (session && (savedPolicies.results || []).length > 0) {
+        const parsedToolkits: unknown = JSON.parse(session.toolkits_json);
+        if (!Array.isArray(parsedToolkits) || parsedToolkits.length > 10 ||
+            !parsedToolkits.every((item) => typeof item === "string" && /^[a-z][a-z0-9_-]{0,63}$/i.test(item))) {
+          throw new Error("composio_session_configuration_invalid");
+        }
+        const attached = await attachComposioOwnerSession(env.COMPOSIO_API_KEY, session.session_id);
+        const discovery = createComposioMcpDiscoveryClient({
+          apiKey: env.COMPOSIO_API_KEY,
+          sessionId: attached.sessionId,
+          mcpUrl: attached.mcpUrl,
+          allowedToolNames: (savedPolicies.results || []).map((item) => item.tool_name),
+          approvedToolNames: [],
+          timeoutMs: 8_000,
+          maxResponseBytes: 96_000,
+        });
+        await discovery.initialize();
+        const remoteTools = await discovery.listTools();
+        composioChatTools = await createComposioChatToolDefinitions({
+          remoteTools,
+          enabledToolkits: parsedToolkits as string[],
+          savedPolicies: savedPolicies.results || [],
+          callTool: (name, input) => discovery.callTool(name, input),
+          maxTools: 12,
+        });
+        for (const tool of composioChatTools) {
+          const saved = (savedPolicies.results || []).find((item) => `composio.${item.tool_name.toLowerCase()}` === tool.id);
+          if (saved) composioChatPolicies.set(tool.id, {
+            toolName: saved.tool_name,
+            toolkit: saved.toolkit,
+            schemaSha256: saved.schema_sha256,
+          });
+        }
+      }
+    } catch {
+      // External discovery is optional for chat; a failed Composio connection
+      // must not block native Garcia capabilities or the conversation itself.
+      composioChatTools = [];
+      composioChatPolicies.clear();
+    }
+  }
+
   const toolRuntime = owner && await isAppAllowed(env, device.app_id)
     ? createGarciaCapabilityToolRuntime({
         context: {
@@ -2718,19 +2783,41 @@ const handleChat = async (request: Request, env: Env) => {
           invocationId: crypto.randomUUID(),
         },
         executeReadOnlyProposals: true,
+        additionalTools: composioChatTools,
         getFacebookConnectionStatus: async () => {
           const link = await env.DB.prepare(
             "SELECT linked_at FROM owner_facebook_links WHERE owner_id = ?"
           ).bind(owner.owner_id).first<{ linked_at: string }>();
           return { linked: Boolean(link), linkedAt: link?.linked_at || null };
         },
-        authorize: async (toolRequest) =>
-          device.owner_id === owner.owner_id &&
-          toolRequest.risk === "read" &&
-          toolRequest.requiresApproval === false &&
-          (toolRequest.toolId === "garcia.capabilities.list" ||
-            toolRequest.toolId === "garcia.capabilities.get" ||
-            toolRequest.toolId === "facebook.connection.status"),
+        authorize: async (toolRequest) => {
+          if (device.owner_id !== owner.owner_id ||
+              toolRequest.risk !== "read" || toolRequest.requiresApproval !== false) return false;
+          if (toolRequest.toolId === "garcia.capabilities.list" ||
+              toolRequest.toolId === "garcia.capabilities.get" ||
+              toolRequest.toolId === "facebook.connection.status") return true;
+
+          const composioPolicy = composioChatPolicies.get(toolRequest.toolId);
+          if (!composioPolicy || !env.COMPOSIO_API_KEY) return false;
+          const access = await requireCibaGenioAccess(env, "external_tools", device.app_id);
+          if (access !== null) return false;
+          const [activeSession, currentPolicy] = await Promise.all([
+            env.DB.prepare(
+              "SELECT session_id FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
+            ).bind(owner.owner_id).first<{ session_id: string }>(),
+            env.DB.prepare(`
+              SELECT toolkit, risk, requires_approval, schema_sha256, enabled
+              FROM owner_composio_tool_policies WHERE owner_id = ? AND tool_name = ?
+            `).bind(owner.owner_id, composioPolicy.toolName).first<{
+              toolkit: string; risk: string; requires_approval: number;
+              schema_sha256: string; enabled: number;
+            }>(),
+          ]);
+          return Boolean(activeSession?.session_id && currentPolicy &&
+            currentPolicy.enabled === 1 && currentPolicy.toolkit === composioPolicy.toolkit &&
+            currentPolicy.risk === "read" && currentPolicy.requires_approval === 0 &&
+            currentPolicy.schema_sha256 === composioPolicy.schemaSha256);
+        },
       })
     : undefined;
 
