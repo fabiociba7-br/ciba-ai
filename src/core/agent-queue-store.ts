@@ -69,7 +69,7 @@ export async function claimAgentJob(db: D1Database, now: string): Promise<AgentQ
         END,
         available_at = CASE
           WHEN attempts >= max_attempts OR expires_at <= ? THEN available_at
-          ELSE datetime(?, '+' || MIN(60, (1 << MIN(attempts, 6))) || ' seconds')
+          ELSE strftime('%Y-%m-%dT%H:%M:%fZ', ?, '+' || MIN(60, (1 << MIN(attempts, 6))) || ' seconds')
         END,
         lease_token = NULL, lease_expires_at = NULL, heartbeat_at = NULL,
         error_code = CASE
@@ -91,6 +91,7 @@ export async function claimAgentJob(db: D1Database, now: string): Promise<AgentQ
     SET status = 'running',
         attempts = attempts + 1,
         lease_token = ?,
+        error_code = NULL,
         lease_expires_at = ?,
         heartbeat_at = ?,
         started_at = COALESCE(started_at, ?),
