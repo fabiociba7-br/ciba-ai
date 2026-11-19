@@ -34,7 +34,6 @@ import { deriveTaskLifecycle } from "./core/task-lifecycle";
 import { CIBAGENIO_RESOURCES, parseCibaGenioCommand } from "./core/cibagenio";
 import { createNativeCapabilityRegistry } from "./core/native-capabilities";
 import { createD1ToolApprovalStore } from "./core/tools/durable-consent";
-import { createDurableCibaToolApprovalFlow } from "./core/tools/durable-approval-flow";
 import { createCibaToolRegistry } from "./core/tools/registry";
 import { createGarciaCapabilityToolRuntime } from "./core/tools/garcia-capability-tools";
 import { handleMcpRequest } from "./core/mcp/protocol";
