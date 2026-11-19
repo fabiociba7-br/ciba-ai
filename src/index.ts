@@ -1,3 +1,4 @@
+import { json, corsHeaders, applyResponseHeaders } from "./http/responses";
 import { GARCIA_DASHBOARD_HTML } from "./dashboard";
 import { encryptFacebookToken, decryptFacebookToken, facebookGraphGet } from "./facebook";
 export interface Env {
@@ -46,12 +47,6 @@ import { createComposioChatToolDefinitions } from "./core/composio/chat-tools";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
-
-const json = (data: unknown, status = 200, extra: HeadersInit = {}) =>
-  new Response(JSON.stringify(data), {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extra },
-  });
 
 const b64url = (bytes: Uint8Array): string => {
   let binary = "";
@@ -193,34 +188,7 @@ const createRuntimeProviderRegistry = (env: Env, model: string | null, maxOutput
 const corsHeaders = (request: Request, env: Env): HeadersInit => {
   const origin = request.headers.get("Origin") || "";
   const allowed = (env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
-  const allowOrigin = origin && (allowed.includes("*") || allowed.includes(origin))
-    ? (allowed.includes("*") ? "*" : origin)
-    : null;
-  return {
-    ...(allowOrigin ? { "access-control-allow-origin": allowOrigin } : {}),
-    "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
-    "access-control-allow-headers": "authorization,content-type",
-    "access-control-max-age": "86400",
-    "vary": "Origin",
-  };
-};
-
-const applyResponseHeaders = (response: Response, cors: HeadersInit): Response => {
-  const headers = new Headers(response.headers);
-  new Headers(cors).forEach((value, key) => headers.set(key, value));
-  headers.set("x-content-type-options", "nosniff");
-  headers.set("referrer-policy", "no-referrer");
-  headers.set("x-frame-options", "DENY");
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-};
-
-const readJson = async (request: Request, maxBytes = 40_000): Promise<Record<string, unknown>> => {
-  const declared = Number(request.headers.get("content-length") || 0);
-  if (Number.isFinite(declared) && declared > maxBytes) throw new Error("body_too_large");
+  const allowOrigin  Error("body_too_large");
 
   // Enforce the limit while reading; do not buffer an unbounded body before checking it.
   const reader = request.body?.getReader();
