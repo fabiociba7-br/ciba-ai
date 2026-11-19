@@ -52,7 +52,7 @@ describe("Garcia R2 file lifecycle", () => {
 
   it("downloads only catalogued available objects and deletes bytes before metadata", async () => {
     const { lifecycle, calls, metadata } = setup();
-    const body = new ReadableStream();
+    await lifecycle.upload(input);
     const result = await lifecycle.download("file-1", "garcia:technical");
     expect(result.metadata).toBe(metadata);
     expect(result.body).toBeInstanceOf(ReadableStream);
