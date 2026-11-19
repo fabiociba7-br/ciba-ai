@@ -70,6 +70,7 @@ export function createGarciaFileLifecycle(
         createdAt: input.now ?? new Date().toISOString(),
         updatedAt: input.now ?? new Date().toISOString(),
         deletedAt: null,
+        deleteRequestedAt: null,
       };
     },
 
