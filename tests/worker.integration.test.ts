@@ -1518,6 +1518,10 @@ describe("Composio discovery endpoint security", () => {
     const response = await request("/v1/owner/composio/tools");
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({ error: "unauthorized" });
+
+    const policy = await request("/v1/owner/composio/policy");
+    expect(policy.status).toBe(401);
+    expect(await policy.json()).toEqual({ error: "unauthorized" });
   });
 });
 
