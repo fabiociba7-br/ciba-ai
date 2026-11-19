@@ -12,7 +12,7 @@ const makeOwner = async () => {
     .bind(ownerId, new Date().toISOString()).run();
   return ownerId;
 };
-const createJob = async (ownerId: string, key = crypto.randomUUID()) => {
+const createJob = async (ownerId: string, key: string = crypto.randomUUID()) => {
   const now = new Date().toISOString();
   const taskId = crypto.randomUUID();
   const result = await enqueueAgentJob(db, {
