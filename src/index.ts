@@ -55,6 +55,7 @@ import { getActiveOwnerForDevice, readOwnerFeatureSettings } from "./core/owner-
 import { authenticateDevice } from "./security/device-auth";
 import { usageFor } from "./core/usage";
 import { isAppAllowed } from "./core/apps/access";
+import { readRuntimeSettings, CONFIG_KEYS, publicConfig } from "./core/runtime-settings";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
@@ -83,29 +84,6 @@ const requireCibaGenioAccess = async (
     scope: control?.scope || "global",
   }, 403);
 };
-
-const readRuntimeSettings = async (env: Env): Promise<Record<string, string>> => {
-  const rows = await env.DB.prepare("SELECT setting_key, setting_value FROM runtime_settings").all<{
-    setting_key: string; setting_value: string;
-  }>();
-  return Object.fromEntries((rows.results || []).map((row) => [row.setting_key, row.setting_value]));
-};
-
-const CONFIG_KEYS = new Set([
-  "ai_enabled", "ai_model", "max_output_tokens", "maintenance_mode",
-]);
-
-const publicConfig = (settings: Record<string, string>, env: Env) => ({
-  service: "ciba-ai",
-  ai_enabled: settings.ai_enabled !== "false" && Boolean(resolveModel(settings.ai_model, env.AI_MODEL)),
-  model: resolveModel(settings.ai_model, env.AI_MODEL),
-  maintenance_mode: settings.maintenance_mode === "true",
-  limits: {
-    daily_requests: null,
-    requests_per_minute: null,
-    max_output_tokens: Math.min(getLimit(settings.max_output_tokens || env.MAX_OUTPUT_TOKENS, MAX_OUTPUT_TOKENS), MAX_OUTPUT_TOKENS),
-  },
-});
 
 const createRuntimeProviderRegistry = (env: Env, model: string | null, maxOutputTokens: number) => {
   const implementation = new CloudflareWorkersAIProvider(env.AI);
