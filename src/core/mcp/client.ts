@@ -118,11 +118,12 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
     }
     const response = await fetcher(endpoint.toString(), {
       method: "POST",
-      redirect: "error",
+      redirect: "manual",
       headers: await requestHeaders(),
       body: serialized,
       signal: AbortSignal.timeout(timeoutMs),
     });
+    if (response.status >= 300 && response.status < 400) throw new Error("mcp_redirect_blocked");
     if (!response.ok) throw new Error(`mcp_http_error_${response.status}`);
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.toLowerCase().includes("application/json")) {
@@ -167,6 +168,7 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
       signal: AbortSignal.timeout(timeoutMs),
     });
+    if (notification.status >= 300 && notification.status < 400) throw new Error("mcp_redirect_blocked");
     if (!notification.ok) throw new Error(`mcp_http_error_${notification.status}`);
     initialized = true;
     return { protocolVersion: result.protocolVersion, serverInfo: result.serverInfo };
