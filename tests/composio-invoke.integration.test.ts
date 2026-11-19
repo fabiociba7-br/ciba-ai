@@ -333,6 +333,11 @@ describe("owner Composio invocation approval boundary", () => {
     expect(approved.status).toBe(200);
     expect(calls).toEqual([]);
 
+    const previousPolicy = await db.prepare(
+      "SELECT enabled FROM owner_composio_tool_policies WHERE owner_id = ? AND tool_name = ?"
+    ).bind(ownerId, toolName).first<{ enabled: number }>();
+    expect(previousPolicy).not.toBeNull();
+
     await db.prepare(
       "UPDATE owner_composio_tool_policies SET enabled = 0 WHERE owner_id = ? AND tool_name = ?"
     ).bind(ownerId, toolName).run();
@@ -348,6 +353,9 @@ describe("owner Composio invocation approval boundary", () => {
       expect(calls).toEqual([]);
     } finally {
       workerEnv.COMPOSIO_EXECUTION_ENABLED = previousFlag;
+      await db.prepare(
+        "UPDATE owner_composio_tool_policies SET enabled = ? WHERE owner_id = ? AND tool_name = ?"
+      ).bind(previousPolicy!.enabled, ownerId, toolName).run();
     }
   });
 
