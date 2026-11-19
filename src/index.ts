@@ -1092,6 +1092,7 @@ const handleOwnerToolApprovalCancel = async (
     : json({ error: "approval_not_found_or_not_cancellable" }, 404);
 };
 
+// Metrics are scoped to the authenticated device and its active owner; no prompt or response content is collected.
 const handleOwnerObservability = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
