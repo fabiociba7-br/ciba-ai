@@ -119,7 +119,6 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
       redirect: "error",
       headers: await requestHeaders(),
       body: serialized,
-      redirect: "error",
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) throw new Error(`mcp_http_error_${response.status}`);
@@ -163,7 +162,6 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
       redirect: "error",
       headers: await requestHeaders(),
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
-      redirect: "error",
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!notification.ok) throw new Error(`mcp_http_error_${notification.status}`);
