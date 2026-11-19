@@ -90,11 +90,7 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
   const discovered = new Set<string>();
   let initialized = false;
 
-  const post = async (body: Record<string, unknown>): Promise<unknown> => {
-    const serialized = JSON.stringify(body);
-    if (new TextEncoder().encode(serialized).byteLength > MAX_REQUEST_BYTES) {
-      throw new Error("mcp_request_too_large");
-    }
+  const requestHeaders = async (): Promise<Headers> => {
     const headers = new Headers({
       "content-type": "application/json",
       accept: "application/json",
@@ -106,9 +102,17 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
         headers.set("authorization", `Bearer ${token}`);
       }
     }
+    return headers;
+  };
+
+  const post = async (body: Record<string, unknown>): Promise<unknown> => {
+    const serialized = JSON.stringify(body);
+    if (new TextEncoder().encode(serialized).byteLength > MAX_REQUEST_BYTES) {
+      throw new Error("mcp_request_too_large");
+    }
     const response = await fetcher(endpoint.toString(), {
       method: "POST",
-      headers,
+      headers: await requestHeaders(),
       body: serialized,
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -148,18 +152,13 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
     if (!isRecord(result) || typeof result.protocolVersion !== "string" || !isRecord(result.serverInfo)) {
       throw new Error("mcp_initialize_invalid_result");
     }
-    await fetcher(endpoint.toString(), {
+    const notification = await fetcher(endpoint.toString(), {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-        ...(options.getAccessToken && await options.getAccessToken()
-          ? { authorization: `Bearer ${await options.getAccessToken()}` }
-          : {}),
-      },
+      headers: await requestHeaders(),
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
       signal: AbortSignal.timeout(timeoutMs),
     });
+    if (!notification.ok) throw new Error(`mcp_http_error_${notification.status}`);
     initialized = true;
     return { protocolVersion: result.protocolVersion, serverInfo: result.serverInfo };
   };
