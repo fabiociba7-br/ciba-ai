@@ -3848,7 +3848,11 @@ export default {
       env.DB.prepare("DELETE FROM memory_audit_events WHERE occurred_at < ?").bind(new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString()),
     ]);
   },
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(
+    request: Request,
+    env: Env,
+    ctx: ExecutionContext = { waitUntil: () => undefined } as unknown as ExecutionContext,
+  ): Promise<Response> {
     const cors = corsHeaders(request, env);
     try {
       return applyResponseHeaders(await handleRequest(request, env, ctx), cors);
