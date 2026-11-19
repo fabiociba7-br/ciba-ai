@@ -185,10 +185,9 @@ const createRuntimeProviderRegistry = (env: Env, model: string | null, maxOutput
   }] : []);
 };
 
-const corsHeaders = (request: Request, env: Env): HeadersInit => {
-  const origin = request.headers.get("Origin") || "";
-  const allowed = (env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
-  const allowOrigin  Error("body_too_large");
+const readJson = async (request: Request, maxBytes = 40_000): Promise<Record<string, unknown>> => {
+  const declared = Number(request.headers.get("content-length") || 0);
+  if (Number.isFinite(declared) && declared > maxBytes) throw new Error("body_too_large");
 
   // Enforce the limit while reading; do not buffer an unbounded body before checking it.
   const reader = request.body?.getReader();
