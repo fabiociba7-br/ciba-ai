@@ -1511,3 +1511,26 @@ describe("Ciba AI authenticated durable tool approvals", () => {
     expect(await response.json()).toEqual({ error: "active_owner_required" });
   });
 });
+
+
+describe("Garcia MCP endpoint security", () => {
+  it("rejects MCP requests without an authenticated device token", async () => {
+    const response = await request("/v1/mcp", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2025-03-26",
+          capabilities: {},
+          clientInfo: { name: "integration-test", version: "1.0" },
+        },
+      }),
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "unauthorized" });
+  });
+});
