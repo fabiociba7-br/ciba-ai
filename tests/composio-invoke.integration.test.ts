@@ -1,6 +1,12 @@
 import { env } from "cloudflare:workers";
 import workerModule, { type Env } from "../src/index";
 import { hashComposioToolSchema } from "../src/core/composio/policy";
+import { createD1ToolApprovalStore } from "../src/core/tools/durable-consent";
+import { createComposioChatToolDefinitions } from "../src/core/composio/chat-tools";
+import { createGarciaCapabilityToolRuntime } from "../src/core/tools/garcia-capability-tools";
+import { runCibaOrchestrator } from "../src/core/orchestrator";
+import { CIBA_TOOL_PROPOSAL_PREFIX } from "../src/core/tools/model-proposal";
+import type { InferenceRequest, InferenceResult, ModelProvider } from "../src/core/types";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const adminToken = "integration-test-admin-token-0123456789abcdef";
@@ -346,4 +352,117 @@ describe("owner Composio invocation approval boundary", () => {
     ).bind(proposal.approval_id).first<{ status: string }>();
     expect(approval?.status).toBe("approved");
   });
+
+  it("bridges a chat-created durable approval into the owner approval endpoint without executing remotely", async () => {
+    const calls = installComposioMock();
+    const device = await db.prepare(
+      "SELECT device_id FROM devices WHERE owner_id = ? AND revoked_at IS NULL LIMIT 1"
+    ).bind(ownerId).first<{ device_id: string }>();
+    expect(device?.device_id).toBeTruthy();
+
+    const input = {
+      to: "recipient@example.com",
+      subject: "Chat approval bridge",
+      body: "Must remain unexecuted",
+    };
+    const chatTools = await createComposioChatToolDefinitions({
+      remoteTools: [{
+        name: toolName,
+        description: "Send an email",
+        inputSchema: schema,
+        annotations: { destructiveHint: true },
+      }],
+      enabledToolkits: ["gmail"],
+      savedPolicies: [{
+        tool_name: toolName,
+        toolkit: "gmail",
+        risk: "write",
+        requires_approval: 1,
+        schema_sha256: await hashComposioToolSchema(schema),
+        enabled: 1,
+      }],
+      callTool: async (name) => {
+        calls.push(name);
+        return { content: [{ type: "text", text: "unexpected" }], isError: false };
+      },
+    });
+    const conversationId = "conversation-chat-approval-bridge";
+    const invocationId = crypto.randomUUID();
+    const runtime = createGarciaCapabilityToolRuntime({
+      authorize: async () => true,
+      context: { conversationId, invocationId },
+      additionalTools: chatTools,
+      approval: {
+        store: createD1ToolApprovalStore(db),
+        identity: { ownerId, appId, deviceId: device!.device_id },
+      },
+    });
+    const proposalText = CIBA_TOOL_PROPOSAL_PREFIX + JSON.stringify({
+      protocol: "ciba.tool.proposal.v1",
+      toolId: "composio.gmail_send_email",
+      input,
+    });
+    const provider: ModelProvider = {
+      id: "test-provider",
+      enabled: true,
+      generate: async (_request: InferenceRequest): Promise<InferenceResult> => ({
+        text: proposalText,
+        raw: null,
+        provider: "test-provider",
+        model: "test-model",
+      }),
+    };
+    const chatResult = await runCibaOrchestrator({
+      messages: [{ role: "user", content: "Envie este e-mail." }],
+      model: "test-model",
+      maxOutputTokens: 128,
+      provider,
+      toolRuntime: runtime,
+    });
+
+    expect(chatResult.toolProposal).toMatchObject({
+      toolId: "composio.gmail_send_email",
+      risk: "write",
+      requiresApproval: true,
+      input,
+      conversationId,
+      invocationId,
+    });
+    expect(chatResult.toolApproval).toMatchObject({ status: "approval_required" });
+    const approvalId = chatResult.toolApproval?.approvalId;
+    expect(approvalId).toBeTruthy();
+    expect(calls).toEqual([]);
+
+    const invocation = {
+      tool_name: toolName,
+      conversation_id: conversationId,
+      invocation_id: invocationId,
+      input,
+    };
+    const approved = await ownerRequest({
+      ...invocation,
+      action: "approve",
+      approval_id: approvalId,
+      allow: true,
+    });
+    expect(approved.status, JSON.stringify(await approved.clone().json())).toBe(200);
+    expect(await approved.json()).toMatchObject({ approved: true, approval_id: approvalId });
+    expect(calls).toEqual([]);
+
+    const previousFlag = workerEnv.COMPOSIO_EXECUTION_ENABLED;
+    workerEnv.COMPOSIO_EXECUTION_ENABLED = "false";
+    try {
+      const executed = await ownerRequest({
+        ...invocation,
+        action: "execute",
+        approval_id: approvalId,
+      });
+      expect(executed.status).toBe(403);
+      expect(await executed.json()).toMatchObject({ error: "composio_execution_disabled" });
+      expect(calls).toEqual([]);
+    } finally {
+      workerEnv.COMPOSIO_EXECUTION_ENABLED = previousFlag;
+    }
+  });
+
 });
