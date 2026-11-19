@@ -58,7 +58,7 @@ describe("research always creates a cumulative learning record", () => {
       async findByFingerprint(fingerprint) { return records.find((_, i) => fingerprints[i] === fingerprint) ?? null; },
       async save(entry, fingerprint) { records.push(entry); fingerprints.push(fingerprint); },
     };
-    return { store, records };
+    return { store, records, fingerprints };
   }
   it("stores a new research result with sources and insights", async () => {
     const repo = repository();
