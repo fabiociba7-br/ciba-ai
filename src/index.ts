@@ -32,6 +32,7 @@ import { deriveTaskLifecycle } from "./core/task-lifecycle";
 import { CIBAGENIO_RESOURCES, parseCibaGenioCommand } from "./core/cibagenio";
 import { createNativeCapabilityRegistry } from "./core/native-capabilities";
 import { createD1ToolApprovalStore } from "./core/tools/durable-consent";
+import { createCibaToolRegistry } from "./core/tools/registry";
 import { createGarciaCapabilityToolRuntime } from "./core/tools/garcia-capability-tools";
 import { handleMcpRequest } from "./core/mcp/protocol";
 import { enqueueAgentJob, getAgentJob, cancelAgentJob } from "./core/agent-queue-store";
@@ -850,6 +851,200 @@ const handleOwnerComposioPolicy = async (request: Request, env: Env) => {
       return json({ error: code }, 400);
     }
     return json({ error: "composio_policy_save_failed" }, 502);
+  }
+};
+
+
+const handleOwnerComposioInvoke = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  if (device.app_id !== "com.ciba.garcia") return json({ error: "garcia_app_required" }, 403);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const resourceAccess = await requireCibaGenioAccess(env, "external_tools", device.app_id);
+  if (resourceAccess) return resourceAccess;
+  if (!env.COMPOSIO_API_KEY) return json({ error: "composio_server_not_configured" }, 503);
+
+  let body: Record<string, unknown>;
+  try { body = await readJson(request, 48_000); } catch {
+    return json({ error: "invalid_json" }, 400);
+  }
+  const action = body.action;
+  const toolName = body.tool_name;
+  const conversationId = body.conversation_id;
+  const invocationId = body.invocation_id;
+  if (!["propose", "approve", "execute"].includes(String(action)) ||
+      typeof toolName !== "string" || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(toolName) ||
+      typeof conversationId !== "string" || !conversationId.trim() || conversationId.length > 128 ||
+      typeof invocationId !== "string" || !invocationId.trim() || invocationId.length > 128 ||
+      body.input === undefined) {
+    return json({ error: "composio_invocation_invalid" }, 400);
+  }
+  if (action === "approve" && (typeof body.approval_id !== "string" ||
+      !body.approval_id.trim() || body.approval_id.length > 128 || typeof body.allow !== "boolean")) {
+    return json({ error: "composio_approval_decision_invalid" }, 400);
+  }
+  if (action === "execute" && body.approval_id !== undefined &&
+      (typeof body.approval_id !== "string" || !body.approval_id.trim() || body.approval_id.length > 128)) {
+    return json({ error: "composio_approval_id_invalid" }, 400);
+  }
+
+  const session = await env.DB.prepare(
+    "SELECT session_id, toolkits_json FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
+  ).bind(owner.owner_id).first<{ session_id: string; toolkits_json: string }>();
+  if (!session) return json({ error: "composio_session_not_found" }, 404);
+
+  const savedPolicy = await env.DB.prepare(`
+    SELECT toolkit, risk, requires_approval, schema_sha256, enabled
+    FROM owner_composio_tool_policies WHERE owner_id = ? AND tool_name = ?
+  `).bind(owner.owner_id, toolName).first<{
+    toolkit: string; risk: "read" | "write" | "external";
+    requires_approval: number; schema_sha256: string; enabled: number;
+  }>();
+  if (!savedPolicy || savedPolicy.enabled !== 1) return json({ error: "composio_tool_not_enabled" }, 403);
+
+  let enabledToolkits: string[];
+  try {
+    const parsed = JSON.parse(session.toolkits_json);
+    if (!Array.isArray(parsed) || !parsed.every((item) => typeof item === "string")) throw new Error();
+    enabledToolkits = parsed;
+  } catch {
+    return json({ error: "composio_session_configuration_invalid" }, 500);
+  }
+
+  try {
+    const attached = await attachComposioOwnerSession(env.COMPOSIO_API_KEY, session.session_id);
+    const discovery = createComposioMcpDiscoveryClient({
+      apiKey: env.COMPOSIO_API_KEY,
+      sessionId: attached.sessionId,
+      mcpUrl: attached.mcpUrl,
+    });
+    await discovery.initialize();
+    const remoteTools = await discovery.listTools();
+    const remoteTool = remoteTools.find((item) => item.name === toolName);
+    if (!remoteTool) return json({ error: "composio_tool_not_discovered" }, 409);
+
+    const classified = classifyComposioTool(remoteTool, enabledToolkits);
+    const schemaSha256 = await hashComposioToolSchema(remoteTool.inputSchema);
+    if (classified.toolkit !== savedPolicy.toolkit || classified.risk !== savedPolicy.risk ||
+        (classified.requiresApproval ? 1 : 0) !== savedPolicy.requires_approval ||
+        schemaSha256 !== savedPolicy.schema_sha256) {
+      return json({ error: "composio_tool_policy_changed", reauthorize: true }, 409);
+    }
+
+    const identity = { ownerId: owner.owner_id, appId: device.app_id, deviceId: device.device_id };
+    const context = { conversationId, invocationId };
+    const toolId = `composio.${toolName.toLowerCase()}`;
+    const executionClient = createComposioMcpDiscoveryClient({
+      apiKey: env.COMPOSIO_API_KEY,
+      sessionId: attached.sessionId,
+      mcpUrl: attached.mcpUrl,
+      allowedToolNames: [toolName],
+      approvedToolNames: action === "execute" && classified.requiresApproval ? [toolName] : [],
+    });
+    // Discovery and invocation use the same owner session; initialize a fresh
+    // stateless client for the single explicitly selected tool.
+    await executionClient.initialize();
+    const executionTools = await executionClient.listTools();
+    if (!executionTools.some((item) => item.name === toolName)) {
+      return json({ error: "composio_tool_changed_during_invocation" }, 409);
+    }
+
+    const registry = createCibaToolRegistry([{
+      id: toolId,
+      description: classified.description || `Composio ${toolName}`,
+      risk: classified.risk,
+      requiresApproval: classified.requiresApproval,
+      inputSchema: remoteTool.inputSchema,
+      execute: async (input: unknown) => executionClient.callTool(toolName, input as Record<string, unknown>),
+    }], {
+      allowlist: [toolId],
+      timeoutMs: 15_000,
+      maxInputBytes: 32_000,
+      maxOutputBytes: 64_000,
+      maxConcurrentExecutions: 1,
+      authorize: async (authorization) => {
+        if (authorization.toolId !== toolId || authorization.risk !== classified.risk) return false;
+        const current = await env.DB.prepare(`
+          SELECT p.enabled, p.risk, p.requires_approval, p.schema_sha256
+          FROM owner_composio_tool_policies p
+          JOIN owner_composio_sessions s ON s.owner_id = p.owner_id AND s.status = 'active'
+          JOIN devices d ON d.device_id = ? AND d.owner_id = p.owner_id AND d.app_id = ?
+          JOIN owners o ON o.owner_id = p.owner_id
+          WHERE p.owner_id = ? AND p.tool_name = ? AND s.session_id = ?
+            AND d.revoked_at IS NULL AND o.status = 'active' AND o.revoked_at IS NULL
+        `).bind(device.device_id, device.app_id, owner.owner_id, toolName, session.session_id)
+          .first<{ enabled: number; risk: string; requires_approval: number; schema_sha256: string }>();
+        if (!current || current.enabled !== 1 || current.risk !== classified.risk ||
+            current.requires_approval !== (classified.requiresApproval ? 1 : 0) ||
+            current.schema_sha256 !== schemaSha256) return false;
+        const access = await requireCibaGenioAccess(env, "external_tools", device.app_id);
+        return access === null;
+      },
+    });
+
+    const plan = registry.prepare(toolId, body.input, context);
+    const approvals = createD1ToolApprovalStore(env.DB);
+    const approvalRequest = {
+      conversationId,
+      invocationId,
+      toolId,
+      risk: classified.risk === "read" ? "external" as const : classified.risk,
+      input: plan.input,
+      bindingSha256: schemaSha256,
+    };
+
+    if (action === "propose") {
+      if (!classified.requiresApproval) {
+        return json({ proposed: true, approval: "not_required", execution_enabled: true, tool: toolName });
+      }
+      const result = await approvals.request(identity, approvalRequest);
+      return json({
+        proposed: true,
+        approval: result.status,
+        approval_id: result.approvalId,
+        expires_in_seconds: 300,
+        execution_enabled: false,
+        tool: toolName,
+        risk: classified.risk,
+      }, 202);
+    }
+
+    if (action === "approve") {
+      if (!classified.requiresApproval) return json({ error: "approval_not_required" }, 400);
+      const approved = await approvals.answer({
+        approvalId: body.approval_id as string,
+        identity,
+        request: approvalRequest,
+        approverDeviceId: device.device_id,
+        allow: body.allow as boolean,
+      });
+      return approved
+        ? json({ approved: body.allow, approval_id: body.approval_id })
+        : json({ error: "approval_not_found_or_expired" }, 409);
+    }
+
+    if (classified.requiresApproval) {
+      if (typeof body.approval_id !== "string") return json({ error: "tool_approval_required" }, 403);
+      const consumed = await approvals.consume({
+        approvalId: body.approval_id,
+        identity,
+        request: approvalRequest,
+      });
+      if (!consumed) return json({ error: "tool_approval_required_or_expired" }, 403);
+    } else if (body.approval_id !== undefined) {
+      return json({ error: "unexpected_tool_approval" }, 400);
+    }
+
+    const result = await registry.execute(toolId, plan.input, context);
+    return json({ executed: true, tool: toolName, result });
+  } catch (error) {
+    const reason = error instanceof Error && /^[a-z0-9_:-]{1,80}$/i.test(error.message)
+      ? error.message
+      : "composio_invocation_failed";
+    const status = reason.includes("approval") ? 403 :
+      reason.includes("invalid_tool_input") || reason.includes("tool_not_allowlisted") ? 400 : 502;
+    return json({ error: "composio_invocation_failed", reason }, status);
   }
 };
 
@@ -4123,6 +4318,9 @@ const handleRequest = async (
   }
   if (url.pathname === "/v1/owner/composio/policy" && ["GET", "POST"].includes(request.method)) {
     return handleOwnerComposioPolicy(request, env);
+  }
+  if (url.pathname === "/v1/owner/composio/invoke" && request.method === "POST") {
+    return handleOwnerComposioInvoke(request, env);
   }
   if (url.pathname === "/v1/owner/composio/tools" && request.method === "GET") {
     return handleOwnerComposioTools(request, env);
