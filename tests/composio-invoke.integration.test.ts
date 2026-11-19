@@ -25,7 +25,12 @@ let accessToken = "";
 let ownerId = "";
 let previousExternalToolsControl: { enabled: number; reason: string | null; updated_by: string; updated_at: string } | null = null;
 
-const workerEnv = { ...env, COMPOSIO_API_KEY: apiKey } as Env;
+const workerEnv = {
+  ...env,
+  COMPOSIO_API_KEY: apiKey,
+  // Explicitly enabled only inside this mocked integration-test environment.
+  COMPOSIO_EXECUTION_ENABLED: "true",
+} as Env;
 const request = (path: string, init: RequestInit = {}) => workerModule.fetch(
   new Request("https://ciba-ai.test" + path, init),
   workerEnv,
@@ -162,6 +167,40 @@ afterAll(async () => {
 });
 
 describe("owner Composio invocation approval boundary", () => {
+  it("blocks remote execution server-side when the feature flag is disabled", async () => {
+    const calls = installComposioMock();
+    const invocation = {
+      tool_name: toolName,
+      conversation_id: "conversation-execution-disabled",
+      invocation_id: crypto.randomUUID(),
+      input: {
+        to: "recipient@example.com",
+        subject: "Must remain blocked",
+        body: "No remote execution",
+      },
+    };
+    const proposed = await ownerRequest({ ...invocation, action: "propose" });
+    expect(proposed.status).toBe(202);
+    const proposal = await proposed.json() as { approval_id: string };
+    const approved = await ownerRequest({
+      ...invocation, action: "approve", approval_id: proposal.approval_id, allow: true,
+    });
+    expect(approved.status).toBe(200);
+
+    const previousFlag = workerEnv.COMPOSIO_EXECUTION_ENABLED;
+    workerEnv.COMPOSIO_EXECUTION_ENABLED = "false";
+    try {
+      const executed = await ownerRequest({
+        ...invocation, action: "execute", approval_id: proposal.approval_id,
+      });
+      expect(executed.status).toBe(403);
+      expect(await executed.json()).toMatchObject({ error: "composio_execution_disabled" });
+      expect(calls).toEqual([]);
+    } finally {
+      workerEnv.COMPOSIO_EXECUTION_ENABLED = previousFlag;
+    }
+  });
+
   it("does not call the remote tool until explicit approval and one-shot execution", async () => {
     const calls = installComposioMock();
     const invocation = {
