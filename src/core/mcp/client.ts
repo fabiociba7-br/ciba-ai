@@ -163,7 +163,7 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
     negotiatedProtocolVersion = result.protocolVersion;
     const notification = await fetcher(endpoint.toString(), {
       method: "POST",
-      redirect: "error",
+      redirect: "manual",
       headers: await requestHeaders(true),
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }),
       signal: AbortSignal.timeout(timeoutMs),
