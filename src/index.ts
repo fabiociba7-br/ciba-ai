@@ -1258,25 +1258,7 @@ const handleOwnerFacebookData = async (request: Request, env: Env, url: URL) => 
   }
 };
 
-const getActiveOwnerForDevice = async (env: Env, ownerId: string | null) => {
-  if (!ownerId) return null;
-  return env.DB.prepare(
-    "SELECT owner_id FROM owners WHERE owner_id = ? AND status = 'active'"
-  ).bind(ownerId).first<{ owner_id: string }>();
-};
-
-
-type OwnerFeatureSettings = { memory_enabled: boolean; app_messaging_enabled: boolean };
-
-const readOwnerFeatureSettings = async (env: Env, ownerId: string): Promise<OwnerFeatureSettings> => {
-  const row = await env.DB.prepare(
-    "SELECT memory_enabled, app_messaging_enabled FROM owner_settings WHERE owner_id = ?"
-  ).bind(ownerId).first<{ memory_enabled: number; app_messaging_enabled: number }>();
-  return {
-    memory_enabled: row?.memory_enabled === 1,
-    app_messaging_enabled: row?.app_messaging_enabled === 1,
-  };
-};
+import { getActiveOwnerForDevice, readOwnerFeatureSettings } from "./core/owner-access";
 
 const handleOwnerAvailableApps = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
