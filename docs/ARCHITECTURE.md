@@ -114,3 +114,17 @@ A migration `0012_app_identity_profiles.sql` adiciona descrição, tipo, capacid
 ## Coordenador de tarefas
 
 `src/core/task-coordinator.ts` aplica seleção determinística e fail-closed: compara o tipo solicitado com tipos declarados, exige concessões direcionais para o mesmo par de apps e não desempata candidatos múltiplos. `POST /v1/apps/tasks/dispatch` deriva remetente e proprietário do dispositivo autenticado, limita instrução/contexto, aplica TTL e idempotência e grava o pedido na fila de mensagens já existente. Não há execução remota de ferramentas, nem inferência de que o destino completou a tarefa. A resposta deve retornar como mensagem correlacionada pelo mesmo `task_id` e requer concessões inversas.
+
+## Transporte MCP de saída
+
+O módulo `src/core/mcp/client.ts` fornece a base para a Garcia atuar como cliente de servidores MCP remotos por HTTP:
+- exige HTTPS e uma allowlist explícita de hosts definida pelo chamador confiável;
+- aceita credencial por callback, sem persistir tokens ou expô-los em logs;
+- negocia inicialização JSON-RPC, descobre ferramentas e só permite chamar ferramentas previamente descobertas;
+- limita tamanho de requisição, resposta, catálogo de ferramentas e tempo de chamada;
+- não repete chamadas automaticamente e não segue redirecionamentos por conta própria;
+- a primeira versão aceita respostas JSON; respostas SSE ainda não são suportadas.
+
+Esse transporte é uma primitiva interna e ainda não habilita conexões remotas por configuração do usuário, não armazena credenciais e não executa ferramentas externas por padrão. A política de risco, o consentimento e a autorização permanecem sob controle do registro de ferramentas da Garcia. O endpoint de entrada `/v1/mcp` continua separado e oferece somente as ferramentas de leitura autorizadas.
+
+A integração Garcia–Composio continua desacoplada: a conexão Composio disponível no ChatGPT não transfere credenciais para o Worker. Uma integração própria exige configuração explícita de credenciais no ambiente da Garcia, revisão dos limites gratuitos e autorização do proprietário; nenhum segredo ou conexão paga foi habilitado nesta etapa.
