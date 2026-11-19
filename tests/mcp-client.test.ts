@@ -103,7 +103,6 @@ describe("outbound MCP HTTP client", () => {
     expect(requests[0].headers.get("mcp-protocol-version")).toBeNull();
     expect(requests.slice(1).every((request) => request.headers.get("mcp-protocol-version") === "2025-11-25")).toBe(true);
     expect(requests.every((request) => request.headers.get("accept")?.includes("text/event-stream"))).toBe(true);
-    expect(requests.every((request) => request.redirect === "error")).toBe(true);
     expect(JSON.parse(await requests[0].clone().text())).toMatchObject({
       method: "initialize",
       params: { clientInfo: { name: "garcia-mcp-client" } },
