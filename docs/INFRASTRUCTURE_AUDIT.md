@@ -75,6 +75,20 @@ O deploy bem-sucedido confirma publicação e saúde naquele instante, mas não 
 5. **Executor separado:** GEIVIA continua independente e executa tarefas de terminal, build e deploy mediante API autenticada. Não transferir execução de código arbitrário para o Worker.
 6. **Escala orientada por métricas:** só introduzir filas, Durable Objects, bancos adicionais ou runtimes locais quando uma necessidade observada justificar a complexidade e a solução continuar dentro do orçamento zero.
 
+## Observabilidade operacional implementada
+
+Foi adicionada a rota administrativa protegida `GET /v1/admin/observability`.
+
+- Exige o mesmo Bearer token administrativo já utilizado pelo backend.
+- Retorna agregados diários existentes de cotas global, por aplicativo e por dispositivo, sem expor chaves de dispositivo.
+- Resume atividade e pico de requisições por dispositivo/minuto nas últimas 24 horas.
+- Resume tentativas de autenticação administrativa recusadas nas últimas 24 horas.
+- Não cria tabelas, migrations, gravações adicionais ou cron jobs.
+- Não registra prompts, respostas ou conteúdo de conversas.
+- Latência, status HTTP e métricas de Workers AI/D1 continuam consultados nos painéis oficiais da Cloudflare; a API não inventa estimativas desses indicadores.
+
+A rota foi coberta por testes de integração para autenticação, agregação e proteção de dados. A validação de CI é necessária antes de considerar a alteração pronta para produção.
+
 ## Próximo trabalho técnico
 
 Antes de expandir capacidade, implementar observabilidade operacional de baixo custo: registrar contadores agregados de requisições, erros, latência, limites internos e consumo de D1 sem armazenar prompts ou respostas. Expor uma visão administrativa protegida e alertas quando os limites internos se aproximarem do teto.
