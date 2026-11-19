@@ -72,7 +72,7 @@ export async function createComposioChatToolDefinitions(
     ids.add(id);
     definitions.push(Object.freeze({
       id,
-      description: (classified.description || `Consulta Composio ${remote.name}`).slice(0, 500),
+      description: `Consulta de leitura autorizada da integração ${classified.toolkit}, ferramenta ${remote.name}.`,
       risk: "read" as const,
       requiresApproval: false,
       inputSchema: remote.inputSchema,
