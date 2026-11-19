@@ -106,6 +106,51 @@ describe("D1 durable tool approval store", () => {
     expect(row?.closed_at).toBeTruthy();
   });
 
+  it("binds approvals to an immutable external schema fingerprint", async () => {
+    const caller = await identity();
+    const approver = await deviceForOwner(caller.ownerId);
+    const store = createD1ToolApprovalStore(db);
+    const schemaA = "a".repeat(64);
+    const schemaB = "b".repeat(64);
+    const boundRequest = { ...request, invocationId: crypto.randomUUID(), bindingSha256: schemaA };
+    const approval = await store.request(caller, boundRequest);
+
+    await expect(store.request(caller, { ...boundRequest, bindingSha256: schemaB }))
+      .rejects.toThrow("tool_approval_invocation_conflict");
+
+    expect(await store.answer({
+      approvalId: approval.approvalId,
+      identity: caller,
+      request: { ...boundRequest, bindingSha256: schemaB },
+      approverDeviceId: approver.deviceId,
+      allow: true
+    })).toBe(false);
+
+    expect(await store.answer({
+      approvalId: approval.approvalId,
+      identity: caller,
+      request: boundRequest,
+      approverDeviceId: approver.deviceId,
+      allow: true
+    })).toBe(true);
+
+    expect(await store.consume({
+      approvalId: approval.approvalId,
+      identity: caller,
+      request: { ...boundRequest, bindingSha256: schemaB }
+    })).toBe(false);
+
+    expect(await store.consume({
+      approvalId: approval.approvalId,
+      identity: caller,
+      request: boundRequest
+    })).toBe(true);
+
+    await expect(store.request(caller, {
+      ...request, invocationId: crypto.randomUUID(), bindingSha256: "invalid"
+    })).rejects.toThrow("invalid_tool_approval_binding");
+  });
+
   it("expires pending approvals and supports explicit cancellation", async () => {
     const caller = await identity();
     let clock = Date.now();
