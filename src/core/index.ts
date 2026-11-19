@@ -2,6 +2,8 @@ export { runCibaOrchestrator } from "./orchestrator";
 export { runMultiModelEnsemble } from "./ensemble";
 export type { EnsembleMember, EnsemblePlan, EnsembleResult } from "./ensemble";
 export { listAgents } from "./agents/catalog";
+export { listGarciaSkills, getGarciaSkill, selectGarciaSkills, formatGarciaSkillInstructions } from "./skills/catalog";
+export type { GarciaSkillDefinition, GarciaSkillSummary } from "./skills/catalog";
 export { routeTask } from "./router";
 export { CloudflareWorkersAIProvider } from "./providers/cloudflare";
 export { OpenAICompatibleProvider } from "./providers/openai-compatible";
