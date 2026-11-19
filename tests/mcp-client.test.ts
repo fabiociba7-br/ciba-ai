@@ -95,7 +95,10 @@ describe("outbound MCP HTTP client", () => {
 
     await expect(client.callTool("unknown.tool", {})).rejects.toThrow("mcp_tool_not_discovered");
     await expect(client.callTool("dangerous.write", {})).rejects.toThrow("mcp_tool_not_read_only_or_approved");
-    const result = await client.callTool("garcia.capabilities.list", {});
+    // The tool registry snapshots validated JSON into null-prototype records.
+    // MCP must accept those safe records instead of rejecting approved calls.
+    const safeArgs = Object.create(null) as Record<string, unknown>;
+    const result = await client.callTool("garcia.capabilities.list", safeArgs);
     expect(result).toEqual({ content: [{ type: "text", text: "[]" }], isError: false });
     expect(requests).toHaveLength(4);
     expect(requests.every((request) => request.headers.get("authorization") === "Bearer test-device-token")).toBe(true);
