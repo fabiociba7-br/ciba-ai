@@ -143,3 +143,18 @@ A configuração de produção deverá:
 - parar sem fallback pago quando a cota gratuita for atingida.
 
 A conexão Composio existente no ChatGPT não fornece automaticamente uma chave de projeto nem transfere as contas vinculadas para a Garcia. A criação da integração própria depende da chave de projeto Composio e de autorização OAuth separada para as contas que serão usadas pela Garcia.
+
+## Sessões Composio por proprietário
+
+O módulo `src/core/composio/sessions.ts` cria e revoga sessões pela API v3.1 oficial do Composio, usando somente a chave de projeto do Worker (`COMPOSIO_API_KEY`). Cada proprietário recebe um `user_id` pseudonimizado e estável derivado por SHA-256 do owner ID; identificadores pessoais não são enviados.
+
+A rota autenticada `/v1/owner/composio/session` oferece:
+- `GET`: consulta apenas o estado da sessão do proprietário autenticado;
+- `POST`: cria sessão somente com `consent: true` e allowlist explícita de até dez toolkits;
+- `DELETE`: revoga a sessão remota e marca o registro como revogado.
+
+O servidor exige o controle CibaGênio `external_tools`, o app Garcia e um proprietário ativo. O ID da sessão fica em D1 com escopo por proprietário; URL MCP e credenciais nunca são devolvidas ao Android. A chave de projeto permanece como Worker secret e não é gravada no banco.
+
+A política enviada ao Composio desabilita uso instantâneo/cobrança, workbench e execução múltipla, bloqueia ferramentas marcadas como criação, atualização ou destruição e limita conexões a uma allowlist de toolkits. A sessão pode gerenciar a conexão OAuth dos toolkits explicitamente escolhidos, sem habilitar remoção de contas. O cliente MCP da Garcia ainda aplica sua própria allowlist local e aceita apenas ferramentas com anotação de leitura; a anotação remota não substitui a autorização da Garcia.
+
+A integração permanece inativa até a configuração manual do Worker secret `COMPOSIO_API_KEY`. A conexão Composio já existente no ChatGPT não fornece essa chave nem transfere as contas vinculadas. O endpoint cria e mantém sessões, mas ainda não injeta ferramentas remotas no orquestrador da Garcia; essa conexão controlada será a etapa seguinte.
