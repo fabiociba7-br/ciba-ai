@@ -1513,6 +1513,14 @@ describe("Ciba AI authenticated durable tool approvals", () => {
 });
 
 
+describe("Composio discovery endpoint security", () => {
+  it("rejects Composio tool discovery without an authenticated Garcia device", async () => {
+    const response = await request("/v1/owner/composio/tools");
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "unauthorized" });
+  });
+});
+
 describe("Garcia MCP endpoint security", () => {
   it("rejects MCP requests without an authenticated device token", async () => {
     const response = await request("/v1/mcp", {
