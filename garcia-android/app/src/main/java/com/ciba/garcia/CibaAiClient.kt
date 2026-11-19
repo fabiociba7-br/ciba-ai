@@ -27,6 +27,7 @@ class CibaAiClient(private val store: SecureStore) {
         }
         when (method) {
             "POST" -> builder.post((payload ?: JSONObject()).toString().toRequestBody(JSON))
+            "DELETE" -> builder.delete()
             else -> builder.get()
         }
         http.newCall(builder.build()).execute().use { response ->
@@ -162,6 +163,68 @@ class CibaAiClient(private val store: SecureStore) {
     fun cancelAgentJob(taskId: String): JSONObject {
         require(taskId.matches(Regex("[A-Za-z0-9_-]{16,128}"))) { "Identificador de tarefa inválido." }
         return request("/v1/owner/agent-jobs/$taskId/cancel", "POST", authenticated = true)
+    }
+
+
+    fun composioSession(): JSONObject = request("/v1/owner/composio/session", "GET", authenticated = true)
+
+    fun createComposioSession(toolkits: List<String>): JSONObject {
+        val normalized = toolkits.map { it.trim().lowercase() }.filter(String::isNotBlank).distinct()
+        require(normalized.isNotEmpty() && normalized.size <= 10) {
+            "Informe de 1 a 10 integrações Composio."
+        }
+        require(normalized.all { it.matches(Regex("[a-z][a-z0-9_-]{0,63}")) }) {
+            "Nome de integração inválido."
+        }
+        return request(
+            "/v1/owner/composio/session", "POST",
+            JSONObject().put("consent", true).put("toolkits", JSONArray(normalized)),
+            authenticated = true,
+        )
+    }
+
+    fun revokeComposioSession(): JSONObject =
+        request("/v1/owner/composio/session", "DELETE", authenticated = true)
+
+    fun composioTools(): JSONObject =
+        request("/v1/owner/composio/tools", "GET", authenticated = true)
+
+    fun composioPolicy(): JSONObject =
+        request("/v1/owner/composio/policy", "GET", authenticated = true)
+
+    fun saveComposioPolicy(toolNames: List<String>): JSONObject {
+        require(toolNames.size <= 32 && toolNames.distinct().size == toolNames.size) {
+            "Seleção de ferramentas inválida."
+        }
+        return request(
+            "/v1/owner/composio/policy", "POST",
+            JSONObject().put("consent", true).put("tools", JSONArray(toolNames)),
+            authenticated = true,
+        )
+    }
+
+    fun invokeComposio(
+        action: String,
+        toolName: String,
+        conversationId: String,
+        invocationId: String,
+        input: JSONObject,
+        approvalId: String? = null,
+        allow: Boolean? = null,
+    ): JSONObject {
+        require(action in setOf("propose", "approve", "execute")) { "Ação Composio inválida." }
+        require(toolName.matches(Regex("[A-Za-z][A-Za-z0-9_-]{0,63}"))) { "Ferramenta inválida." }
+        require(conversationId.isNotBlank() && conversationId.length <= 128) { "Conversa inválida." }
+        require(invocationId.isNotBlank() && invocationId.length <= 128) { "Invocação inválida." }
+        val payload = JSONObject()
+            .put("action", action)
+            .put("tool_name", toolName)
+            .put("conversation_id", conversationId)
+            .put("invocation_id", invocationId)
+            .put("input", input)
+        if (approvalId != null) payload.put("approval_id", approvalId)
+        if (allow != null) payload.put("allow", allow)
+        return request("/v1/owner/composio/invoke", "POST", payload, authenticated = true)
     }
 
     fun usage(): JSONObject = request("/v1/usage", "GET", authenticated = true)
