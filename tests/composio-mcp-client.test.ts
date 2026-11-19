@@ -40,7 +40,7 @@ describe("Composio MCP discovery adapter", () => {
     const tools = await client.listTools();
 
     expect(tools.map((tool) => tool.name)).toEqual(["GMAIL_LIST_EMAILS"]);
-    await expect(client.callTool("GMAIL_LIST_EMAILS", {})).rejects.toThrow("mcp_tool_not_discovered");
+    await expect(client.callTool("GMAIL_LIST_EMAILS", {})).rejects.toThrow("mcp_tool_not_allowlisted");
     expect(requests).toHaveLength(3);
     expect(requests.every((request) => request.url ===
       `https://app.composio.dev/tool_router/v3/${sessionId}/mcp`)).toBe(true);
