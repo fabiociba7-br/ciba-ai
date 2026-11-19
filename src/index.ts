@@ -918,6 +918,8 @@ const handleOwnerComposioInvoke = async (request: Request, env: Env) => {
       apiKey: env.COMPOSIO_API_KEY,
       sessionId: attached.sessionId,
       mcpUrl: attached.mcpUrl,
+      allowedToolNames: [toolName],
+      approvedToolNames: action === "execute" && savedPolicy.requires_approval === 1 ? [toolName] : [],
     });
     await discovery.initialize();
     const remoteTools = await discovery.listTools();
@@ -935,28 +937,13 @@ const handleOwnerComposioInvoke = async (request: Request, env: Env) => {
     const identity = { ownerId: owner.owner_id, appId: device.app_id, deviceId: device.device_id };
     const context = { conversationId, invocationId };
     const toolId = `composio.${toolName.toLowerCase()}`;
-    const executionClient = createComposioMcpDiscoveryClient({
-      apiKey: env.COMPOSIO_API_KEY,
-      sessionId: attached.sessionId,
-      mcpUrl: attached.mcpUrl,
-      allowedToolNames: [toolName],
-      approvedToolNames: action === "execute" && classified.requiresApproval ? [toolName] : [],
-    });
-    // Discovery and invocation use the same owner session; initialize a fresh
-    // stateless client for the single explicitly selected tool.
-    await executionClient.initialize();
-    const executionTools = await executionClient.listTools();
-    if (!executionTools.some((item) => item.name === toolName)) {
-      return json({ error: "composio_tool_changed_during_invocation" }, 409);
-    }
-
     const registry = createCibaToolRegistry([{
       id: toolId,
       description: classified.description || `Composio ${toolName}`,
       risk: classified.risk,
       requiresApproval: classified.requiresApproval,
       inputSchema: remoteTool.inputSchema,
-      execute: async (input: unknown) => executionClient.callTool(toolName, input as Record<string, unknown>),
+      execute: async (input: unknown) => discovery.callTool(toolName, input as Record<string, unknown>),
     }], {
       allowlist: [toolId],
       timeoutMs: 15_000,
