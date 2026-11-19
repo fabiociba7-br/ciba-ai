@@ -53,11 +53,12 @@ import { classifyComposioTool, hashComposioToolSchema } from "./core/composio/po
 import { createComposioChatToolDefinitions } from "./core/composio/chat-tools";
 import { getActiveOwnerForDevice, readOwnerFeatureSettings } from "./core/owner-access";
 import { authenticateDevice } from "./security/device-auth";
+import { usageFor } from "./core/usage";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
 
-import { b64url, randomToken, sha256, nowIso, utcDay } from "./security/crypto";
+import { b64url, randomToken, sha256, nowIso } from "./security/crypto";
 import { MESSAGE_MAX_PAYLOAD_CHARS, MESSAGE_MAX_PENDING_PER_DESTINATION, MESSAGE_DEFAULT_TTL_HOURS, MESSAGE_MAX_TTL_HOURS, hasMessageGrant } from "./core/app-messaging";
 
 const allowedApps = (env: Env) =>
@@ -135,16 +136,6 @@ const createRuntimeProviderRegistry = (env: Env, model: string | null, maxOutput
 };
 
 
-
-const usageFor = async (env: Env, appId: string, deviceId: string) => {
-  const day = utcDay();
-  const rows = await env.DB.prepare(
-    "SELECT scope_key, requests, request_limit FROM daily_usage WHERE day = ? AND scope_key IN ('global', ?, ?)"
-  ).bind(day, `app:${appId}`, `device:${deviceId}`).all<{
-    scope_key: string; requests: number; request_limit: number;
-  }>();
-  return { day, buckets: rows.results || [] };
-};
 
 const handleRegister = async (request: Request, env: Env) => {
   const body = await readJson(request, 8_000);
