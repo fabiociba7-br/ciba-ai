@@ -32,6 +32,7 @@ import { CIBAGENIO_RESOURCES, parseCibaGenioCommand } from "./core/cibagenio";
 import { createNativeCapabilityRegistry } from "./core/native-capabilities";
 import { createD1ToolApprovalStore } from "./core/tools/durable-consent";
 import { createGarciaCapabilityToolRuntime } from "./core/tools/garcia-capability-tools";
+import { handleMcpRequest } from "./core/mcp/protocol";
 import { enqueueAgentJob, getAgentJob, cancelAgentJob } from "./core/agent-queue-store";
 import { runOneAgentQueueJob } from "./core/agent-queue-runner";
 
@@ -3571,6 +3572,42 @@ const handleCancelAgentJob = async (request: Request, env: Env, taskId: string) 
   return json({ cancelled: true, task_id: taskId });
 };
 
+const handleMcpEndpoint = async (request: Request, env: Env) => {
+  if (request.method !== "POST") {
+    return json({ error: "method_not_allowed", allowed: ["POST"] }, 405, { allow: "POST" });
+  }
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  if (device.app_id !== "com.ciba.garcia") return json({ error: "garcia_app_required" }, 403);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  if (!(await isAppAllowed(env, device.app_id))) return json({ error: "source_app_disabled" }, 403);
+  const resourceAccess = await requireCibaGenioAccess(env, "external_tools", device.app_id);
+  if (resourceAccess) return resourceAccess;
+
+  const runtime = createGarciaCapabilityToolRuntime({
+    context: {
+      conversationId: crypto.randomUUID(),
+      invocationId: crypto.randomUUID(),
+    },
+    executeReadOnlyProposals: true,
+    getFacebookConnectionStatus: async () => {
+      const link = await env.DB.prepare(
+        "SELECT linked_at FROM owner_facebook_links WHERE owner_id = ?"
+      ).bind(owner.owner_id).first<{ linked_at: string }>();
+      return { linked: Boolean(link), linkedAt: link?.linked_at || null };
+    },
+    authorize: async (toolRequest) =>
+      device.owner_id === owner.owner_id &&
+      toolRequest.risk === "read" &&
+      toolRequest.requiresApproval === false &&
+      (toolRequest.toolId === "garcia.capabilities.list" ||
+        toolRequest.toolId === "garcia.capabilities.get" ||
+        toolRequest.toolId === "facebook.connection.status"),
+  });
+  return handleMcpRequest(request, runtime.registry, runtime.context);
+};
+
 const handleRequest = async (
   request: Request,
   env: Env,
@@ -3790,6 +3827,9 @@ const handleRequest = async (
   }
   if (url.pathname === "/v1/owner/access-grants/revoke" && request.method === "POST") {
     return handleRevokeOwnerAccessGrant(request, env);
+  }
+  if (url.pathname === "/v1/mcp") {
+    return handleMcpEndpoint(request, env);
   }
   if (url.pathname === "/v1/owner/agent-jobs" && request.method === "POST") {
     return handleCreateAgentJob(request, env, ctx);
