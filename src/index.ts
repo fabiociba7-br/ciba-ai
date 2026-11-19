@@ -37,6 +37,7 @@ import { handleMcpRequest } from "./core/mcp/protocol";
 import { enqueueAgentJob, getAgentJob, cancelAgentJob } from "./core/agent-queue-store";
 import { runOneAgentQueueJob } from "./core/agent-queue-runner";
 import { createComposioOwnerSession, deleteComposioOwnerSession } from "./core/composio/sessions";
+import { createComposioMcpDiscoveryClient } from "./core/composio/client";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
@@ -610,6 +611,50 @@ const handleOwnerComposioSession = async (request: Request, env: Env) => {
   return json({ error: "method_not_allowed", allowed: ["GET", "POST", "DELETE"] }, 405, {
     allow: "GET, POST, DELETE",
   });
+};
+
+const handleOwnerComposioTools = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  if (device.app_id !== "com.ciba.garcia") return json({ error: "garcia_app_required" }, 403);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+  const resourceAccess = await requireCibaGenioAccess(env, "external_tools", device.app_id);
+  if (resourceAccess) return resourceAccess;
+  if (!env.COMPOSIO_API_KEY) return json({ error: "composio_server_not_configured" }, 503);
+
+  const session = await env.DB.prepare(
+    "SELECT session_id FROM owner_composio_sessions WHERE owner_id = ? AND status = 'active'"
+  ).bind(owner.owner_id).first<{ session_id: string }>();
+  if (!session) return json({ error: "composio_session_not_found" }, 404);
+
+  try {
+    const client = createComposioMcpDiscoveryClient({
+      apiKey: env.COMPOSIO_API_KEY,
+      sessionId: session.session_id,
+    });
+    const server = await client.initialize();
+    const tools = await client.listTools();
+    return json({
+      discovered: true,
+      server,
+      execution_enabled: false,
+      tools: tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description || "",
+        input_schema: tool.inputSchema,
+        annotations: tool.annotations || {},
+      })),
+      count: tools.length,
+      maximum: 32,
+      note: "Descoberta apenas. A execução de ferramentas Composio permanece desativada nesta etapa.",
+    });
+  } catch (error) {
+    const reason = error instanceof Error && /^[a-z0-9_:-]{1,80}$/i.test(error.message)
+      ? error.message
+      : "composio_discovery_failed";
+    return json({ error: "composio_discovery_failed", reason }, 502);
+  }
 };
 
 const handleOwnerFacebookStatus = async (request: Request, env: Env) => {
@@ -3880,7 +3925,7 @@ const handleRequest = async (
   if (url.pathname === "/v1/owner/pair" && request.method === "POST") {
     return handlePairOwner(request, env);
   }
-  if (url.pathname === "/v1/owner/composio/session" && ["GET", "POST", "DELETE"].includes(request.method)) {
+  if (url.pathname === "/v1/owner/composio/tools" && request.method === "GET") {\n    return handleOwnerComposioTools(request, env);\n  }\n  if (url.pathname === "/v1/owner/composio/session" && ["GET", "POST", "DELETE"].includes(request.method)) {
     return handleOwnerComposioSession(request, env);
   }
   if (url.pathname === "/v1/owner/facebook" && request.method === "GET") {
