@@ -5,7 +5,7 @@ const apiKey = "composio-project-api-key-for-tests";
 const sessionId = "trs_1234567890abcdef";
 
 describe("Composio MCP discovery adapter", () => {
-  it("discovers remote tools with the server-side API key and keeps calls unallowlisted by default", async () => {
+  it("discovers remote tools with the server-side API key and requires explicit allowlisting", async () => {
     const replies = [
       Response.json({
         jsonrpc: "2.0",
