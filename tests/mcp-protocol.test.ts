@@ -19,7 +19,7 @@ function registry() {
         required: ["query"],
         additionalProperties: false,
       },
-      execute: read,
+      execute: (input) => read(input as { query: string }),
     },
     {
       id: "test.write",
