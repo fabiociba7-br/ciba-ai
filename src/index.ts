@@ -1,4 +1,5 @@
 import { json, corsHeaders, applyResponseHeaders } from "./http/responses";
+import { resolveAdminRoute } from "./http/routes";
 import { readJson } from "./http/request";
 import { GARCIA_DASHBOARD_HTML } from "./dashboard";
 import { encryptFacebookToken, decryptFacebookToken, facebookGraphGet } from "./facebook";
@@ -4249,26 +4250,17 @@ const handleRequest = async (
       },
     });
   }
-  if (url.pathname === "/v1/admin/cibagenio" && (request.method === "GET" || request.method === "POST")) {
-    return handleAdminCibaGenio(request, env);
-  }
-  if (url.pathname === "/v1/admin/devices" && request.method === "GET") {
-    return handleAdminDevices(request, env);
-  }
-  if (url.pathname === "/v1/admin/invitations" && request.method === "GET") {
-    return handleAdminInvitations(request, env);
-  }
-  if (url.pathname === "/v1/admin/apps" && (request.method === "GET" || request.method === "POST")) {
-    return handleAdminApps(request, env);
-  }
-  if (url.pathname === "/v1/admin/observability" && request.method === "GET") {
-    return handleAdminObservability(request, env);
-  }
-  if (url.pathname === "/v1/admin/ai/overview" && request.method === "GET") {
-    return handleAdminAiOverview(request, env);
-  }
-  if (url.pathname === "/v1/admin/settings" && (request.method === "GET" || request.method === "POST")) {
-    return handleAdminSettings(request, env);
+  const adminRoute = resolveAdminRoute(url.pathname, request.method);
+  if (adminRoute) {
+    switch (adminRoute) {
+      case "cibagenio": return handleAdminCibaGenio(request, env);
+      case "devices": return handleAdminDevices(request, env);
+      case "invitations": return handleAdminInvitations(request, env);
+      case "apps": return handleAdminApps(request, env);
+      case "observability": return handleAdminObservability(request, env);
+      case "ai-overview": return handleAdminAiOverview(request, env);
+      case "settings": return handleAdminSettings(request, env);
+    }
   }
   if (url.pathname === "/v1/config" && request.method === "GET") {
     const settings = await readRuntimeSettings(env);
