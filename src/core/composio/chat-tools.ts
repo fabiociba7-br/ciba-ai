@@ -57,12 +57,17 @@ export async function createComposioChatToolDefinitions(
     if (definitions.length >= maxTools) break;
     const consent = saved.get(remote.name);
     if (!consent || consent.enabled !== 1) continue;
-    const classified = classifyComposioTool(remote, options.enabledToolkits);
-    if (classified.risk !== "read" || classified.requiresApproval ||
-        consent.risk !== "read" || consent.requires_approval !== 0 ||
-        consent.toolkit !== classified.toolkit) continue;
-
-    const schemaSha256 = await hashComposioToolSchema(remote.inputSchema);
+    let classified: ReturnType<typeof classifyComposioTool>;
+    let schemaSha256: string;
+    try {
+      classified = classifyComposioTool(remote, options.enabledToolkits);
+      if (classified.risk !== "read" || classified.requiresApproval ||
+          consent.risk !== "read" || consent.requires_approval !== 0 ||
+          consent.toolkit !== classified.toolkit) continue;
+      schemaSha256 = await hashComposioToolSchema(remote.inputSchema);
+    } catch {
+      continue;
+    }
     if (schemaSha256 !== consent.schema_sha256) continue;
 
     const id = `composio.${remote.name.toLowerCase()}`;
