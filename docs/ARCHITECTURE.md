@@ -122,6 +122,7 @@ O módulo `src/core/mcp/client.ts` fornece a base para a Garcia atuar como clien
 - aceita credencial por callback, sem persistir tokens ou expô-los em logs;
 - negocia inicialização JSON-RPC, descobre ferramentas e só permite chamar ferramentas previamente descobertas;
 - limita tamanho de requisição, resposta, catálogo de ferramentas e tempo de chamada;
+- exige allowlist local explícita por nome e bloqueia chamadas que não estejam marcadas como somente leitura; a anotação remota é apenas um filtro adicional, nunca substitui a autorização local;
 - não repete chamadas automaticamente e não segue redirecionamentos por conta própria;
 - a primeira versão aceita respostas JSON; respostas SSE ainda não são suportadas.
 
