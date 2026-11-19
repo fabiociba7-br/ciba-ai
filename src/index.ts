@@ -1092,6 +1092,71 @@ const handleOwnerToolApprovalCancel = async (
     : json({ error: "approval_not_found_or_not_cancellable" }, 404);
 };
 
+const handleOwnerObservability = async (request: Request, env: Env) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner) return json({ error: "active_owner_required" }, 403);
+
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const dailyCutoff = new Date(now.getTime() - 13 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const minuteCutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString().slice(0, 16);
+  const [daily, minute] = await Promise.all([
+    env.DB.prepare(`
+      SELECT day,
+        COALESCE(MAX(CASE WHEN scope_key = 'global' THEN requests END), 0) AS global_bucket_requests,
+        COALESCE(MAX(CASE WHEN scope_key = ? THEN requests END), 0) AS app_bucket_requests,
+        COALESCE(MAX(CASE WHEN scope_key = ? THEN requests END), 0) AS device_bucket_requests
+      FROM daily_usage
+      WHERE day >= ? AND scope_key IN ('global', ?, ?)
+      GROUP BY day
+      ORDER BY day DESC
+      LIMIT 14
+    `).bind(`app:${device.app_id}`, `device:${device.device_id}`, dailyCutoff,
+      `app:${device.app_id}`, `device:${device.device_id}`).all<{
+        day: string; global_bucket_requests: number; app_bucket_requests: number; device_bucket_requests: number;
+      }>(),
+    env.DB.prepare(`
+      SELECT COUNT(DISTINCT minute) AS active_minutes,
+        COALESCE(SUM(requests), 0) AS device_requests,
+        COALESCE(MAX(requests), 0) AS peak_requests_per_minute
+      FROM minute_usage WHERE device_id = ? AND minute >= ?
+    `).bind(device.device_id, minuteCutoff).first<{
+      active_minutes: number; device_requests: number; peak_requests_per_minute: number;
+    }>(),
+  ]);
+
+  return json({
+    service: "garcia",
+    generated_at: now.toISOString(),
+    window: { daily_usage_days: 14, minute_usage_hours: 24 },
+    request_metrics: {
+      daily: daily.results || [],
+      last_24_hours: {
+        active_minutes: minute?.active_minutes || 0,
+        device_requests: minute?.device_requests || 0,
+        peak_requests_per_minute: minute?.peak_requests_per_minute || 0,
+      },
+    },
+    privacy: {
+      owner_scoped: true,
+      prompts_recorded: false,
+      responses_recorded: false,
+      device_identifiers_exposed: false,
+    },
+    infrastructure_metrics: {
+      latency_and_http_status: "cloudflare_workers_observability_dashboard",
+      workers_ai_neurons: "cloudflare_workers_ai_dashboard",
+      d1_usage: "cloudflare_d1_dashboard",
+      provider_metrics_are_not_estimated: true,
+    },
+    data_available: (daily.results || []).length > 0 || (minute?.device_requests || 0) > 0,
+    current_day: today,
+  });
+};
+
+
 const handleOwnerDashboard = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
   if (!device) return json({ error: "unauthorized" }, 401);
@@ -3591,6 +3656,9 @@ const handleRequest = async (request: Request, env: Env): Promise<Response> => {
   const toolApprovalCancel = url.pathname.match(/^\/v1\/owner\/tool-approvals\/([A-Za-z0-9_-]{16,128})\/cancel$/);
   if (toolApprovalCancel && request.method === "POST") {
     return handleOwnerToolApprovalCancel(request, env, toolApprovalCancel[1]);
+  }
+  if (url.pathname === "/v1/owner/observability" && request.method === "GET") {
+    return handleOwnerObservability(request, env);
   }
   if (url.pathname === "/v1/owner/dashboard" && request.method === "GET") {
     return handleOwnerDashboard(request, env);
