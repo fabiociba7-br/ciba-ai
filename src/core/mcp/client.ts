@@ -15,6 +15,8 @@ export interface McpHttpClientOptions {
   endpoint: string;
   allowedHosts: string[];
   getAccessToken?: () => Promise<string | null>;
+  /** Local policy allowlist. Empty or omitted means discovery-only, with no executable tools. */
+  allowedToolNames?: string[];
   fetcher?: typeof fetch;
   timeoutMs?: number;
   maxResponseBytes?: number;
@@ -87,7 +89,8 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
   const fetcher = options.fetcher || fetch;
   const timeoutMs = Math.min(30_000, Math.max(1_000, options.timeoutMs ?? 10_000));
   const maxResponseBytes = Math.min(256_000, Math.max(1_024, options.maxResponseBytes ?? 128_000));
-  const discovered = new Set<string>();
+  const discovered = new Map<string, McpRemoteTool>();
+  const allowedToolNames = new Set(options.allowedToolNames ?? []);
   let initialized = false;
 
   const requestHeaders = async (): Promise<Headers> => {
@@ -178,13 +181,18 @@ export function createMcpHttpClient(options: McpHttpClientOptions) {
       annotations: isRecord(tool.annotations) ? tool.annotations : undefined,
     }));
     discovered.clear();
-    for (const tool of tools) discovered.add(tool.name);
+    for (const tool of tools) discovered.set(tool.name, tool);
     return tools;
   };
 
   const callTool = async (name: string, args: Record<string, unknown>): Promise<McpToolCallResult> => {
     if (!initialized) throw new Error("mcp_client_not_initialized");
     if (!discovered.has(name)) throw new Error("mcp_tool_not_discovered");
+    if (!allowedToolNames.has(name)) throw new Error("mcp_tool_not_allowlisted");
+    const descriptor = discovered.get(name);
+    if (descriptor?.annotations?.readOnlyHint !== true || descriptor.annotations.destructiveHint === true) {
+      throw new Error("mcp_tool_not_read_only");
+    }
     if (!name || name.length > MAX_TOOL_NAME || !isRecord(args)) throw new Error("mcp_tool_arguments_invalid");
     const result = await post({
       jsonrpc: "2.0",
