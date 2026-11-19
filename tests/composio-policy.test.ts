@@ -55,6 +55,16 @@ describe("Composio local tool policy", () => {
     expect(policy.risk).toBe("external");
   });
 
+  it("matches multiword toolkit namespaces without accepting a neighboring toolkit", () => {
+    const policy = classifyComposioTool({
+      name: "GOOGLE_CALENDAR_LIST_EVENTS",
+      inputSchema: schema,
+      annotations: { readOnlyHint: true },
+    }, ["google_calendar", "google_drive"]);
+    expect(policy.toolkit).toBe("google_calendar");
+    expect(policy.risk).toBe("read");
+  });
+
   it("requires the tool namespace to belong to an enabled toolkit", () => {
     expect(() => classifyComposioTool({
       name: "SLACK_LIST_MESSAGES",
