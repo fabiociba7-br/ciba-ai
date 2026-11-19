@@ -6,6 +6,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class CibaAiClient(private val store: SecureStore) {
@@ -130,6 +131,38 @@ class CibaAiClient(private val store: SecureStore) {
 
     fun facebookSummary(): JSONObject =
         request("/v1/owner/facebook/summary", "GET", authenticated = true)
+
+    fun enqueueAgentJob(
+        agentRole: String,
+        prompt: String,
+        idempotencyKey: String = UUID.randomUUID().toString(),
+        priority: Int = 0,
+    ): JSONObject {
+        val allowedRoles = setOf("general", "reasoning", "research", "coding", "creative", "verification")
+        require(agentRole in allowedRoles) { "Perfil de agente inválido." }
+        require(prompt.isNotBlank() && prompt.length <= 12_000) { "A tarefa deve ter entre 1 e 12.000 caracteres." }
+        require(idempotencyKey.isNotBlank() && idempotencyKey.length <= 128) { "Chave de idempotência inválida." }
+        return request(
+            "/v1/owner/agent-jobs",
+            "POST",
+            JSONObject()
+                .put("agent_role", agentRole)
+                .put("idempotency_key", idempotencyKey)
+                .put("priority", priority.coerceIn(-10, 10))
+                .put("payload", JSONObject().put("prompt", prompt)),
+            authenticated = true,
+        )
+    }
+
+    fun agentJobStatus(taskId: String): JSONObject {
+        require(taskId.matches(Regex("[A-Za-z0-9_-]{16,128}"))) { "Identificador de tarefa inválido." }
+        return request("/v1/owner/agent-jobs/$taskId", "GET", authenticated = true)
+    }
+
+    fun cancelAgentJob(taskId: String): JSONObject {
+        require(taskId.matches(Regex("[A-Za-z0-9_-]{16,128}"))) { "Identificador de tarefa inválido." }
+        return request("/v1/owner/agent-jobs/$taskId/cancel", "POST", authenticated = true)
+    }
 
     fun usage(): JSONObject = request("/v1/usage", "GET", authenticated = true)
 }
