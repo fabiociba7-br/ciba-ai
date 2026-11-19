@@ -171,3 +171,34 @@ export async function deleteComposioOwnerSession(
     throw new Error(`composio_api_error_${response.status}`);
   }
 }
+
+/** Reattaches to an existing owner-scoped session and validates its MCP endpoint. */
+export async function attachComposioOwnerSession(
+  apiKey: string,
+  sessionId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<ComposioSessionResult> {
+  if (typeof apiKey !== "string" || apiKey.trim().length < 16 ||
+      apiKey.length > 8_192 || /[\\r\\n]/.test(apiKey) ||
+      typeof sessionId !== "string" || !/^trs_[A-Za-z0-9_-]{8,128}$/.test(sessionId)) {
+    throw new Error("composio_configuration_invalid");
+  }
+  const response = await fetcher(`${API_BASE}/${encodeURIComponent(sessionId)}/attach`, {
+    method: "POST",
+    redirect: "manual",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      accept: "application/json",
+    },
+    body: "{}",
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (response.status >= 300 && response.status < 400) {
+    throw new Error("composio_redirect_blocked");
+  }
+  const body = await readApiResponse(response);
+  const attached = validateSessionResponse(body);
+  if (attached.sessionId !== sessionId) throw new Error("composio_session_mismatch");
+  return attached;
+}
