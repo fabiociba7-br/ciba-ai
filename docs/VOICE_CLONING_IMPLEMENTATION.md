@@ -40,7 +40,7 @@ O modelo utilizado é o multilingual V3 geral, com idioma `pt`. Ele aceita portu
 
 ## Fluxo e privacidade
 
-1. O usuário grava ou importa áudio de 5–30 s; recomenda-se 10–15 s de fala clara e sem música/ruído.
+1. O usuário grava ou importa áudio de 5–30 s; recomenda-se 10–15 s de fala clara, sozinho e sem música/ruído. A validação rejeita WAV truncado, silêncio/volume muito baixo e clipping extremo; não promete medir SNR nem identificar todo ruído de fundo.
 2. O app valida duração/tamanho, normaliza o áudio e salva a referência e os checksums no storage privado.
 3. O botão **Ouvir voz clonada** sintetiza uma prévia com o perfil selecionado sem alterar a voz ativa.
 4. **Usar esta voz** persiste `voice_mode=cloned` e o ID do perfil. As respostas faladas passam pelo motor local.
