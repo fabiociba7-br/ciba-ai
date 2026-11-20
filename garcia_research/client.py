@@ -66,7 +66,7 @@ class RobustDuckDuckGoClient:
             try:
                 response = self.session.get(url, params=params,
                                             timeout=self.config.request_timeout_seconds)
-            except (requests.Timeout, requests.ConnectionError) as exc:
+            except requests.RequestException as exc:
                 if attempt >= self.config.max_retries:
                     raise ResearchError(f"Search request failed: {exc}") from exc
                 self._sleep_backoff(attempt)
@@ -86,6 +86,13 @@ class RobustDuckDuckGoClient:
                 except (TypeError, ValueError):
                     retry_after = None
                 self._sleep_backoff(attempt, retry_after)
+                continue
+            if response.status_code >= 500:
+                if attempt >= self.config.max_retries:
+                    raise ResearchError(
+                        f"DuckDuckGo server error persisted (HTTP {response.status_code})."
+                    )
+                self._sleep_backoff(attempt)
                 continue
             try:
                 response.raise_for_status()
