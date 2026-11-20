@@ -153,7 +153,7 @@ internal class VoiceProfileStore(context: Context) {
 
             // If the original recording is intact, rebuild a missing or
             // damaged normalized WAV so older profiles can be recovered.
-            if (sampleTrusted && (!wav.isFile || (wavHash.isNotBlank() && !verified(wav, wavHash)))) {
+            if (sampleTrusted && (!wav.isFile || (wavHash.isNotBlank() && !verified(wav, wavHash)) || runCatching { validateNormalizedWav(wav) }.isFailure)) {
                 runCatching {
                     val rebuilt = File(directory, "reference.wav")
                     val temp = File(directory, "reference-repair-${UUID.randomUUID()}.wav")
