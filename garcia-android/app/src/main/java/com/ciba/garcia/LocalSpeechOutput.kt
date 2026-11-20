@@ -121,8 +121,8 @@ internal class LocalSpeechOutput(
             preferences.getString("voice_id", null)?.startsWith(CLONE_PREFIX) == true
 
     private fun restoreCloneMode() {
-        if (!ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
-            onAvailabilityChanged(false, "A voz clonada está selecionada, mas o runtime ou os modelos locais não estão disponíveis. Instale os modelos em Configurações > Clonar minha voz. A Garcia não trocará para outra voz automaticamente.")
+        if (!ChatterboxVoiceCloneEngine.isNativeAvailable()) {
+            onAvailabilityChanged(false, "O runtime nativo da voz clonada não está disponível nesta arquitetura. A Garcia não trocará para outra voz automaticamente.")
             return
         }
         ChatterboxVoiceCloneEngine.restore(appContext) { result ->
@@ -158,7 +158,7 @@ internal class LocalSpeechOutput(
     fun isSystemReady(): Boolean = ready
     fun isCloneEngineAvailable(): Boolean = ChatterboxVoiceCloneEngine.isAvailable(appContext)
     fun isCloneSelected(): Boolean = isCloneMode()
-    fun isReady(): Boolean = if (isCloneMode()) isCloneEngineAvailable() && profileStore.currentProfile() != null else ready
+    fun isReady(): Boolean = if (isCloneMode()) isCloneEngineAvailable() && profileStore.activeProfileId() != null else ready
 
     private fun setVoiceInternal(id: String): Boolean {
         val tts = engine ?: return false
@@ -266,11 +266,6 @@ internal class LocalSpeechOutput(
         val cleanText = speechFriendlyText(text).take(MAX_SPOKEN_CHARS)
         if (cleanText.isBlank() || closed) return false
         if (isCloneMode()) {
-            val profile = profileStore.currentProfile()
-            if (profile == null) {
-                onAvailabilityChanged(false, "A voz clonada está selecionada, mas o perfil local não existe ou falhou na verificação SHA-256. Reimporte a gravação. Nenhuma voz substituta será usada.")
-                return false
-            }
             if (!ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
                 onAvailabilityChanged(false, "A voz clonada está selecionada, mas o runtime ou os modelos locais não estão disponíveis. A resposta não será enviada ao TTS do sistema.")
                 return false
