@@ -961,7 +961,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 whisperStatus = "Conversa por voz encerrada"
                             } else if (!whisperBusy) {
                                 if (whisperModelInfo == null && !streamingSpeech.isAvailable) error = "Este aparelho não oferece reconhecimento offline em tempo real. Baixe e instale o modelo Whisper nas Configurações."
-                                else if (!voiceAvailable) error = "A voz offline em português não está pronta. Configure a voz do Android nas Configurações."
+                                else if (!voiceAvailable) error = voiceStatus
                                 else if (input.isNotBlank() || attachment != null) error = "Envie ou limpe o texto pendente antes de iniciar a conversa por voz."
                                 else {
                                     streamingUnavailable = false
@@ -1162,7 +1162,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     TextButton(
                                         onClick = {
                                             if (voiceAvailable) voiceOutput.speak(shownText)
-                                            else error = "Configure uma voz offline em português nas configurações de texto para fala do Android."
+                                            else error = voiceStatus
                                         },
                                         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
                                     ) {
