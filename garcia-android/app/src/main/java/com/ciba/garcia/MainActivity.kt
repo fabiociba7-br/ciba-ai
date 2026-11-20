@@ -1003,7 +1003,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 whisperRecording = false
                                 whisperStatus = "Conversa por voz encerrada"
                             } else if (!whisperBusy) {
-                                if (whisperModelInfo == null && !streamingSpeech.isAvailable) error = "Este aparelho não oferece reconhecimento offline em tempo real. Baixe e instale o modelo Whisper nas Configurações."
+                                if (parakeetEngine.isReady.not() && whisperModelInfo == null) error = "Instale o Parakeet PT-BR ou Whisper em Configurações > Modelos e downloads."
                                 else if (!voiceAvailable) error = voiceStatus
                                 else if (input.isNotBlank() || attachment != null) error = "Envie ou limpe o texto pendente antes de iniciar a conversa por voz."
                                 else {
@@ -1017,7 +1017,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 }
                             }
                         },
-                        enabled = (!busy && !whisperBusy && (whisperModelInfo != null || (streamingSpeech.isAvailable && !streamingUnavailable))) || continuousVoice,
+                        enabled = (!busy && !whisperBusy && !parakeetBusy && (parakeetEngine.isReady || whisperModelInfo != null)) || continuousVoice,
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = if (continuousVoice) Color(0xFFB94F7C) else Blue)
                     ) {
@@ -1524,8 +1524,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     streamingSpeech.stop(); streamingListening = false
                                     whisperStatus = "Conversa por voz pausada"
                                 } else if (!voiceReplies) error = "Ative também a leitura automática das respostas."
-                                else if (whisperModelInfo == null && (!streamingSpeech.isAvailable || streamingUnavailable)) error = "Instale o modelo Whisper ou disponibilize o reconhecimento offline do Android."
-                            }, enabled = voiceAvailable && voiceReplies && (whisperModelInfo != null || streamingSpeech.isAvailable) && !busy && !whisperRecording && !streamingListening)
+                                else if (!parakeetEngine.isReady && whisperModelInfo == null) error = "Instale o Parakeet PT-BR ou Whisper em Modelos e downloads."
+                            }, enabled = voiceAvailable && voiceReplies && (parakeetEngine.isReady || whisperModelInfo != null) && !busy && !whisperBusy && !parakeetBusy && !whisperRecording)
                         }
                         Text(
                             "Com respostas faladas ligadas, a Garcia também lê as respostas no chat de texto. A conversação contínua controla somente a reabertura automática do microfone. Entrada e saída usam recursos locais; nenhum áudio ou modelo é enviado ao Worker ou a terceiros.",
