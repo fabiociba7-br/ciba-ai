@@ -32,6 +32,19 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     set(ORT_VERSION "1.20.0")
     set(ORT_AAR "${POCKET_DEPS}/onnxruntime-android-${ORT_VERSION}.aar")
     set(ORT_AAR_SHA256 "07a8f71ef890afed8c6087a56220e6d558a492804276ee2dd7cb7f6262242027")
+    if(NOT EXISTS "${ORT_AAR}")
+        file(DOWNLOAD
+            "https://repo.maven.apache.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/${ORT_VERSION}/onnxruntime-android-${ORT_VERSION}.aar"
+            "${ORT_AAR}"
+            EXPECTED_HASH "SHA256=${ORT_AAR_SHA256}"
+            TLS_VERIFY ON
+            STATUS ORT_AAR_DOWNLOAD_STATUS)
+        list(GET ORT_AAR_DOWNLOAD_STATUS 0 ORT_AAR_DOWNLOAD_CODE)
+        if(NOT ORT_AAR_DOWNLOAD_CODE EQUAL 0)
+            file(REMOVE "${ORT_AAR}")
+            message(FATAL_ERROR "Failed to download verified ONNX Runtime Android AAR: ${ORT_AAR_DOWNLOAD_STATUS}")
+        endif()
+    endif()
     # The official Android AAR contains both the ARM64 shared library and
     # the public C/C++ headers under its "headers" directory. Reuse that
     # single version-pinned artifact instead of cloning the full ORT source.
