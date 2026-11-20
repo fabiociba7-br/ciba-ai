@@ -69,7 +69,7 @@ internal class VoiceProfileStore(context: Context) {
     }
 
     fun save(source: File, name: String, normalizedWav: File): GarciaVoiceProfile {
-        require(name.isNotBlank()) { "Digite um nome para o perfil." }
+        require(name.isNotBlank() && name.trim().length <= 40) { "Digite um nome de até 40 caracteres para o perfil." }
         val duration = validateAudio(source)
         validateNormalizedWav(normalizedWav)
         val id = UUID.randomUUID().toString()
@@ -162,7 +162,7 @@ internal class VoiceProfileStore(context: Context) {
     }
 
     fun rename(profileId: String, newName: String) {
-        require(newName.isNotBlank()) { "Digite um nome para o perfil." }
+        require(newName.isNotBlank() && newName.trim().length <= 40) { "Digite um nome de até 40 caracteres para o perfil." }
         val json = JSONObject(prefs.getString("profiles_json", "{}").orEmpty())
         val item = json.optJSONObject(profileId) ?: error("Perfil não encontrado.")
         item.put("name", newName.trim())
