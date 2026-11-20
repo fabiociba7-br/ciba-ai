@@ -18,12 +18,17 @@ class GarciaResearchService:
         self.search_client = RobustDuckDuckGoClient(config)
         self.orchestrator = ResearchOrchestrator(config, llm_client)
 
-    def run(self, topic: str) -> ResearchReport:
+    def run(
+        self, topic: str, depth: str = "standard", focus: list[str] | None = None
+    ) -> ResearchReport:
         """Execute query planning, search, synthesis and optional Git publication."""
         topic = topic.strip()
         if not topic:
             raise ValueError("topic must not be empty.")
-        queries = self.orchestrator.generate_queries(topic)
+        if depth not in {"quick", "standard", "deep"}:
+            raise ValueError("depth must be quick, standard, or deep.")
+        focus_terms = [term.strip() for term in (focus or []) if term.strip()][:8]
+        queries = self.orchestrator.generate_queries(topic, depth=depth, focus=focus_terms)
         raw_data = []
         for query in queries:
             try:
