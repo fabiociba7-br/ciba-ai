@@ -200,3 +200,15 @@ def test_engine_preserves_system_and_user_message_roles():
     assert provider.messages[0]["role"] == "system"
     assert provider.messages[1]["role"] == "user"
     assert 'trust_level="untrusted"' in provider.messages[1]["content"]
+
+
+def test_stream_marks_invalid_last_iteration_inconclusive():
+    llm = FakeLLM([valid_payload(confianca=0.95, lacunas=["a", "b", "c"])])
+    events = list(GarciaEngine(
+        llm, FakeRetriever(), EngineConfig(max_iterations=1)
+    ).generate_stream("OAuth2"))
+    final = events[-1].data
+
+    assert events[-1].event == "final"
+    assert final["confianca"] <= 0.69
+    assert "inconclusiva" in final["raciocinio"]
