@@ -95,3 +95,26 @@ The `.github/workflows/research-job.yml` workflow accepts topic, depth, focus, r
 ## 6. Integration boundaries
 
 The Python package remains optional and independent. The Worker only dispatches and observes jobs; it does not import Python or duplicate the search implementation. Register the tool schema through the existing TypeScript tool registry and route tool execution through the existing job/approval policy. Do not let model-generated arguments directly authorize Git writes or other privileged operations.
+
+
+## 7. Exemplo de chamada de ferramenta pelo LLM
+
+Quando o modelo decidir pesquisar, a chamada estruturada terá este formato:
+
+```json
+{
+  "type": "function",
+  "function": {
+    "name": "garcia_research",
+    "arguments": {
+      "topic": "Falhas de segurança em OAuth2",
+      "depth": "deep",
+      "focus": ["PKCE", "redirect_uri", "token replay"]
+    }
+  }
+}
+```
+
+O runtime valida os argumentos, despacha o Job e devolve um identificador de correlação. O LLM não deve afirmar que a pesquisa terminou até receber o estado `completed` e o relatório correspondente.
+
+**Nota de ativação:** o GitHub exige que o workflow com `workflow_dispatch` exista na branch padrão do repositório para aceitar o acionamento pela API. Enquanto esta implementação estiver somente na branch de feature, valide-a por CI; antes de habilitar o Worker em produção, publique o arquivo `.github/workflows/research-job.yml` na branch padrão. O Job pode continuar fazendo checkout e executando o código da branch `feat/garcia-research-package` por meio do campo `ref`. Não fiz esse merge automaticamente.
