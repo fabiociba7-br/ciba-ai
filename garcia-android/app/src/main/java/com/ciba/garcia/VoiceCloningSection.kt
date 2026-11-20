@@ -4,6 +4,7 @@ import com.ciba.garcia.chatterbox.ChatterboxNative
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.media.MediaRecorder
@@ -46,6 +47,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
     var modelsReady by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableStateOf<ChatterboxModelManager.DownloadProgress?>(null) }
+    var pendingModelUris by remember { mutableStateOf(emptyList<Uri>()) }
     val nativeAvailable = ChatterboxNative.isLibraryLoaded()
     var selectedFile by remember { mutableStateOf<File?>(null) }
     var profileName by remember { mutableStateOf("") }
@@ -72,23 +74,39 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
         status = if (initial.third != null) "Perfil local encontrado e validado." else "Nenhum perfil clonado está ativo."
     }
 
-    val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) {
-            scope.launch {
-                busy = true
-                status = "Importando e verificando os modelos Chatterbox..."
-                try {
-                    ChatterboxModelManager.importModels(context, uris) { progress -> downloadProgress = progress }
-                    modelsReady = true
+    // Use two single-file picker passes instead of relying on providers that
+    // do not implement multi-select correctly. Model identity is determined by
+    // SHA-256, so users may choose T3 and S3Gen in either order.
+    val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val selected = pendingModelUris + uri
+            if (selected.size < 2) {
+                pendingModelUris = selected
+                status = "Primeiro arquivo selecionado. Agora toque novamente em Importar modelos GGUF e escolha o segundo arquivo (T3 ou S3Gen)."
+            } else {
+                pendingModelUris = emptyList()
+                scope.launch {
+                    busy = true
                     downloadProgress = null
-                    status = if (nativeAvailable) "Os dois modelos foram importados e validados. Runtime nativo disponível." else "Modelos validados, mas o runtime nativo não está disponível nesta arquitetura."
-                } catch (error: Throwable) {
-                    downloadProgress = null
-                    status = error.message ?: "Falha ao importar os modelos."
-                } finally {
-                    busy = false
+                    status = "Importando os dois modelos. A Garcia identifica T3 e S3Gen pelo SHA-256, independentemente da ordem..."
+                    try {
+                        ChatterboxModelManager.importModels(context, selected) { progress -> downloadProgress = progress }
+                        modelsReady = true
+                        downloadProgress = null
+                        status = if (nativeAvailable) "T3 e S3Gen importados e verificados. Runtime nativo carregado; teste a prévia para validar a síntese." else "Modelos verificados, mas o runtime nativo não está disponível nesta arquitetura."
+                    } catch (error: Throwable) {
+                        downloadProgress = null
+                        status = error.message ?: "Falha ao importar os modelos. Confira os arquivos e o espaço livre."
+                    } finally {
+                        busy = false
+                    }
                 }
             }
+        } else if (pendingModelUris.isNotEmpty()) {
+            status = "Seleção pausada: o primeiro arquivo foi mantido. Selecione o segundo para concluir ou reinicie a seleção."
         }
     }
 
@@ -224,17 +242,17 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
             ) { Text(if (busy) "Aguarde..." else "Baixar modelos de voz") }
             Spacer(Modifier.height(6.dp))
             OutlinedButton(
-                onClick = { status = "Abrindo arquivos do aparelho para selecionar os dois modelos GGUF..."; modelPicker.launch(arrayOf("*/*")) },
+                onClick = { status = if (pendingModelUris.isEmpty()) "Selecione o primeiro arquivo GGUF (T3 ou S3Gen)." else "Selecione o segundo arquivo GGUF para concluir a importação."; modelPicker.launch(arrayOf("application/octet-stream", "application/x-gguf", "*/*")) },
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Importar modelos GGUF do aparelho") }
-            Text("Selecione os dois arquivos oficiais (T3 e S3Gen) juntos. A importação e a verificação serão exibidas aqui.", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
+            Text(if (pendingModelUris.isEmpty()) "Selecione um arquivo GGUF por vez. Depois escolha o segundo; a ordem não importa. A Garcia identifica cada modelo pelo SHA-256 oficial." else "1 de 2 arquivos selecionado. Toque novamente no botão e escolha o outro modelo GGUF.", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
             if (busy && downloadProgress != null) { val p = downloadProgress!!; val ratio = if (p.totalBytes > 0L) (p.downloadedBytes.toFloat() / p.totalBytes).coerceIn(0f, 1f) else 0f; Text("Importando ${p.fileName}", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold); if (p.totalBytes > 0L) { LinearProgressIndicator(progress = { ratio }, modifier = Modifier.fillMaxWidth()); Text("${(ratio * 100).toInt()}% · ${p.downloadedBytes / (1024 * 1024)} MB de ${p.totalBytes / (1024 * 1024)} MB · faltam ${(p.totalBytes - p.downloadedBytes).coerceAtLeast(0) / (1024 * 1024)} MB", fontSize = 11.sp) } else { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()); Text("${p.downloadedBytes / (1024 * 1024)} MB importados", fontSize = 11.sp) } }
         }
         if (modelsReady) {
             Text("Gerenciar modelos Chatterbox", style = MaterialTheme.typography.titleSmall)
             OutlinedButton(
-                onClick = { status = "Selecione os dois modelos GGUF T3 e S3Gen..."; modelPicker.launch(arrayOf("*/*")) },
+                onClick = { status = if (pendingModelUris.isEmpty()) "Selecione o primeiro modelo GGUF." else "Selecione o segundo modelo GGUF."; modelPicker.launch(arrayOf("application/octet-stream", "application/x-gguf", "*/*")) },
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Importar / substituir modelos GGUF") }
