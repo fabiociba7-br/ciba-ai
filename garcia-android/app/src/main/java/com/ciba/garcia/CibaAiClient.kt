@@ -97,12 +97,22 @@ class CibaAiClient(private val store: SecureStore) {
         if (images.length() > 0) messages.getJSONObject(messages.length() - 1).put("images", images)
         val response = request("/v1/ai/chat", "POST", JSONObject().put("messages", messages), true)
         val text = response.optString("response").ifBlank { "A Garcia recebeu uma resposta vazia do serviço." }
-        val photos = response.optJSONArray("photos")
-        if (photos == null || photos.length() == 0) { response.put("response", text); return response }
         val markers = StringBuilder()
-        for (i in 0 until photos.length()) {
-            val url = photos.optJSONObject(i)?.optString("url").orEmpty()
-            if (url.startsWith("https://")) markers.append("\n[[foto:").append(url).append("]]")
+        val visual = response.optJSONObject("visual_studio")
+        if (visual != null) {
+            val imageUrl = visual.optString("image_url")
+            val sessionId = visual.optString("session_id")
+            val iteration = visual.optInt("iteration", 0)
+            if (imageUrl.startsWith("https://") && sessionId.length == 36 && iteration >= 0) {
+                markers.append("\n[[visual:").append(imageUrl).append("|").append(sessionId).append("|").append(iteration).append("]]")
+            }
+        }
+        val photos = response.optJSONArray("photos")
+        if (photos != null) {
+            for (i in 0 until photos.length()) {
+                val url = photos.optJSONObject(i)?.optString("url").orEmpty()
+                if (url.startsWith("https://")) markers.append("\n[[foto:").append(url).append("]]")
+            }
         }
         response.put("response", text + markers.toString())
         return response
