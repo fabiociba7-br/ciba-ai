@@ -32,26 +32,17 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     set(ORT_VERSION "1.20.0")
     set(ORT_AAR "${POCKET_DEPS}/onnxruntime-android-${ORT_VERSION}.aar")
     set(ORT_AAR_SHA256 "07a8f71ef890afed8c6087a56220e6d558a492804276ee2dd7cb7f6262242027")
-    # Fetch the exact ONNX Runtime source tag for C/C++ headers. The previous
-    # codeload archive URL returned HTTP errors in GitHub Actions; using Git
-    # transport avoids accepting an empty archive and keeps the version pinned.
-    FetchContent_Declare(onnxruntime_headers
-        GIT_REPOSITORY https://github.com/microsoft/onnxruntime.git
-        GIT_TAG v${ORT_VERSION}
-        GIT_SHALLOW TRUE)
-    FetchContent_GetProperties(onnxruntime_headers)
-    if(NOT onnxruntime_headers_POPULATED)
-        FetchContent_Populate(onnxruntime_headers)
-    endif()
-
+    # The official Android AAR contains both the ARM64 shared library and
+    # the public C/C++ headers under its "headers" directory. Reuse that
+    # single version-pinned artifact instead of cloning the full ORT source.
     set(ORT_AAR_EXTRACT "${POCKET_DEPS}/ort-aar")
     file(MAKE_DIRECTORY "${ORT_AAR_EXTRACT}")
     if(NOT EXISTS "${ORT_AAR_EXTRACT}/jni/arm64-v8a/libonnxruntime.so")
         file(ARCHIVE_EXTRACT INPUT "${ORT_AAR}" DESTINATION "${ORT_AAR_EXTRACT}")
     endif()
     set(ORT_LIB "${ORT_AAR_EXTRACT}/jni/arm64-v8a/libonnxruntime.so")
-    set(ORT_HEADERS "${onnxruntime_headers_SOURCE_DIR}/include")
-    if(NOT EXISTS "${ORT_LIB}" OR NOT EXISTS "${ORT_HEADERS}/onnxruntime/core/session/onnxruntime_cxx_api.h")
+    set(ORT_HEADERS "${ORT_AAR_EXTRACT}/headers")
+    if(NOT EXISTS "${ORT_LIB}" OR NOT EXISTS "${ORT_HEADERS}/onnxruntime_cxx_api.h")
         message(FATAL_ERROR "Verified ONNX Runtime Android library or pinned headers are missing")
     endif()
 
