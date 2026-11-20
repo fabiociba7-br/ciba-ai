@@ -199,4 +199,4 @@ def test_engine_preserves_system_and_user_message_roles():
     assert result["confianca"] == 0.91
     assert provider.messages[0]["role"] == "system"
     assert provider.messages[1]["role"] == "user"
-    assert "trust_level=\\"untrusted\\"" in provider.messages[1]["content"]
+    assert 'trust_level="untrusted"' in provider.messages[1]["content"]
