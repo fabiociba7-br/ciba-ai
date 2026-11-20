@@ -39,6 +39,7 @@ O aplicativo não inclui pesos no Git nem baixa modelos automaticamente. Nesta e
 - `LocalSpeechOutput.kt` mantém dois modos explícitos: `SYSTEM` usa Android TextToSpeech com voz em português instalada e offline; `CLONED` usa Chatterbox local, `ClonedVoiceRuntime` e reprodução PCM 24 kHz por `AudioTrack`.
 - O modo `CLONED` não faz fallback silencioso para `SYSTEM`. Se runtime, perfil ou modelos falharem, a Garcia informa o motivo; o usuário pode selecionar uma voz Android nas Configurações com um toque.
 - `voiceReplies` habilita leitura automática tanto no chat de texto quanto na conversa por voz. `continuousVoice` continua opt-in e controla somente o ciclo de escuta automática após a fala.
+- A conversação contínua é inicializada desligada a cada novo processo do app; o usuário precisa ativá-la explicitamente em cada sessão.
 - Na reinicialização, a disponibilidade dos modelos Chatterbox é revalidada no disco por `ChatterboxModelManager.installed()` e SHA-256; não depende apenas de um mapa em RAM.
 - A interface apresenta diagnóstico de entrada (on-device/Whisper/nenhum) e saída (SYSTEM/CLONED), incluindo o perfil e o motivo de indisponibilidade.
 - Nenhum áudio ou modelo é enviado ao Worker ou a serviços externos. Não há fallback de rede para STT ou TTS.
