@@ -177,3 +177,26 @@ def test_markdown_json_fence_is_supported():
     fence = chr(96) * 3
     parsed = GarciaEngine._parse_response(fence + "json\n" + valid_payload() + "\n" + fence)
     assert parsed["resposta"].startswith("Implemente PKCE")
+
+
+
+def test_engine_preserves_system_and_user_message_roles():
+    class RoleAwareLLM:
+        def __init__(self):
+            self.messages = None
+
+        def generate(self, prompt):
+            return valid_payload()
+
+        def generate_messages(self, messages):
+            self.messages = messages
+            return valid_payload()
+
+    provider = RoleAwareLLM()
+    engine = GarciaEngine(provider, FakeRetriever())
+    result = engine.generate_robust("OAuth2")
+
+    assert result["confianca"] == 0.91
+    assert provider.messages[0]["role"] == "system"
+    assert provider.messages[1]["role"] == "user"
+    assert "trust_level=\\"untrusted\\"" in provider.messages[1]["content"]
