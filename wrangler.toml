@@ -12,7 +12,7 @@ ALLOWED_ORIGINS = ""
 GARCIA_IMAGE_MODEL = "openai/gpt-image-1.5"
 GARCIA_VISION_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 PUBLIC_API_BASE_URL = ""
-ARTIFACT_URL_TTL_SECONDS = "3600"
+ARTIFACT_URL_TTL_SECONDS = "2592000"
 
 [ai]
 binding = "AI"
