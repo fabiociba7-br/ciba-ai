@@ -180,7 +180,7 @@ export class VisualCurator {
       const key = "owners/" + this.env.ownerId + "/visual/" + session.sessionId + "/iteration-" + session.currentIteration + "." + extension;
       const imageUrl = await this.artifacts.putImage(key, image.bytes, image.mimeType);
       try {
-        await this.sessions.saveAsset(session, { r2Key: key, imageUrl, promptUsed: prompt, visionAnalysis: analysis.analysis,
+        await this.sessions.saveAsset(session, { iteration: session.currentIteration, r2Key: key, imageUrl, promptUsed: prompt, visionAnalysis: analysis.analysis,
           userFeedback: feedback || null, sourceKind: mode === "search" ? "reference_search" : previousImage ? "edited" : "generated", mimeType: image.mimeType });
       } catch (error) {
         await this.env.GARCIA_ARTIFACTS.delete(key);
