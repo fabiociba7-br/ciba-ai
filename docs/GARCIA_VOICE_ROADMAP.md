@@ -39,7 +39,7 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - Gate: testes com frases curtas/longas em pt-BR, números, pontuação, ruído e interrupção; confirmar que áudio não sai do aparelho.
 
 ### Etapa 4 — preparar motor de síntese
-**Estado: para o Android, adotado inicialmente o TTS nativo do sistema com filtro obrigatório de voz offline em português; Chatterbox permanece não integrado.**
+**Estado: TTS nativo do Android preservado; um runtime local Chatterbox.cpp foi integrado em branch de implementação para clonagem zero-shot. CI nativo e teste auditivo em aparelho ainda são gates obrigatórios; a capacidade não está marcada como disponível.**
 - Reavaliar Chatterbox para Android: o contrato existente é desktop-local e não equivale a runtime Android.
 - Conferir licença do código e dos pesos/checkpoints separadamente, suporte real a pt-BR, tamanho, RAM, CPU/GPU e latência.
 - Comparar somente alternativas open source com licença e runtime Android viáveis; escolher automaticamente a melhor opção compatível.
@@ -88,3 +88,16 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - Antes da síntese, a Garcia remove marcadores Markdown (asteriscos, sublinhados, títulos, listas, links e blocos de código) e os delimitadores de parênteses, preservando o texto legível. A mensagem original exibida no chat não é alterada.
 - A taxa de fala do Android TTS foi ajustada para 1,15x, mantendo o pitch natural.
 - Testes unitários cobrem limpeza de Markdown, parênteses, links, código e listas. O teste em aparelho real ainda é necessário para avaliar a voz e a velocidade percebida.
+
+
+## Estado adicional — clonagem de voz Android (20/11/2026)
+
+- Branch de implementação: `feature/garcia-voice-cloning-mainline`; PR ainda não criado/mesclado nesta etapa.
+- `VoiceProfileStore` mantém gravação, WAV normalizado, metadados e SHA-256 no storage privado do app.
+- `VoiceCloneEngine` define contrato local; `ChatterboxVoiceCloneEngine` implementa o adaptador nativo. A prévia não altera a seleção ativa.
+- `LocalSpeechOutput` separa os modos `SYSTEM` e `CLONED`. Falha do clone não faz fallback silencioso para TTS do sistema.
+- Referência de 5–30 s; recomendação de 10–15 s de fala clara. Normalização para WAV PCM mono, 24 kHz, 16 bits.
+- Modelos GGUF Q4_0 (aprox. 1,1 GB no total) ficam fora do Git e são verificados por SHA-256 antes do uso.
+- O código e os modelos são locais; áudio de referência, condicionamento e PCM sintetizado não são enviados ao Worker.
+- A compilação Kotlin isolada não valida inferência. CI CMake/NDK e teste auditivo/performance em aparelho real continuam obrigatórios.
+- `src/core/native-capabilities.ts` permanece sem marcar clonagem/TTS como `available` até aprovação dos testes reais.
