@@ -39,7 +39,7 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - Gate: testes com frases curtas/longas em pt-BR, números, pontuação, ruído e interrupção; confirmar que áudio não sai do aparelho.
 
 ### Etapa 4 — selecionar e validar o novo motor de síntese e clonagem
-**Estado: clonagem desativada; nenhum motor novo foi escolhido ou integrado.**
+**Estado em 20/11/2026: Pocket TTS selecionado para a primeira prova de integração Android via mecanismo TTS complementar. A Garcia já possui a entrada Configurações → Clonagem de voz e abre/encaminha ao Pocket TTS Android Engine; runtime e modelo ainda não são considerados prontos. NeuTTS continua aguardando auditoria separada.**
 - Comparar os modelos indicados pelo proprietário, sem presumir compatibilidade ou disponibilidade.
 - Verificar separadamente licença do código e dos pesos, suporte real a português brasileiro, requisitos de memória, GPU, latência e limites do provedor.
 - Testar primeiro em ambiente isolado, sem alterar o aplicativo Android.
@@ -97,3 +97,12 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - Whisper e o reconhecimento on-device continuam separados e preservados.
 - Nenhum modelo de clonagem está instalado, selecionado ou marcado como disponível.
 - A próxima implementação começará somente após a escolha e validação do novo motor.
+
+
+### Atualização da Etapa 4 — Pocket TTS Android (20/11/2026)
+
+- Auditoria inicial registrada em `docs/POCKET_TTS_ANDROID_AUDIT.md`.
+- Identificado o PocketTTS-Android-Engine comunitário (MIT) com serviço Android TTS, JNI/ONNX, importação de pacote Portuguese FP32 e referência WAV para clonagem.
+- Garcia ganhou a área Configurações → Clonagem de voz, detecção/abertura do aplicativo complementar e atalho às configurações Android de mecanismo TTS.
+- O runtime complementar não está incorporado ao APK Garcia. Modelos e perfis ficam no armazenamento privado do aplicativo Pocket TTS.
+- Gate pendente: instalar em aparelho ARM64, importar pacote português e referência autorizada, selecionar o serviço, validar pt-BR e testar a Garcia sem rede. Não declarar pronto antes desses testes.
