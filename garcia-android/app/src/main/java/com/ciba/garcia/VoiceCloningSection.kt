@@ -161,11 +161,16 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
             if (elapsed >= 30) stopRecording()
         }
     }
+    val currentRecorder by rememberUpdatedState(recorder)
+    val currentTempFile by rememberUpdatedState(tempFile)
+    val isRecordingNow by rememberUpdatedState(recording)
+    val currentPlayer by rememberUpdatedState(player)
     DisposableEffect(Unit) {
         onDispose {
-            runCatching { recorder?.stop() }
-            recorder?.release()
-            player?.release()
+            if (isRecordingNow) runCatching { currentRecorder?.stop() }
+            currentRecorder?.release()
+            if (isRecordingNow) currentTempFile?.delete()
+            currentPlayer?.release()
         }
     }
 
