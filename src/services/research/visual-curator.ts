@@ -150,7 +150,7 @@ export class VisualCurator {
     } else {
       const imageInput: Record<string, unknown> = { prompt, quality: "medium", size: "1024x1024" };
       if (previousImage) imageInput.images = ["data:" + previousImage.mimeType + ";base64," + toBase64(previousImage.bytes)];
-      const generated = await this.env.AI.run(this.env.GARCIA_IMAGE_MODEL || "@cf/black-forest-labs/flux-2-klein-4b", imageInput);
+      const generated = await this.env.AI.run(this.env.GARCIA_IMAGE_MODEL || "openai/gpt-image-1.5", imageInput);
       image = await fetchGeneratedImage(generated);
       analysis = await analyzeImage(this.env, image, prompt, feedback);
     }
