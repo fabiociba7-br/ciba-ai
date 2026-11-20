@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { parseDuckDuckGoHtml, RobustDuckDuckGoClient } from "../../src/services/research/duckduckgo";
 import { CloudflareArtifactPublisher, verifySignedArtifactUrl } from "../../src/services/research/artifact-publisher";
 import { GarciaResearchService } from "../../src/services/research/service";
+import { VisualCurator } from "../../src/services/research/visual-curator";
 import type { ResearchEnv, ResearchReport, ResearchSource } from "../../src/services/research/types";
 
 const sampleHtml = '<div class="result results_links"><h2><a class="result__a" href="https://example.com/security">Example security</a></h2><a class="result__snippet">An example security advisory.</a></div>' +
@@ -14,7 +15,8 @@ const report: ResearchReport = {
   generatedAt: "2026-11-20T10:00:00.000Z",
 };
 function mockEnv(ai: { run: ReturnType<typeof vi.fn> }): ResearchEnv {
-  const db = { prepare: () => ({ bind: () => ({ run: async () => ({ meta: { changes: 1 } }) }) }) };
+  const statement = () => ({ bind: () => statement(), run: async () => ({ meta: { changes: 1 } }), first: async () => null });
+  const db = { prepare: () => statement(), batch: async (items: unknown[]) => items.map(() => ({ meta: { changes: 1 } })) };
   const r2 = { put: vi.fn(async () => ({})), get: vi.fn(async () => null), delete: vi.fn(async () => {}) };
   const kv = { get: vi.fn(async () => null), put: vi.fn(async () => {}) };
   return { AI: ai as never, DB: db as never, GARCIA_ARTIFACTS: r2 as never, GARCIA_PROMPT_CACHE: kv as never,
@@ -67,4 +69,23 @@ describe("Garcia native research and visual storage", () => {
     expect(search.search).toHaveBeenCalledTimes(1);
     expect(ai.run).toHaveBeenCalledTimes(2);
   });
+  it("creates a visual session and generates an image through FLUX multipart Workers AI", async () => {
+    const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jW9sAAAAASUVORK5CYII=";
+    const ai = { run: vi.fn()
+      .mockResolvedValueOnce({ response: '{"refined_prompt":"OAuth2 architecture diagram, backend emphasized"}' })
+      .mockResolvedValueOnce({ image: png })
+      .mockResolvedValueOnce({ response: '{"score":94,"analysis":"O backend está destacado e o fluxo PKCE está legível."}' }) };
+    const env = mockEnv(ai);
+    const result = await new VisualCurator(env).createOrIterate({
+      topic: "Diagrama visual OAuth2", visual_mode: true, mode: "generate", focus: ["backend", "PKCE"],
+    });
+    expect(result.iteration).toBe(1);
+    expect(result.session_id).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(result.image_url).toContain("/v1/artifacts/");
+    expect(result.visual_analysis).toContain("backend");
+    expect(ai.run).toHaveBeenCalledTimes(3);
+    expect(ai.run.mock.calls[1][0]).toBe("@cf/black-forest-labs/flux-2-klein-4b");
+    expect(ai.run.mock.calls[1][1]).toHaveProperty("multipart");
+  });
+
 });
