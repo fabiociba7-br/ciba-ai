@@ -1,4 +1,5 @@
 import type { ResearchEnv, VisualMode } from "./types";
+import { CloudflareArtifactPublisher } from "./artifact-publisher";
 export interface VisualSession {
   sessionId: string; topic: string; mode: VisualMode; currentIteration: number;
   latestImageR2Key: string | null; promptHistory: Array<Record<string, unknown>>;
@@ -53,7 +54,8 @@ export class VisualSessionManager {
     await this.getSession(sessionId);
     const row = await this.env.DB.prepare("SELECT id, session_id, iteration, r2_key, image_url, prompt_used, vision_analysis, user_feedback, source_kind, mime_type, created_at FROM visual_assets WHERE session_id = ? ORDER BY iteration DESC LIMIT 1")
       .bind(sessionId).first<{ id: string; session_id: string; iteration: number; r2_key: string; image_url: string; prompt_used: string; vision_analysis: string; user_feedback: string | null; source_kind: string; mime_type: string; created_at: string }>();
-    return row ? { id: row.id, sessionId: row.session_id, iteration: row.iteration, r2Key: row.r2_key, imageUrl: row.image_url,
+    return row ? { id: row.id, sessionId: row.session_id, iteration: row.iteration, r2Key: row.r2_key,
+      imageUrl: await new CloudflareArtifactPublisher(this.env).signedUrl(row.r2_key),
       promptUsed: row.prompt_used, visionAnalysis: row.vision_analysis, userFeedback: row.user_feedback,
       sourceKind: row.source_kind, mimeType: row.mime_type, createdAt: row.created_at } : null;
   }
