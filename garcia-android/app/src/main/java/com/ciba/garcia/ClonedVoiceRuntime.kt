@@ -151,11 +151,18 @@ internal object ClonedVoiceRuntime {
                 }
                 playPcm(context, pcm, onStarted = {})
             }
+            if (result.isFailure) {
+                synchronized(lock) {
+                    ready.set(false)
+                    loadedProfileId = null
+                    if (ChatterboxNative.isLibraryLoaded()) runCatching { ChatterboxNative.nativeRelease() }
+                }
+            }
             val restoreResult = runCatching {
                 synchronized(lock) {
                     if (previous != null) loadProfileLocked(context, previous)
                     else {
-                        ChatterboxNative.nativeRelease()
+                        if (ChatterboxNative.isLibraryLoaded()) ChatterboxNative.nativeRelease()
                         loadedProfileId = null
                         ready.set(false)
                     }
