@@ -22,7 +22,7 @@ class LocalPromptAdapter:
             return self._synthesize(prompt)
         return self._plan_queries(prompt)
 
-    def generate_stream(self, prompt: str):
+    def generate_stream(self, prompt: str) -> Iterator[str]:
         """Provide a deterministic chunked stream for local/offline use."""
         output = self.generate(prompt)
         for offset in range(0, len(output), 32):
