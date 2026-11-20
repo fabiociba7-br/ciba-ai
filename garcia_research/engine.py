@@ -147,6 +147,8 @@ class GarciaEngine:
 
     def _refine(self, query: str, response: dict[str, Any]) -> str:
         gaps = response.get("lacunas", [])
+        if not isinstance(gaps, list):
+            gaps = []
         valid_gaps = [gap for gap in gaps if isinstance(gap, str) and gap.strip()]
         if not valid_gaps:
             valid_gaps = ["fontes primárias e evidências verificáveis para elevar a confiança"]
@@ -204,12 +206,20 @@ class GarciaEngine:
 
     @staticmethod
     def _normalize(candidate: dict[str, Any]) -> dict[str, Any]:
+        confidence = candidate.get("confianca", 0.0)
+        try:
+            normalized_confidence = float(confidence) if not isinstance(confidence, bool) else 0.0
+        except (TypeError, ValueError):
+            normalized_confidence = 0.0
+        sources = candidate.get("fontes", [])
+        gaps = candidate.get("lacunas", [])
         return {
-            "raciocinio": str(candidate.get("raciocinio") or "Justificativa não fornecida."),
-            "resposta": str(candidate.get("resposta") or ""),
-            "fontes": [str(item) for item in candidate.get("fontes", []) if isinstance(item, str)],
-            "confianca": max(0.0, min(1.0, float(candidate.get("confianca", 0.0)))),
-            "lacunas": [str(item) for item in candidate.get("lacunas", []) if isinstance(item, str)],
+            "raciocinio": candidate.get("raciocinio") if isinstance(candidate.get("raciocinio"), str)
+                else "Justificativa não fornecida.",
+            "resposta": candidate.get("resposta") if isinstance(candidate.get("resposta"), str) else "",
+            "fontes": [item for item in sources if isinstance(item, str)] if isinstance(sources, list) else [],
+            "confianca": max(0.0, min(1.0, normalized_confidence)),
+            "lacunas": [item for item in gaps if isinstance(item, str)] if isinstance(gaps, list) else [],
         }
 
     def generate_stream(self, query: str, **kwargs: Any) -> Iterator[StreamEvent]:
