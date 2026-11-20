@@ -321,6 +321,11 @@ class GarciaEngine:
         except Exception as exc:
             logger.exception("Garcia streaming failed.")
             yield StreamEvent("error", {"type": type(exc).__name__, "message": "Falha controlada no fluxo."})
-            yield StreamEvent("final", self._error_response(
-                "A geração em streaming foi interrompida por uma falha controlada.",
-                f"Falha operacional: {type(exc).__name__}."))
+            if self.llm.breaker.is_open:
+                yield StreamEvent("final", self._error_response(
+                    "O provedor de linguagem falhou repetidamente e foi temporariamente isolado.",
+                    "Aguardar o circuit breaker liberar uma nova tentativa."))
+            else:
+                yield StreamEvent("final", self._error_response(
+                    "A geração em streaming foi interrompida por uma falha controlada.",
+                    f"Falha operacional: {type(exc).__name__}."))
