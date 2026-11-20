@@ -109,15 +109,19 @@ class GarciaEngine:
 
     def _sanitize_context(self, context: str) -> str:
         """Bound and XML-escape retrieved text; it remains untrusted evidence."""
-        cleaned = "".join(
-            char for char in context
-            if char in "\n\r\t" or (ord(char) >= 32 and ord(char) != 127)
-        )
-        cleaned = cleaned[: self.config.max_context_chars]
-        # Escape delimiter characters so retrieved text cannot close its XML block.
-        return (cleaned.replace("&", "&amp;")
-                       .replace("<", "&lt;")
-                       .replace(">", "&gt;"))
+        output: list[str] = []
+        size = 0
+        replacements = {"&": "&amp;", "<": "&lt;", ">": "&gt;"}
+        for char in context:
+            if char not in "\n\r\t" and (ord(char) < 32 or ord(char) == 127):
+                continue
+            escaped = replacements.get(char, char)
+            if size + len(escaped) > self.config.max_context_chars:
+                break
+            output.append(escaped)
+            size += len(escaped)
+        # Count the escaped representation so the actual prompt budget is bounded.
+        return "".join(output)
 
     @staticmethod
     def _context_from_retrieval(result: Any) -> str:
