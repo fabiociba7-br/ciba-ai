@@ -135,5 +135,6 @@ jobs:
             garcia-android/app/build/outputs/apk/release/*.apk
             ${{ runner.temp }}/garcia-apk-sha256.txt
           fail_on_unmatched_files: true
+          overwrite_files: true
           draft: false
           prerelease: false
