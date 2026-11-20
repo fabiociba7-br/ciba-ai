@@ -67,8 +67,8 @@ Java_com_ciba_garcia_chatterbox_ChatterboxNative_nativeCreate(
         __android_log_print(ANDROID_LOG_INFO, TAG, "Multilingual Chatterbox engine loaded.");
         return JNI_TRUE;
     } catch (const std::exception & error) {
-        __android_log_print(ANDROID_LOG_ERROR, TAG, "Engine load failed: %s", error.what());
-        throwState(env, error.what());
+        __android_log_print(ANDROID_LOG_ERROR, TAG, "Engine load failed (details withheld).");
+        throwState(env, "Falha ao carregar o motor local de voz.");
         return JNI_FALSE;
     }
 }
