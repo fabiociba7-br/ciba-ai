@@ -39,14 +39,14 @@ private const val VOICE_SAMPLE_TEXT = """Olá, meu nome é [seu nome]. Esta é m
 internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
     val context = LocalContext.current
     val store = remember { VoiceProfileStore(context) }
-    var profiles by remember { mutableStateOf(store.profiles()) }
+    var profiles by remember { mutableStateOf(emptyList<GarciaVoiceProfile>()) }
     val scope = rememberCoroutineScope()
-    var modelsReady by remember { mutableStateOf(ChatterboxModelManager.installed(context) != null) }
+    var modelsReady by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableStateOf<ChatterboxModelManager.DownloadProgress?>(null) }
     val nativeAvailable = ChatterboxNative.isLibraryLoaded()
-    var selectedFile by remember { mutableStateOf(store.currentFile()) }
-    var profileName by remember { mutableStateOf(store.currentName()) }
+    var selectedFile by remember { mutableStateOf<File?>(null) }
+    var profileName by remember { mutableStateOf("") }
     var status by remember { mutableStateOf(if (selectedFile != null) "Amostra salva neste aparelho." else "Nenhuma amostra de voz selecionada.") }
     var recording by remember { mutableStateOf(false) }
     var elapsed by remember { mutableIntStateOf(0) }
@@ -55,6 +55,20 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
     var playing by remember { mutableStateOf(false) }
     var consentGiven by remember { mutableStateOf(false) }
     var player by remember { mutableStateOf<MediaPlayer?>(null) }
+    LaunchedEffect(Unit) {
+        val initial = withContext(Dispatchers.IO) {
+            Triple(
+                ChatterboxModelManager.installed(context) != null,
+                store.profiles(),
+                store.currentProfile()
+            )
+        }
+        modelsReady = initial.first
+        profiles = initial.second
+        selectedFile = initial.third?.sample
+        profileName = initial.third?.name.orEmpty()
+        status = if (initial.third != null) "Perfil local encontrado e validado." else "Nenhum perfil clonado está ativo."
+    }
 
     val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) {
@@ -78,9 +92,17 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            runCatching { store.importAudio(uri) }
-                .onSuccess { selectedFile = it; profileName = profileName.ifBlank { "Minha voz" }; status = "Áudio importado e validado. Salve o perfil para mantê-lo." }
-                .onFailure { status = it.message ?: "Não foi possível importar o áudio." }
+            scope.launch {
+                busy = true
+                try {
+                    val file = withContext(Dispatchers.IO) { store.importAudio(uri) }
+                    selectedFile = file
+                    profileName = profileName.ifBlank { "Minha voz" }
+                    status = "Áudio importado e validado. Salve o perfil para mantê-lo."
+                } catch (error: Throwable) {
+                    status = error.message ?: "Não foi possível importar o áudio."
+                } finally { busy = false }
+            }
         }
     }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -115,11 +137,20 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
         active?.release()
         if (file != null && file.exists()) {
             if (stopped) {
-                runCatching { store.saveRecording(file) }
-                    .onSuccess { selectedFile = it; profileName = profileName.ifBlank { "Minha voz" }; status = "Gravação concluída e validada. Salve o perfil." }
-                    .onFailure { status = it.message ?: "Não foi possível validar a gravação." }
-            } else status = "A gravação ficou muito curta ou não pôde ser finalizada. Tente novamente."
-            file.delete()
+                scope.launch {
+                    try {
+                        val saved = withContext(Dispatchers.IO) { store.saveRecording(file) }
+                        selectedFile = saved
+                        profileName = profileName.ifBlank { "Minha voz" }
+                        status = "Gravação concluída e validada. Salve o perfil."
+                    } catch (error: Throwable) {
+                        status = error.message ?: "Não foi possível validar a gravação."
+                    } finally { file.delete() }
+                }
+            } else {
+                status = "A gravação ficou muito curta ou não pôde ser finalizada. Tente novamente."
+                file.delete()
+            }
         }
     }
 
@@ -173,7 +204,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                             ChatterboxModelManager.download(context) { progress -> downloadProgress = progress }
                             modelsReady = true
                             downloadProgress = null
-                            status = "Modelos instalados. Agora salve e prepare sua amostra."
+                            status = "Modelos locais instalados e validados. Agora salve uma referência para criar um perfil."
                         } catch (error: Throwable) {
                             downloadProgress = null
                             status = error.message ?: "Falha ao baixar os modelos."
@@ -247,12 +278,19 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                         ) { Text(if (active) "Ativa" else "Usar esta voz") }
                         TextButton(
                             onClick = {
-                                val wasActive = active
-                                store.delete(profile.id)
-                                voiceOutput.onProfileDeleted(profile.id, wasActive)
-                                profiles = store.profiles()
-                                if (selectedFile?.parentFile == profile.sample.parentFile) selectedFile = null
-                                status = if (wasActive) "Perfil excluído. Voz do sistema restaurada." else "Perfil excluído."
+                                scope.launch {
+                                    busy = true
+                                    val wasActive = active
+                                    try {
+                                        withContext(Dispatchers.IO) { store.delete(profile.id) }
+                                        voiceOutput.onProfileDeleted(profile.id, wasActive)
+                                        profiles = withContext(Dispatchers.IO) { store.profiles() }
+                                        if (selectedFile?.parentFile == profile.sample.parentFile) selectedFile = null
+                                        status = if (wasActive) "Perfil excluído. Voz do sistema restaurada." else "Perfil excluído."
+                                    } catch (error: Throwable) {
+                                        status = error.message ?: "Não foi possível excluir o perfil."
+                                    } finally { busy = false }
+                                }
                             },
                             enabled = !busy
                         ) { Text("Excluir") }
@@ -308,15 +346,16 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                         busy = true
                         status = "Convertendo a amostra para WAV mono..."
                         try {
-                            val profile = withContext(Dispatchers.IO) {
+                            val saved = withContext(Dispatchers.IO) {
                                 val target = File(context.cacheDir, "voice-normalized-${UUID.randomUUID()}.wav")
                                 target.parentFile?.mkdirs()
                                 VoiceAudioNormalizer.toMonoWav(file, target)
-                                store.save(file, profileName, target)
+                                val profile = store.save(file, profileName, target)
+                                profile to store.profiles()
                             }
-                            selectedFile = profile.sample
-                            profileName = profile.name
-                            profiles = store.profiles()
+                            selectedFile = saved.first.sample
+                            profileName = saved.first.name
+                            profiles = saved.second
                             status = "Perfil salvo localmente. Ouça a prévia ou toque em Usar esta voz para ativá-lo."
                             busy = false
                         } catch (error: Throwable) {
@@ -324,7 +363,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                             status = error.message ?: "Falha ao preparar o áudio."
                         }
                     }
-                }, enabled = profileName.isNotBlank() && consentGiven && !recording && !busy, modifier = Modifier.weight(1f)) { Text("Salvar e preparar voz") }
+                }, enabled = profileName.isNotBlank() && consentGiven && !recording && !busy, modifier = Modifier.weight(1f)) { Text("Salvar perfil de voz") }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = consentGiven, onCheckedChange = { consentGiven = it })
@@ -333,6 +372,6 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
         }
         Text(status, fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
         Spacer(Modifier.height(6.dp))
-        Text("A gravação e o processamento acontecem localmente. Os modelos são baixados uma única vez; depois, a Garcia reutiliza o perfil salvo.", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
+        Text("A gravação, a referência, o condicionamento e a síntese permanecem no armazenamento privado do aparelho. Nenhum áudio é enviado ao Worker ou a serviços externos. Sem modelo válido, prévia e ativação ficam desabilitadas.", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
     }
 }
