@@ -12,12 +12,8 @@ export interface ResearchReport {
   artifacts?: { json_url: string; markdown_url: string };
 }
 export interface AIService { run(model: string, input: Record<string, unknown>): Promise<unknown>; }
-export interface KVNamespaceLike { get(key: string): Promise<string | null>; put(key: string, value: string, options?: { expirationTtl?: number }): Promise<void>; }
-export interface R2BucketLike {
-  put(key: string, value: ArrayBuffer | ArrayBufferView | ReadableStream | string, options?: Record<string, unknown>): Promise<unknown>;
-  get(key: string): Promise<{ body: ReadableStream; httpEtag: string; size: number; httpMetadata?: { contentType?: string }; writeHttpMetadata(headers: Headers): void } | null>;
-  delete(key: string): Promise<void>;
-}
+export type KVNamespaceLike = KVNamespace;
+export type R2BucketLike = R2Bucket;
 export interface ResearchEnv {
   AI: AIService; DB: D1Database; GARCIA_ARTIFACTS: R2BucketLike; GARCIA_PROMPT_CACHE: KVNamespaceLike;
   AI_MODEL?: string; GARCIA_IMAGE_MODEL?: string; GARCIA_VISION_MODEL?: string;
