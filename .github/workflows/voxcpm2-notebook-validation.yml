@@ -1,0 +1,61 @@
+name: VoxCPM2 Notebook Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "notebooks/voxcpm2_kaggle_lab.ipynb"
+      - "docs/GARCIA_VOXCPM2_KAGGLE_LAB.md"
+      - ".github/workflows/voxcpm2-notebook-validation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "notebooks/voxcpm2_kaggle_lab.ipynb"
+      - "docs/GARCIA_VOXCPM2_KAGGLE_LAB.md"
+      - ".github/workflows/voxcpm2-notebook-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-notebook:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate notebook JSON and Python cell syntax
+        shell: bash
+        run: |
+          python - <<'PY'
+          import ast
+          import json
+          from pathlib import Path
+
+          path = Path("notebooks/voxcpm2_kaggle_lab.ipynb")
+          notebook = json.loads(path.read_text(encoding="utf-8"))
+          assert notebook.get("nbformat") == 4, "Expected Jupyter notebook format 4"
+          cells = notebook.get("cells")
+          assert isinstance(cells, list) and cells, "Notebook has no cells"
+
+          code_cells = 0
+          for index, cell in enumerate(cells):
+              assert cell.get("cell_type") in {"markdown", "code"}, f"Invalid cell type at {index}"
+              if cell["cell_type"] != "code":
+                  continue
+              code_cells += 1
+              source = "".join(cell.get("source", []))
+              # IPython magics are notebook directives, not Python syntax.
+              python_lines = "\n".join(
+                  line for line in source.splitlines()
+                  if not line.lstrip().startswith(("%", "!"))
+              )
+              if python_lines.strip():
+                  ast.parse(python_lines, filename=f"cell-{index}")
+          assert code_cells >= 5, "Expected executable setup/inference cells"
+          print(f"Notebook valid: {len(cells)} cells, {code_cells} Python cells.")
+          PY
