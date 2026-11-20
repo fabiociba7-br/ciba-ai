@@ -35,7 +35,7 @@ Nenhum pacote Python, peso de modelo, checkpoint, binário nativo ou arquivo de 
 - Cada síntese exige consentimento explícito associado à ação do usuário.
 - Texto e áudio não são enviados a provedores externos.
 - A geração de voz não grava conversas nem adiciona memórias.
-- Clonagem de voz e perfis derivados de amostras pessoais não fazem parte desta integração.
+- Clonagem de voz e perfis derivados de amostras pessoais não fazem parte do bridge desktop descrito nesta seção. O runtime Android local é separado e está documentado abaixo.
 - Uma futura clonagem exigirá consentimento separado e verificável do titular da voz, além de política de armazenamento e exclusão.
 
 ## Próximas etapas técnicas
@@ -49,3 +49,21 @@ Nenhum pacote Python, peso de modelo, checkpoint, binário nativo ou arquivo de 
 ## Referência
 
 - https://github.com/resemble-ai/chatterbox
+
+
+## Runtime Android incorporado — separado do bridge desktop
+
+A branch candidata `feature/garcia-voice-cloning-mainline` (PR #36, em rascunho) adiciona um runtime Android independente:
+
+- `android_embedded`: módulo C++/GGML via JNI, sem Python/PyTorch, sem Worker e sem serviço TTS externo.
+- Engine escolhida para validação: `gianni-cor/chatterbox.cpp`, commit `ddca05fb69c2910b0d7b5eae420d360ed98c067b`, com patch local para o caminho multilingual.
+- Os modelos GGUF Q4_0 são obtidos sob ação explícita do usuário ou importados manualmente; hashes são fixados no app e verificados antes de aceitar os arquivos. Os pesos não são incluídos no Git nem no APK.
+- Referências, WAV normalizado, cache de condicionamento e áudio sintetizado permanecem no armazenamento privado do Android. O app não envia áudio ou texto para clonagem ao Worker.
+- `LocalSpeechOutput` preserva o TTS nativo em modo `SYSTEM` e roteia para o motor local em modo `CLONED`. Falhas no modo clonado são explícitas; não existe fallback silencioso.
+- O contrato `desktop-chatterbox-bridge` continua exclusivo do desktop e não é usado pelo Android.
+
+### Limites ainda não validados
+
+- O GGUF atualmente distribuído é o Chatterbox Multilingual V3 geral: aceita português, mas não é o fine-tune dedicado brasileiro. O pacote pt-BR dedicado existe upstream, porém ainda não foi convertido e validado neste pipeline.
+- A implementação Android atual é CPU-only, com até quatro threads e CFM em 7 passos. Latência, pico de RAM, aquecimento e qualidade de similaridade ainda precisam ser medidos em aparelho físico.
+- Até o teste de dispositivo e o CI nativo passarem, o status de `text_to_speech`/`voice_conversion` em `native-capabilities.ts` permanece `planned` / `review_required`. Não anunciar como capacidade disponível.

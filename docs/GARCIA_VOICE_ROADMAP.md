@@ -39,7 +39,7 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - Gate: testes com frases curtas/longas em pt-BR, números, pontuação, ruído e interrupção; confirmar que áudio não sai do aparelho.
 
 ### Etapa 4 — preparar motor de síntese
-**Estado: para o Android, adotado inicialmente o TTS nativo do sistema com filtro obrigatório de voz offline em português; Chatterbox permanece não integrado.**
+**Estado: TTS nativo do Android preservado; um runtime local Chatterbox.cpp foi integrado em branch de implementação para clonagem zero-shot. CI nativo e teste auditivo em aparelho ainda são gates obrigatórios; a capacidade não está marcada como disponível.**
 - Reavaliar Chatterbox para Android: o contrato existente é desktop-local e não equivale a runtime Android.
 - Conferir licença do código e dos pesos/checkpoints separadamente, suporte real a pt-BR, tamanho, RAM, CPU/GPU e latência.
 - Comparar somente alternativas open source com licença e runtime Android viáveis; escolher automaticamente a melhor opção compatível.
@@ -76,6 +76,28 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - A transcrição preenche o campo de texto para revisão antes do envio; não encaminha áudio ao servidor.
 - A síntese usa Android TextToSpeech e só seleciona voz em português que não exige rede. A leitura automática pode ser desligada nas Configurações.
 - O detector de atividade de voz encerra a captura após 1,1 s de silêncio; sem fala, cancela após 10 s. A transcrição continua editável e exige toque em Enviar.
-- O modo contínuo é opt-in, persistente e só retoma a escuta após o término da fala TTS; texto/anexos pendentes bloqueiam nova captura. Desativar a leitura automática também desativa o modo contínuo.
+- O modo contínuo é opt-in e só retoma a escuta após o término da fala TTS; texto/anexos pendentes bloqueiam nova captura. A sessão contínua é encerrada ao abrir novamente o aplicativo e exige nova ativação explícita. Desativar a leitura automática também desativa o modo contínuo.
 - O workflow executa testes unitários do detector e compilação nativa/Kotlin; teste de áudio e TTS ainda exige aparelho real.
 - Não foi gerado APK.
+
+
+## Ajuste de saída falada — 20/11/2026
+
+- Respostas automáticas por voz são restritas à sessão de conversa por voz iniciada explicitamente pelo usuário. Perguntas enviadas pelo chat de texto recebem respostas somente escritas.
+- Ao abrir o aplicativo, qualquer sessão contínua anterior é encerrada; não há microfone ou fala automática iniciados sem nova ação.
+- Antes da síntese, a Garcia remove marcadores Markdown (asteriscos, sublinhados, títulos, listas, links e blocos de código) e os delimitadores de parênteses, preservando o texto legível. A mensagem original exibida no chat não é alterada.
+- A taxa de fala do Android TTS foi ajustada para 1,15x, mantendo o pitch natural.
+- Testes unitários cobrem limpeza de Markdown, parênteses, links, código e listas. O teste em aparelho real ainda é necessário para avaliar a voz e a velocidade percebida.
+
+
+## Estado adicional — clonagem de voz Android (20/11/2026)
+
+- Branch de implementação: `feature/garcia-voice-cloning-mainline`; PR #36 aberto em rascunho, sem merge. CI nativo e teste em aparelho ainda pendentes.
+- `VoiceProfileStore` mantém gravação, WAV normalizado, metadados e SHA-256 no storage privado do app.
+- `VoiceCloneEngine` define contrato local; `ChatterboxVoiceCloneEngine` implementa o adaptador nativo. A prévia não altera a seleção ativa.
+- `LocalSpeechOutput` separa os modos `SYSTEM` e `CLONED`. Falha do clone não faz fallback silencioso para TTS do sistema.
+- Referência de 5–30 s; recomendação de 10–15 s de fala clara. Normalização para WAV PCM mono, 24 kHz, 16 bits; validação básica rejeita silêncio/volume muito baixo, WAV truncado e clipping extremo.
+- Modelos GGUF Q4_0 (aprox. 1,1 GB no total) ficam fora do Git e são verificados por SHA-256 antes do uso.
+- O código e os modelos são locais; áudio de referência, condicionamento e PCM sintetizado não são enviados ao Worker.
+- A compilação Kotlin isolada não valida inferência. CI CMake/NDK e teste auditivo/performance em aparelho real continuam obrigatórios.
+- `src/core/native-capabilities.ts` permanece sem marcar clonagem/TTS como `available` até aprovação dos testes reais.
