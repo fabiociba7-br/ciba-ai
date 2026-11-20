@@ -324,7 +324,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
         Spacer(Modifier.height(8.dp))
         selectedFile?.let { file ->
             Text("Amostra: ${file.name} · ${(file.length() / 1024)} KB", fontSize = 12.sp)
-            OutlinedTextField(value = profileName, onValueChange = { profileName = it }, label = { Text("Nome do perfil") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = profileName, onValueChange = { profileName = it.take(40) }, label = { Text("Nome do perfil") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             profiles.firstOrNull { it.sample == file }?.let { selectedProfile ->
                 TextButton(onClick = {
                     runCatching {
@@ -366,7 +366,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                             status = error.message ?: "Falha ao preparar o áudio."
                         }
                     }
-                }, enabled = profileName.isNotBlank() && consentGiven && !recording && !busy, modifier = Modifier.weight(1f)) { Text("Salvar perfil de voz") }
+                }, enabled = profileName.isNotBlank() && consentGiven && !recording && !busy && profiles.none { it.sample == file }, modifier = Modifier.weight(1f)) { Text(if (profiles.any { it.sample == file }) "Perfil salvo" else "Salvar perfil de voz") }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Checkbox(checked = consentGiven, onCheckedChange = { consentGiven = it })
