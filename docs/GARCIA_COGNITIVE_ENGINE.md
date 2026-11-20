@@ -6,7 +6,7 @@ O pacote Python `garcia_research` agora expõe uma camada opcional de orquestra�
 
 1. O `Retriever` recupera evidências para a consulta atual.
 2. O engine converte o resultado em texto JSON, remove caracteres de controle, neutraliza padrões comuns de instruções maliciosas, escapa delimitadores XML e limita o contexto a `max_context_chars`.
-3. O prompt delimita a consulta e o contexto não confiável. O modelo recebe instruções para usar o contexto somente como evidência.
+3. A política fica na mensagem `system`; consulta e contexto delimitado ficam na mensagem `user`. O contexto não confiável é escapado e rotulado como evidência, nunca como instrução.
 4. A saída JSON é validada: resposta não vazia, confiança mínima 0.70, menos de três lacunas e fontes citadas presentes nos títulos recuperados.
 5. Se falhar, o engine refina a consulta com as lacunas e repete até `max_iterations` (padrão 2).
 6. Falhas transitórias de LLM usam retry exponencial com jitter. Três falhas consecutivas abrem o circuit breaker por 30 segundos. O cliente DuckDuckGo também faz retry e respeita respostas de bloqueio; CAPTCHA/403/429 não são contornados.
@@ -52,7 +52,7 @@ finally:
     retriever.close()
 ```
 
-Configure `OPENAI_API_KEY` no ambiente antes de instanciar `OpenAIAdapter`. Para outro modelo, implemente o protocolo `generate(prompt) -> str` e injete o provider.
+Configure `OPENAI_API_KEY` no ambiente antes de instanciar `OpenAIAdapter`. Para outro modelo, implemente `generate(prompt) -> str`. Para manter a separação real de papéis, implemente também `generate_messages(messages) -> str` e, se houver streaming, `generate_stream_messages(messages)`. Providers legados que só aceitam uma string usam um caminho de compatibilidade que concatena os papéis; prefira a interface de mensagens em produção. O `LocalPromptAdapter` retorna explicitamente baixa confiança, pois não simula inferência semântica.
 
 ## Streaming
 
