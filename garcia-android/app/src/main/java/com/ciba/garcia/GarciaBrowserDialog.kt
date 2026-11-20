@@ -76,8 +76,11 @@ internal fun GarciaBrowserDialog(onDismiss: () -> Unit, onSharePage: (String) ->
     }
 
     fun closePopup() {
-        popupWebView?.stopLoading()
-        popupWebView?.destroy()
+        popupWebView?.let { popup ->
+            (popup.parent as? android.view.ViewGroup)?.removeView(popup)
+            popup.stopLoading()
+            popup.destroy()
+        }
         popupWebView = null
     }
 
@@ -376,10 +379,16 @@ internal fun GarciaBrowserDialog(onDismiss: () -> Unit, onSharePage: (String) ->
             pendingWebPermission?.deny()
             pendingWebPermission = null
             fullScreenCallback?.onCustomViewHidden()
-            popupWebView?.stopLoading()
-            popupWebView?.destroy()
-            webView?.stopLoading()
-            webView?.destroy()
+            popupWebView?.let { popup ->
+                (popup.parent as? android.view.ViewGroup)?.removeView(popup)
+                popup.stopLoading()
+                popup.destroy()
+            }
+            webView?.let { browser ->
+                (browser.parent as? android.view.ViewGroup)?.removeView(browser)
+                browser.stopLoading()
+                browser.destroy()
+            }
             popupWebView = null
             webView = null
         }
