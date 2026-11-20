@@ -1,4 +1,4 @@
-"""Public API for Garcia research."""
+"""Public API for the optional local research CLI."""
 from __future__ import annotations
 import logging
 from .client import RobustDuckDuckGoClient
@@ -6,22 +6,19 @@ from .config import ResearchConfig
 from .exceptions import ResearchError, SearchBlockedError
 from .models import ResearchReport
 from .orchestrator import LLMClient, ResearchOrchestrator
-from .publisher import GitHubPublisher
 from .synthesizer import synthesize_results
 
 logger = logging.getLogger(__name__)
 
 class GarciaResearchService:
+    """Local research helper. Persistent artifacts are handled by the Cloudflare Worker."""
     def __init__(self, config: ResearchConfig, llm_client: LLMClient | None = None) -> None:
         self.config = config
         self.llm_client = llm_client
         self.search_client = RobustDuckDuckGoClient(config)
         self.orchestrator = ResearchOrchestrator(config, llm_client)
 
-    def run(
-        self, topic: str, depth: str = "standard", focus: list[str] | None = None
-    ) -> ResearchReport:
-        """Execute query planning, search, synthesis and optional Git publication."""
+    def run(self, topic: str, depth: str = "standard", focus: list[str] | None = None) -> ResearchReport:
         topic = topic.strip()
         if not topic:
             raise ValueError("topic must not be empty.")
@@ -44,10 +41,6 @@ class GarciaResearchService:
             raise ResearchError("No search results were collected.")
         report = synthesize_results(raw_data, topic, self.llm_client)
         report.queries = queries
-        if self.config.repo_path is not None:
-            report.publication = GitHubPublisher(self.config).publish(report)
-        elif self.config.publish_enabled:
-            raise ValueError("publish_enabled requires repo_path.")
         return report
 
     def close(self) -> None:
