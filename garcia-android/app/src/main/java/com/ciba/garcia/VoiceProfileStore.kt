@@ -144,11 +144,11 @@ internal class VoiceProfileStore(context: Context) {
         val currentVoice = voicePrefs.getString("voice_id", null)
         val editor = voicePrefs.edit()
             .putString("voice_mode", "cloned")
-            .putString("cloned_voice_id", verified.id)
-            .putString("voice_id", "clone:" + verified.id)
+            .putString("cloned_voice_id", profile.id)
+            .putString("voice_id", "clone:" + profile.id)
         if (!currentVoice.isNullOrBlank() && !currentVoice.startsWith("clone:")) editor.putString("system_voice_id", currentVoice)
         check(editor.commit()) { "Não foi possível ativar o perfil de voz." }
-        prefs.edit().putString("active_profile_id", verified.id).apply()
+        prefs.edit().putString("active_profile_id", profile.id).apply()
     }
 
     fun rename(profileId: String, newName: String) {
