@@ -30,8 +30,8 @@ class ResilientLLMProvider:
 
     @staticmethod
     def _flatten_messages(messages: list[dict[str, str]]) -> str:
-        return "\\n".join(
-            f"[{message.get('role', 'user')}]\\n{message.get('content', '')}"
+        return "\n".join(
+            f"[{message.get('role', 'user')}]\n{message.get('content', '')}"
             for message in messages
         )
 
