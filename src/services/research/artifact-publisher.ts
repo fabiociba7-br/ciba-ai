@@ -46,12 +46,17 @@ export class CloudflareArtifactPublisher {
     const jsonKey = prefix + ".json", mdKey = prefix + ".md";
     const urls = { json_url: await this.signedUrl(jsonKey), markdown_url: await this.signedUrl(mdKey) };
     report.artifacts = urls;
-    await this.env.GARCIA_ARTIFACTS.put(jsonKey, JSON.stringify(report, null, 2), {
-      httpMetadata: { contentType: "application/json; charset=utf-8" }, customMetadata: { ownerId: this.env.ownerId, appId: this.env.appId } });
-    await this.env.GARCIA_ARTIFACTS.put(mdKey, renderResearchMarkdown(report), {
-      httpMetadata: { contentType: "text/markdown; charset=utf-8" }, customMetadata: { ownerId: this.env.ownerId, appId: this.env.appId } });
-    await this.env.DB.prepare("INSERT INTO research_artifacts (artifact_id, owner_id, app_id, report_json_r2_key, report_md_r2_key, created_at) VALUES (?, ?, ?, ?, ?, ?)")
-      .bind(id, this.env.ownerId, this.env.appId, jsonKey, mdKey, new Date().toISOString()).run();
+    try {
+      await this.env.GARCIA_ARTIFACTS.put(jsonKey, JSON.stringify(report, null, 2), {
+        httpMetadata: { contentType: "application/json; charset=utf-8" }, customMetadata: { ownerId: this.env.ownerId, appId: this.env.appId } });
+      await this.env.GARCIA_ARTIFACTS.put(mdKey, renderResearchMarkdown(report), {
+        httpMetadata: { contentType: "text/markdown; charset=utf-8" }, customMetadata: { ownerId: this.env.ownerId, appId: this.env.appId } });
+      await this.env.DB.prepare("INSERT INTO research_artifacts (artifact_id, owner_id, app_id, report_json_r2_key, report_md_r2_key, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(id, this.env.ownerId, this.env.appId, jsonKey, mdKey, new Date().toISOString()).run();
+    } catch (error) {
+      await Promise.all([this.env.GARCIA_ARTIFACTS.delete(jsonKey), this.env.GARCIA_ARTIFACTS.delete(mdKey)]);
+      throw error;
+    }
     return urls;
   }
   async verifySignedUrl(key: string, expires: number, signature: string): Promise<boolean> {
