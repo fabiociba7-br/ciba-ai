@@ -203,12 +203,15 @@ internal object ClonedVoiceRuntime {
             } catch (error: Throwable) {
                 track?.let { runCatching { it.pause(); it.flush(); it.release() } }
                 track = null
-                if (!cancelled.get()) {
-                    synchronized(lock) {
-                        ready.set(false)
-                        loadedProfileId = null
-                        if (ChatterboxNative.isLibraryLoaded()) runCatching { ChatterboxNative.nativeRelease() }
-                    }
+                if (cancelled.get()) {
+                    GarciaLog.recordEvent(context, "Voz clonada", "Reprodução interrompida pelo usuário.")
+                    onDone()
+                    return@execute
+                }
+                synchronized(lock) {
+                    ready.set(false)
+                    loadedProfileId = null
+                    if (ChatterboxNative.isLibraryLoaded()) runCatching { ChatterboxNative.nativeRelease() }
                 }
                 val safe = IllegalStateException(safeMessage(error))
                 GarciaLog.recordEvent(context, "Voz clonada", "Falha de síntese/reprodução: " + safe.message)
