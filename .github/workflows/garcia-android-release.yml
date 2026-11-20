@@ -2,18 +2,12 @@ name: Garcia Android Release
 
 on:
   workflow_dispatch:
-    inputs:
-      version_name:
-        description: "Versão pública do aplicativo"
-        required: false
-        type: string
-        default: "1.2.2"
 
 permissions:
   contents: read
 
 concurrency:
-  group: garcia-android-release-${{ github.event.pull_request.number || github.ref }}
+  group: garcia-android-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -25,7 +19,6 @@ jobs:
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       FACEBOOK_CLIENT_TOKEN: ${{ secrets.FACEBOOK_CLIENT_TOKEN }}
-      VERSION_NAME: ${{ inputs.version_name || '' }}
     defaults:
       run:
         working-directory: garcia-android
@@ -36,15 +29,20 @@ jobs:
           ref: main
           fetch-depth: 1
 
-      - name: Resolve release version
+      - name: Resolve release version from gradle.properties
         id: resolve-version
         shell: bash
         run: |
           set -euo pipefail
-          VERSION_NAME="${VERSION_NAME:-$(sed -n 's/^VERSION_NAME=//p' gradle.properties | head -n 1)}"
-          [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo "::error::Invalid or missing release version"; exit 1; }
+          VERSION_NAME="$(sed -n 's/^VERSION_NAME=//p' gradle.properties | head -n 1)"
+          VERSION_CODE="$(sed -n 's/^VERSION_CODE=//p' gradle.properties | head -n 1)"
+          [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo "::error::Invalid or missing VERSION_NAME in gradle.properties"; exit 1; }
+          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]] || { echo "::error::Invalid or missing VERSION_CODE in gradle.properties"; exit 1; }
           echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "Release source of truth: versionName=$VERSION_NAME versionCode=$VERSION_CODE"
 
       - name: Validate signing and Facebook secrets
         shell: bash
@@ -88,10 +86,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo "::error::Invalid version name"; exit 1; }
-          VERSION_CODE="$(sed -n 's/^VERSION_CODE=//p' gradle.properties | head -n 1)"
-          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]] || { echo "::error::Invalid or missing VERSION_CODE in gradle.properties"; exit 1; }
-          test "$VERSION_CODE" -gt 2031 || { echo "::error::VERSION_CODE must be higher than the previous published build (2031)"; exit 1; }
           echo "Building applicationId=com.ciba.garcia versionCode=$VERSION_CODE versionName=$VERSION_NAME"
           gradle --no-daemon :app:assembleRelease \
             "-PVERSION_CODE=$VERSION_CODE" \
@@ -109,10 +103,8 @@ jobs:
           APK_VERSION_CODE="$(sed -n "s/^package:.*versionCode='\\([^']*\\)'.*/\\1/p" <<< "$BADGING")"
           APK_VERSION_NAME="$(sed -n "s/^package:.*versionName='\\([^']*\\)'.*/\\1/p" <<< "$BADGING")"
           test "$PACKAGE" = "com.ciba.garcia" || { echo "::error::Wrong package: $PACKAGE"; exit 1; }
-          EXPECTED_VERSION_CODE="$(sed -n 's/^VERSION_CODE=//p' gradle.properties | head -n 1)"
-          test "$APK_VERSION_CODE" = "$EXPECTED_VERSION_CODE" || { echo "::error::Wrong version code: expected $EXPECTED_VERSION_CODE, got $APK_VERSION_CODE"; exit 1; }
-          test "$APK_VERSION_CODE" -gt 2031 || { echo "::error::Version code is not upgrade-safe: $APK_VERSION_CODE"; exit 1; }
-          test "$APK_VERSION_NAME" = "$VERSION_NAME" || { echo "::error::Wrong version name: $APK_VERSION_NAME"; exit 1; }
+          test "$APK_VERSION_CODE" = "$VERSION_CODE" || { echo "::error::Wrong version code: expected $VERSION_CODE, got $APK_VERSION_CODE"; exit 1; }
+          test "$APK_VERSION_NAME" = "$VERSION_NAME" || { echo "::error::Wrong version name: expected $VERSION_NAME, got $APK_VERSION_NAME"; exit 1; }
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
           sha256sum "$APK" | tee "$RUNNER_TEMP/garcia-apk-sha256.txt"
           echo "Verified package=$PACKAGE versionCode=$APK_VERSION_CODE versionName=$APK_VERSION_NAME"
