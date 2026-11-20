@@ -331,11 +331,13 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 if (message.contains("pt-BR", ignoreCase = true) && message.contains("offline", ignoreCase = true)) {
                     streamingUnavailable = true
                 }
-                if (retry && continuousVoice && voiceReplies) {
-                    autoListenPending = true
-                } else if (continuousVoice && voiceReplies && whisperModelInfo != null) {
+                if (continuousVoice && voiceReplies && whisperModelInfo != null) {
+                    // Android recognizer is only a fallback. Any failed fallback turn returns to Whisper.
                     streamingUnavailable = true
-                    whisperStatus = "$message Usando Whisper local."
+                    whisperStatus = "$message Voltando ao Whisper local."
+                    autoListenPending = true
+                } else if (retry && continuousVoice && voiceReplies) {
+                    // If no Whisper model is installed, retry the available Android offline recognizer.
                     autoListenPending = true
                 } else {
                     continuousVoice = false
