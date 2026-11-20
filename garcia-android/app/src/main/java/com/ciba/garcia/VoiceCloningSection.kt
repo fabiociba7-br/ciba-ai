@@ -1,5 +1,7 @@
 package com.ciba.garcia
 
+import com.ciba.garcia.chatterbox.ChatterboxNative
+
 import android.Manifest
 import android.content.Context
 import android.media.MediaMetadataRetriever
