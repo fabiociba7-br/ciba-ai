@@ -109,32 +109,124 @@ internal class VoiceProfileStore(context: Context) {
         }
     }
 
+    /**
+     * Loads profiles and performs safe, local migrations for older records.
+     * Missing legacy hashes are calculated from the files; an existing hash
+     * mismatch is never silently accepted. If the original sample is intact,
+     * a missing/corrupt normalized WAV is rebuilt from that sample.
+     */
     fun profiles(): List<GarciaVoiceProfile> {
-        val json = runCatching { JSONObject(prefs.getString("profiles_json", "{}").orEmpty()) }.getOrElse { JSONObject() }
+        val json = runCatching { JSONObject(prefs.getString("profiles_json", "{}").orEmpty()) }
+            .getOrElse { JSONObject() }
         val result = mutableListOf<GarciaVoiceProfile>()
         val keys = json.keys()
+        var metadataChanged = false
+
         while (keys.hasNext()) {
             val id = keys.next()
             val item = json.optJSONObject(id) ?: continue
             val directory = File(root, id)
-            val sample = File(directory, item.optString("sample"))
-            val wav = File(directory, item.optString("wav"))
-            if (!isInside(root, directory) || !isInside(root, sample) || !isInside(root, wav)) continue
-            val sampleHash = item.optString("sample_sha256")
-            val wavHash = item.optString("wav_sha256")
-            val hashesValid = sample.isFile && wav.isFile && sampleHash.isNotBlank() && wavHash.isNotBlank() &&
-                verified(sample, sampleHash) && verified(wav, wavHash)
+            if (!isInside(root, directory)) continue
+
+            val sampleName = item.optString("sample").ifBlank { "reference.m4a" }
+            val wavName = item.optString("wav").ifBlank { "reference.wav" }
+            var sample = File(directory, sampleName)
+            var wav = File(directory, wavName)
+            if (!isInside(root, sample) || !isInside(root, wav)) continue
+
+            var sampleHash = item.optString("sample_sha256")
+            var wavHash = item.optString("wav_sha256")
+            var duration = item.optLong("duration_ms", 0L)
+
+            // A legacy profile may have files but no checksum metadata.
+            // Hashes are initialized only when absent, never when mismatched.
+            if (sample.isFile && sampleHash.isBlank()) {
+                sampleHash = runCatching { sha256(sample) }.getOrDefault("")
+                if (sampleHash.isNotBlank()) {
+                    item.put("sample_sha256", sampleHash)
+                    metadataChanged = true
+                }
+            }
+
+            val sampleTrusted = sample.isFile && sampleHash.isNotBlank() &&
+                verified(sample, sampleHash)
+
+            // If the original recording is intact, rebuild a missing or
+            // damaged normalized WAV so older profiles can be recovered.
+            if (sampleTrusted && (!wav.isFile || (wavHash.isNotBlank() && !verified(wav, wavHash)))) {
+                runCatching {
+                    val rebuilt = File(directory, "reference.wav")
+                    val temp = File(directory, "reference-repair-${UUID.randomUUID()}.wav")
+                    try {
+                        VoiceAudioNormalizer.toMonoWav(sample, temp)
+                        validateNormalizedWav(temp)
+                        check(temp.renameTo(rebuilt) || (temp.copyTo(rebuilt, overwrite = true).exists() && temp.delete())) {
+                            "Não foi possível restaurar a referência WAV."
+                        }
+                    } finally {
+                        temp.delete()
+                    }
+                    wav = rebuilt
+                    item.put("wav", wav.name)
+                    wavHash = sha256(wav)
+                    item.put("wav_sha256", wavHash)
+                    metadataChanged = true
+                }
+            }
+
+            // If only the normalized WAV survived, restore a playable sample
+            // copy. This does not override an existing checksum mismatch.
+            if (!sample.isFile && wav.isFile) {
+                val wavTrusted = wavHash.isBlank() || verified(wav, wavHash)
+                if (wavTrusted) {
+                    runCatching {
+                        sample = File(directory, "reference.wav")
+                        if (sample.canonicalFile != wav.canonicalFile) wav.copyTo(sample, overwrite = true)
+                        item.put("sample", sample.name)
+                        sampleHash = sha256(sample)
+                        item.put("sample_sha256", sampleHash)
+                        metadataChanged = true
+                    }
+                }
+            }
+
+            if (wav.isFile && wavHash.isBlank()) {
+                wavHash = runCatching { sha256(wav) }.getOrDefault("")
+                if (wavHash.isNotBlank()) {
+                    item.put("wav_sha256", wavHash)
+                    metadataChanged = true
+                }
+            }
+            if (duration <= 0L && sample.isFile) {
+                duration = runCatching { validateAudio(sample) }.getOrDefault(0L)
+                if (duration > 0L) {
+                    item.put("duration_ms", duration)
+                    metadataChanged = true
+                }
+            }
+
+            val hashesValid = sample.isFile && wav.isFile &&
+                sampleHash.isNotBlank() && wavHash.isNotBlank() &&
+                verified(sample, sampleHash) && verified(wav, wavHash) &&
+                runCatching { validateNormalizedWav(wav) }.isSuccess
+
             result += GarciaVoiceProfile(
                 id = id,
                 name = item.optString("name", "Minha voz").ifBlank { "Minha voz" },
                 sample = sample,
                 wav = wav,
                 createdAt = item.optLong("created_at", 0L),
-                durationMs = item.optLong("duration_ms", 0L),
+                durationMs = duration,
                 sampleSha256 = sampleHash,
                 wavSha256 = wavHash,
                 integrityValid = hashesValid
             )
+        }
+
+        if (metadataChanged) {
+            check(prefs.edit().putString("profiles_json", json.toString()).commit()) {
+                "Não foi possível atualizar os dados de integridade dos perfis de voz."
+            }
         }
         return result.sortedBy { it.name.lowercase() }
     }
