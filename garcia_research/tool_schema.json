@@ -2,7 +2,7 @@
   "type": "function",
   "function": {
     "name": "garcia_research",
-    "description": "Research a security or technology topic using the Garcia Research Pipeline. Returns an evidence-based report with source URLs, insights, and publication status. Use for questions requiring current external technical research; do not use for ordinary explanations.",
+    "description": "Research a security or technology topic using the Garcia Research Pipeline. Returns an evidence-based report with source URLs and insights. The optional Python package runs locally and does not publish artifacts; production persistence is handled by the Cloudflare Worker. Use for questions requiring current external technical research; do not use for ordinary explanations.",
     "parameters": {
       "type": "object",
       "properties": {
