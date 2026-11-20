@@ -4,6 +4,3 @@ class ResearchError(RuntimeError):
 
 class SearchBlockedError(ResearchError):
     """Raised when a search provider denies or challenges a request."""
-
-class GitPublisherError(ResearchError):
-    """Raised when a Git operation cannot be completed safely."""
