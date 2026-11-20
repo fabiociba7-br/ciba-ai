@@ -150,7 +150,7 @@ function validateRequest(request: DurableToolApprovalRequest): { inputJson: stri
  * D1-backed approval storage. Identity must come from an authenticated server
  * context; never construct it from caller-supplied owner/app/device identifiers.
  * Optional bindingSha256 pins approvals to an external tool schema fingerprint.
- * This module is deliberately not wired into the Worker or tool executor.
+ * The Worker uses this store through durable-approval-flow for approved external tools.
  */
 export function createD1ToolApprovalStore(
   db: D1DatabaseLike,

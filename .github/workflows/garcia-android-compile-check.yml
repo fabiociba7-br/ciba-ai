@@ -6,6 +6,13 @@ on:
   push:
     branches:
       - main
+      - feat/garcia-research-package
+    paths:
+      - "garcia-android/**"
+      - ".github/workflows/garcia-android-compile-check.yml"
+  pull_request:
+    branches:
+      - main
     paths:
       - "garcia-android/**"
       - ".github/workflows/garcia-android-compile-check.yml"
@@ -25,10 +32,10 @@ jobs:
       run:
         working-directory: garcia-android
     steps:
-      - name: Checkout main
+      - name: Checkout selected branch
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.ref }}
           fetch-depth: 1
 
       - name: Set up Java 17

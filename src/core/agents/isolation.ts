@@ -48,7 +48,8 @@ export function isolateAgentTools(
       policy.allowedToolRisks.includes(descriptor.risk) ||
       // Consent-bound Composio write/external tools may be proposed by any
       // specialist, but the durable approval flow is still mandatory.
-      (descriptor.id.startsWith("composio.") && descriptor.requiresApproval &&
+      ((descriptor.id.startsWith("composio.") || descriptor.id === "garcia.research") &&
+        descriptor.requiresApproval &&
         (descriptor.risk === "write" || descriptor.risk === "external"))
     )
     .slice(0, policy.maxToolDescriptors);
