@@ -106,11 +106,7 @@ Quando o modelo decidir pesquisar, a chamada estruturada terá este formato:
   "type": "function",
   "function": {
     "name": "garcia_research",
-    "arguments": {
-      "topic": "Falhas de segurança em OAuth2",
-      "depth": "deep",
-      "focus": ["PKCE", "redirect_uri", "token replay"]
-    }
+    "arguments": "{\\"topic\\":\\"Falhas de segurança em OAuth2\\",\\"depth\\":\\"deep\\",\\"focus\\":[\\"PKCE\\",\\"redirect_uri\\",\\"token replay\\"]}"
   }
 }
 ```
