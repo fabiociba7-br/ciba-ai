@@ -59,6 +59,7 @@ import { readRuntimeSettings, CONFIG_KEYS, publicConfig } from "./core/runtime-s
 import { requireCibaGenioAccess } from "./core/cibagenio-access";
 import { createRuntimeProviderRegistry } from "./core/runtime-provider-registry";
 import { facebookCapabilities } from "./core/facebook/capabilities";
+import { recordMemoryAudit } from "./core/memory-audit";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
@@ -1814,23 +1815,7 @@ const handlePrepareMemoryCandidate = async (request: Request, env: Env) => {
 };
 
 
-type MemoryAuditAction = "created" | "updated" | "deleted" | "review_approved" | "review_rejected";
-const recordMemoryAudit = async (
-  env: Env,
-  event: {
-    ownerId: string; memoryId?: string | null; proposalId?: string | null;
-    scope: "app" | "owner"; sourceAppId: string | null;
-    key: string; action: MemoryAuditAction; actorAppId: string; occurredAt: string;
-  },
-) => env.DB.prepare(`
-  INSERT INTO memory_audit_events(
-    event_id, owner_id, memory_id, proposal_id, scope, source_app_id,
-    memory_key, action, actor_app_id, occurred_at
-  ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`).bind(
-  crypto.randomUUID(), event.ownerId, event.memoryId || null, event.proposalId || null,
-  event.scope, event.sourceAppId, event.key, event.action, event.actorAppId, event.occurredAt,
-).run();
+
 
 const handleMemoryReviews = async (request: Request, env: Env, url: URL) => {
   const device = await authenticateDevice(request, env);
