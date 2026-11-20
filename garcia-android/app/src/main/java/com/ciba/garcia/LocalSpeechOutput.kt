@@ -313,7 +313,12 @@ internal class LocalSpeechOutput(
                 runCatching { ChatterboxModelManager.installed(appContext) }
             }
             if (!ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
-                onAvailabilityChanged(false, "A voz clonada está selecionada, mas T3/S3Gen não estão instalados ou falharam na validação SHA-256. Nenhuma voz substituta será usada.")
+                val reason = if (!ChatterboxVoiceCloneEngine.isNativeAvailable()) {
+                    "o runtime nativo Chatterbox não está disponível"
+                } else {
+                    "T3/S3Gen não estão instalados ou falharam na validação SHA-256"
+                }
+                onAvailabilityChanged(false, "A voz clonada está selecionada, mas " + reason + ". Nenhuma voz substituta será usada.")
                 return false
             }
             val utteranceId = "garcia-clone-" + System.nanoTime()
