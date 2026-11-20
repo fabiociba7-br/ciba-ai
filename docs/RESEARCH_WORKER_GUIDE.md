@@ -39,7 +39,7 @@ O D1 conserva o histórico e cada iteração grava uma nova imagem no R2; a vers
 
 ## Modelo de imagem e custo
 
-O modelo padrão é `@cf/black-forest-labs/flux-2-klein-4b`, hospedado no catálogo Workers AI. Ele unifica geração e edição com referências. O Worker envia multipart pelo binding `env.AI`, e as iterações usam a imagem anterior como `input_image_0`; a geração é limitada a 512×512 para cumprir o limite documentado de imagem de referência inferior a 512×512. O modelo aceita até quatro referências, mas o fluxo atual usa uma.
+O modelo padrão é `@cf/black-forest-labs/flux-2-klein-4b`, hospedado no catálogo Workers AI. Ele unifica geração e edição com referências. O Worker envia multipart pelo binding `env.AI`, e as iterações usam a imagem anterior como `input_image_0`; a geração é limitada a 480×480 para cumprir o limite documentado de imagem de referência inferior a 512×512. O modelo aceita até quatro referências, mas o fluxo atual usa uma.
 
 A tabela de preços atual do Cloudflare informa 26,05 Neurons por tile 512×512 gerado e 5,37 Neurons por tile de entrada. Workers AI inclui 10.000 Neurons por dia sem custo; acima da franquia, o Workers Free bloqueia novas chamadas e o Workers Paid cobra excedentes. A geração visual consome essa mesma franquia compartilhada com LLM e visão. Acompanhe o painel de consumo; não existe garantia de uso ilimitado gratuito.
 
