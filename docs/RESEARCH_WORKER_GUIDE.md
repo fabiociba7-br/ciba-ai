@@ -51,6 +51,10 @@ Fontes oficiais:
 - [Preços Workers AI e Neurons](https://developers.cloudflare.com/workers-ai/platform/pricing/)
 - [Workers AI Gemma 4 — visão multimodal](https://developers.cloudflare.com/workers-ai/models/gemma-4-26b-a4b-it/)
 
+## Aprovação e execução no chat
+
+A proposta externa é apresentada no chat com os argumentos validados. O usuário aprova ou rejeita; depois, a ação explícita “Executar ação aprovada” chama `POST /v1/owner/tool-approvals/{approval_id}/execute`. Esse endpoint reconstrói o runtime a partir da identidade autenticada, consome a aprovação D1 de uso único, executa somente `garcia.research` e persiste o resultado em `tool_approval_results`. Repetições retornam o resultado salvo em vez de gerar uma segunda imagem. Se a aprovação for consumida e a execução falhar antes de salvar o resultado, ela não pode ser reutilizada; uma nova proposta deve ser criada.
+
 ## Preparar Cloudflare
 
 Crie o bucket:
