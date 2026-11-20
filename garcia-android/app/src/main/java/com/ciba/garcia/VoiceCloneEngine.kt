@@ -20,7 +20,7 @@ internal interface VoiceCloneEngine {
 internal object ChatterboxVoiceCloneEngine : VoiceCloneEngine {
     override fun isNativeAvailable(): Boolean = ChatterboxNative.isLibraryLoaded()
     override fun areModelsInstalled(context: Context): Boolean = ChatterboxModelManager.installed(context) != null
-    override fun isAvailable(context: Context): Boolean = isNativeAvailable() && areModelsInstalled(context)
+    override fun isAvailable(context: Context): Boolean = isNativeAvailable() && (isReady() || ClonedVoiceRuntime.isLoading() || ChatterboxModelManager.isVerifiedInMemory(context))
     override fun isReady(): Boolean = ClonedVoiceRuntime.isReady()
 
     override fun activate(context: Context, profile: GarciaVoiceProfile, onResult: (Result<Unit>) -> Unit) {
@@ -28,8 +28,8 @@ internal object ChatterboxVoiceCloneEngine : VoiceCloneEngine {
             onResult(Result.failure(IllegalStateException("O runtime nativo de clonagem não está disponível nesta versão do Android.")))
             return
         }
-        if (!areModelsInstalled(context)) {
-            onResult(Result.failure(IllegalStateException("Os modelos locais de clonagem não estão instalados.")))
+        if (!isAvailable(context)) {
+            onResult(Result.failure(IllegalStateException("Os modelos locais de clonagem ainda não foram validados neste processo.")))
             return
         }
         ClonedVoiceRuntime.activate(context, profile, onResult)
@@ -40,16 +40,12 @@ internal object ChatterboxVoiceCloneEngine : VoiceCloneEngine {
             onResult(Result.failure(IllegalStateException("O runtime nativo de clonagem não está disponível nesta versão do Android.")))
             return
         }
-        if (!areModelsInstalled(context)) {
-            onResult(Result.failure(IllegalStateException("Os modelos locais de clonagem não estão instalados.")))
-            return
-        }
         ClonedVoiceRuntime.restore(context, onResult)
     }
 
     override fun preview(context: Context, profile: GarciaVoiceProfile, text: String, onResult: (Result<Unit>) -> Unit) {
         if (!isAvailable(context)) {
-            onResult(Result.failure(IllegalStateException("Instale os modelos locais Chatterbox antes de ouvir a voz clonada.")))
+            onResult(Result.failure(IllegalStateException("Instale e valide os modelos locais Chatterbox antes de ouvir a voz clonada.")))
             return
         }
         ClonedVoiceRuntime.preview(context, profile, text, onResult)
