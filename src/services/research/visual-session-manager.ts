@@ -20,9 +20,9 @@ export class VisualSessionManager {
   constructor(private readonly env: ResearchEnv) {}
   async startSession(topic: string, mode: VisualMode): Promise<VisualSession> {
     const sessionId = crypto.randomUUID(), now = new Date().toISOString();
-    await this.env.DB.prepare("INSERT INTO visual_sessions (session_id, owner_id, app_id, device_id, topic, mode, current_iteration, latest_image_r2_key, prompt_history, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 0, NULL, '[]', ?, ?)")
+    await this.env.DB.prepare("INSERT INTO visual_sessions (session_id, owner_id, app_id, device_id, topic, mode, current_iteration, latest_image_r2_key, prompt_history, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, 1, NULL, '[]', ?, ?)")
       .bind(sessionId, this.env.ownerId, this.env.appId, this.env.deviceId, topic, mode, now, now).run();
-    return { sessionId, topic, mode, currentIteration: 0, latestImageR2Key: null, promptHistory: [] };
+    return { sessionId, topic, mode, currentIteration: 1, latestImageR2Key: null, promptHistory: [] };
   }
   async getSession(sessionId: string): Promise<VisualSession> {
     const row = await this.env.DB.prepare("SELECT session_id, topic, mode, current_iteration, latest_image_r2_key, prompt_history FROM visual_sessions WHERE session_id = ? AND owner_id = ? AND app_id = ? AND device_id = ?")
