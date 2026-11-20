@@ -10,14 +10,17 @@ import android.speech.SpeechRecognizer
 
 /**
  * Incremental, on-device speech recognition for continuous conversation.
- * This deliberately uses Android's on-device recognizer only; it never falls
- * back to a network-backed recognition service.
+ * Never falls back to a network-backed recognition service.
+ *
+ * [onSpeechStart] fires when the recognizer detects the user beginning to speak
+ * (used for barge-in while Garcia is talking).
  */
 internal class OnDeviceSpeechRecognizer(
     context: Context,
     private val onPartial: (String) -> Unit,
     private val onFinal: (String) -> Unit,
-    private val onError: (String, Boolean) -> Unit
+    private val onError: (String, Boolean) -> Unit,
+    private val onSpeechStart: () -> Unit = {}
 ) {
     private val appContext = context.applicationContext
     private var recognizer: SpeechRecognizer? = null
@@ -37,23 +40,35 @@ internal class OnDeviceSpeechRecognizer(
             val engine = SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
             recognizer = engine
             engine.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) { listening = true }
-                override fun onBeginningOfSpeech() = Unit
+                override fun onReadyForSpeech(params: Bundle?) {
+                    listening = true
+                }
+                override fun onBeginningOfSpeech() {
+                    listening = true
+                    onSpeechStart()
+                }
                 override fun onRmsChanged(rmsdB: Float) = Unit
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
-                override fun onEndOfSpeech() { listening = false }
+                override fun onEndOfSpeech() {
+                    // Keep listening flag until results/error; end-of-speech is intermediate.
+                }
                 override fun onError(error: Int) {
                     listening = false
                     val retry = error == SpeechRecognizer.ERROR_NO_MATCH ||
                         error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
                     val message = when (error) {
-                        SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Não detectei fala. Vou ouvir novamente."
-                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "O reconhecedor de voz está ocupado."
-                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Permissão do microfone não concedida."
+                        SpeechRecognizer.ERROR_NO_MATCH,
+                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
+                            "Não detectei fala. Vou ouvir novamente."
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
+                            "O reconhecedor de voz está ocupado."
+                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
+                            "Permissão do microfone não concedida."
                         SpeechRecognizer.ERROR_NETWORK,
-                        SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
-                        SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED,
-                        SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
+                        SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
+                            "O serviço de reconhecimento offline não concluiu a operação."
+                        SpeechRecognizer.ERROR_CLIENT,
+                        SpeechRecognizer.ERROR_SERVER ->
                             "O reconhecimento on-device não conseguiu usar o pacote pt-BR. Instale Português (Brasil) para uso offline nas Configurações do Android, em Idiomas e entrada / Reconhecimento de fala. Vou usar o Whisper local quando disponível."
                         else -> "Falha no reconhecimento de voz (código $error)."
                     }

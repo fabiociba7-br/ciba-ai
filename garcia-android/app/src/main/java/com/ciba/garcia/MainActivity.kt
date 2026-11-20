@@ -312,13 +312,23 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var streamingListening by remember { mutableStateOf(false) }
     var streamingUnavailable by remember { mutableStateOf(false) }
     var streamingTranscript by remember { mutableStateOf("") }
+    // Barge-in: user can interrupt Garcia while she is speaking.
+    var bargeInArmed by remember { mutableStateOf(false) }
+    var bargeInEpoch by remember { mutableIntStateOf(0) }
+    var bargeInHit by remember { mutableStateOf(false) }
     val streamingSpeech = remember {
         OnDeviceSpeechRecognizer(
             context,
-            onPartial = { partial -> streamingTranscript = partial },
+            onPartial = { partial ->
+                streamingTranscript = partial
+                if (bargeInArmed && partial.trim().length >= 2) {
+                    bargeInHit = true
+                }
+            },
             onFinal = { transcript ->
                 streamingListening = false
                 streamingTranscript = transcript
+                if (bargeInArmed) bargeInHit = true
                 input = transcript
                 awaitingTranscriptReview = false
                 autoListenPending = false
@@ -335,13 +345,18 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     autoListenPending = true
                 } else if (continuousVoice && voiceReplies && whisperModelInfo != null) {
                     streamingUnavailable = true
-                    whisperStatus = "$message Usando Whisper local."
+                    whisperStatus = "$message Voltando para Whisper local (prioridade)."
+                    autoListenPending = true
+                } else if (continuousVoice) {
                     autoListenPending = true
                 } else {
                     continuousVoice = false
                     context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
                         .edit().putBoolean("continuous", false).apply()
                 }
+            },
+            onSpeechStart = {
+                if (bargeInArmed) bargeInHit = true
             }
         )
     }
@@ -350,9 +365,33 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         LocalSpeechOutput(
             context,
             { available, message -> voiceAvailable = available; voiceStatus = message },
-            { voiceSpeaking = false; if (continuousVoice && voiceReplies && voiceAvailable && !awaitingTranscriptReview && input.isBlank()) autoListenPending = true },
-            { voiceSpeaking = true }
+            {
+                voiceSpeaking = false
+                bargeInArmed = false
+                if (continuousVoice && voiceReplies && voiceAvailable &&
+                    !awaitingTranscriptReview && input.isBlank() &&
+                    !streamingListening && !whisperRecording
+                ) {
+                    autoListenPending = true
+                }
+            },
+            {
+                voiceSpeaking = true
+                if (continuousVoice) bargeInEpoch += 1
+            }
         )
+    }
+    // Apply barge-in: stop Garcia's speech when the user starts talking over her.
+    LaunchedEffect(bargeInHit) {
+        if (!bargeInHit) return@LaunchedEffect
+        bargeInHit = false
+        if (voiceSpeaking) {
+            voiceOutput.stop()
+            voiceSpeaking = false
+            bargeInArmed = false
+            whisperStatus = "Você me interrompeu · estou te ouvindo"
+            GarciaLog.recordEvent(context, "Voz", "Barge-in: fala da Garcia interrompida pelo usuário")
+        }
     }
     DisposableEffect(voiceOutput) { onDispose { voiceOutput.shutdown(); whisperRecorder.cancel() } }
     var showAttachmentOptions by remember { mutableStateOf(false) }
@@ -453,43 +492,77 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         if (granted) {
             if (input.isNotBlank() || attachment != null || busy || whisperBusy) {
                 error = "Envie ou limpe o texto pendente antes de iniciar outra captura."
+            } else if (whisperModelInfo != null) {
+                // Prioridade 1: Whisper local (mais controlável e estável para pt-BR no aparelho).
+                error = ""
+                scope.launch {
+                    try {
+                        withContext(Dispatchers.IO) { whisperRecorder.start() }
+                        whisperRecording = true
+                        whisperStatus = if (continuousVoice) {
+                            "Whisper ouvindo… fale e pause para eu entender"
+                        } else {
+                            "Gravando… toque em parar quando terminar"
+                        }
+                        GarciaLog.recordEvent(context, "Voz", "Captura iniciada com Whisper (prioridade)")
+                        scope.launch {
+                            try {
+                                val stopReason = withContext(Dispatchers.IO) {
+                                    while (whisperRecorder.readChunk()) { /* capture locally */ }
+                                    whisperRecorder.stopReason
+                                }
+                                if (whisperRecording) {
+                                    if (stopReason == VoiceActivityDetector.StopReason.NO_SPEECH) {
+                                        whisperRecording = false
+                                        withContext(Dispatchers.IO) { whisperRecorder.cancel() }
+                                        whisperStatus = "NO_SPEECH · 10 s sem fala. Aguardando sua voz…"
+                                        GarciaLog.recordEvent(context, "VAD", "Captura encerrada: NO_SPEECH")
+                                        if (continuousVoice) autoListenPending = true
+                                    } else {
+                                        stopAndTranscribe()
+                                    }
+                                }
+                            } catch (captureError: Exception) {
+                                whisperRecording = false
+                                withContext(Dispatchers.IO) { whisperRecorder.cancel() }
+                                whisperStatus = captureError.message ?: "A captura de voz foi interrompida."
+                                GarciaLog.record(context, "Whisper captura", captureError)
+                                // Fallback: se Whisper falhar no modo contínuo e o on-device existir, tenta Android.
+                                if (continuousVoice && streamingSpeech.isAvailable && !streamingUnavailable) {
+                                    streamingTranscript = ""
+                                    streamingListening = streamingSpeech.start()
+                                    if (streamingListening) {
+                                        whisperStatus = "Whisper falhou · usando reconhecimento on-device do Android"
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        error = e.message ?: "Não foi possível iniciar a gravação."
+                        whisperRecording = false
+                        if (continuousVoice && streamingSpeech.isAvailable && !streamingUnavailable) {
+                            streamingTranscript = ""
+                            streamingListening = streamingSpeech.start()
+                            if (streamingListening) {
+                                error = ""
+                                whisperStatus = "Whisper indisponível · usando reconhecimento on-device do Android"
+                            }
+                        }
+                    }
+                }
             } else if (continuousVoice && streamingSpeech.isAvailable && !streamingUnavailable) {
+                // Prioridade 2: reconhecedor on-device do Android (só se Whisper não estiver instalado).
                 streamingTranscript = ""
                 error = ""
                 streamingListening = streamingSpeech.start()
-                whisperStatus = if (streamingListening) "Reconhecimento offline em tempo real ativo" else whisperStatus
-            } else if (whisperModelInfo == null) {
-                error = "Instale um modelo Whisper em Configurações antes de gravar."
-            } else scope.launch {
-                try {
-                    withContext(Dispatchers.IO) { whisperRecorder.start() }
-                    whisperRecording = true
-                    whisperStatus = "Gravando… toque em parar quando terminar"
-                    scope.launch {
-                        try {
-                            val stopReason = withContext(Dispatchers.IO) {
-                                while (whisperRecorder.readChunk()) { /* capture locally */ }
-                                whisperRecorder.stopReason
-                            }
-                            if (whisperRecording) {
-                                if (stopReason == VoiceActivityDetector.StopReason.NO_SPEECH) {
-                                    whisperRecording = false
-                                    withContext(Dispatchers.IO) { whisperRecorder.cancel() }
-                                    whisperStatus = "NO_SPEECH · 10 s sem fala. Aguardando sua voz…"
-                                    GarciaLog.recordEvent(context, "VAD", "Captura encerrada: NO_SPEECH")
-                                    if (continuousVoice) autoListenPending = true
-                                } else {
-                                    stopAndTranscribe()
-                                }
-                            }
-                        } catch (captureError: Exception) {
-                            whisperRecording = false
-                            withContext(Dispatchers.IO) { whisperRecorder.cancel() }
-                            whisperStatus = captureError.message ?: "A captura de voz foi interrompida."
-                            GarciaLog.record(context, "Whisper captura", captureError)
-                        }
-                    }
-                } catch (e: Exception) { error = e.message ?: "Não foi possível iniciar a gravação."; whisperRecording = false }
+                whisperStatus = if (streamingListening) {
+                    "Reconhecimento on-device do Android ativo (Whisper não instalado)"
+                } else {
+                    whisperStatus
+                }
+                GarciaLog.recordEvent(context, "Voz", "Captura iniciada com SpeechRecognizer on-device (fallback)")
+            } else {
+                error = "Instale o modelo Whisper em Configurações para transcrever. Sem Whisper e sem reconhecimento on-device, a conversa por voz não inicia."
             }
         } else {
             continuousVoice = false
@@ -504,6 +577,25 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         } else if (!busy) {
             autoListenPending = false
             microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+    // While Garcia speaks, arm barge-in after a short grace period and keep the
+    // on-device recognizer open so the user can interrupt naturally.
+    LaunchedEffect(bargeInEpoch, continuousVoice, voiceSpeaking) {
+        if (!continuousVoice || bargeInEpoch == 0) return@LaunchedEffect
+        val epoch = bargeInEpoch
+        bargeInArmed = false
+        kotlinx.coroutines.delay(550)
+        if (epoch != bargeInEpoch || !continuousVoice || !voiceSpeaking) return@LaunchedEffect
+        bargeInArmed = true
+        if (!streamingListening && streamingSpeech.isAvailable && !streamingUnavailable &&
+            input.isBlank() && !busy && !whisperBusy && !whisperRecording
+        ) {
+            streamingTranscript = ""
+            streamingListening = streamingSpeech.start()
+            if (streamingListening) {
+                whisperStatus = "Pode me interromper · ouvindo enquanto falo"
+            }
         }
     }
     val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -971,13 +1063,15 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
                                 autoListenPending = false
                                 voiceAutoSendPending = false
+                                bargeInArmed = false
+                                bargeInHit = false
                                 voiceOutput.stop()
                                 if (whisperRecording) scope.launch(Dispatchers.IO) { whisperRecorder.cancel() }
                                 streamingSpeech.stop(); streamingListening = false
                                 whisperRecording = false
                                 whisperStatus = "Conversa por voz encerrada"
                             } else if (!whisperBusy) {
-                                if (whisperModelInfo == null && !streamingSpeech.isAvailable) error = "Este aparelho não oferece reconhecimento offline em tempo real. Baixe e instale o modelo Whisper nas Configurações."
+                                if (whisperModelInfo == null && !streamingSpeech.isAvailable) error = "Instale o modelo Whisper nas Configurações (recomendado) ou um pacote de reconhecimento offline pt-BR do Android."
                                 else if (!voiceAvailable) error = voiceStatus
                                 else if (input.isNotBlank() || attachment != null) error = "Envie ou limpe o texto pendente antes de iniciar a conversa por voz."
                                 else {
@@ -1079,7 +1173,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         when {
                             (whisperRecording || streamingListening) -> "Estou ouvindo você"
                             whisperBusy -> "Estou entendendo o que você disse…"
-                            voiceSpeaking -> "A Garcia está falando"
+                            voiceSpeaking -> "A Garcia está falando · pode me interromper"
                             busy -> "A Garcia está pensando…"
                             autoListenPending -> "Preparando para ouvir…"
                             else -> "Conversa por voz ativa"
@@ -1090,12 +1184,12 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     Text(
                         when {
                             streamingListening && streamingTranscript.isNotBlank() -> streamingTranscript
-                            whisperRecording || streamingListening -> if (streamingSpeech.isAvailable) "A transcrição aparece enquanto você fala. Pode continuar naturalmente." else "Pode falar naturalmente. Vou detectar sua pausa, entender a mensagem e responder em voz alta."
+                            whisperRecording || streamingListening -> if (whisperRecording) "Pode falar naturalmente. O Whisper detecta sua pausa, transcreve no aparelho e eu respondo em voz alta." else "A transcrição on-device aparece enquanto você fala (fallback sem Whisper)."
                             whisperBusy -> "Sua fala está sendo transcrita no próprio aparelho."
-                            voiceSpeaking -> "Estou respondendo em voz alta. Quando terminar, volto a ouvir você automaticamente."
+                            voiceSpeaking -> "Estou respondendo em voz alta. Pode me interromper a qualquer momento: é só falar por cima que eu paro e te escuto."
                             busy -> "Já estou preparando minha resposta. Depois volto a ouvir você automaticamente."
-                            autoListenPending -> "Vou reabrir o microfone assim que terminar minha resposta."
-                            else -> "Fale comigo normalmente. Não é necessário tocar no microfone a cada mensagem."
+                            autoListenPending -> "Reabrindo o microfone para continuar a conversa…"
+                            else -> "Fale comigo normalmente. Pode me interromper enquanto eu respondo; eu paro e continuo a partir do que você disser."
                         },
                         color = Muted, fontSize = 15.sp, lineHeight = 22.sp,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center

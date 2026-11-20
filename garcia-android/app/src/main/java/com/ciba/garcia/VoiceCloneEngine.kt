@@ -33,11 +33,15 @@ internal object ChatterboxVoiceCloneEngine : VoiceCloneEngine {
 
     override fun activate(context: Context, profile: GarciaVoiceProfile, onResult: (Result<Unit>) -> Unit) {
         if (!isNativeAvailable()) {
-            onResult(Result.failure(IllegalStateException("O runtime nativo de clonagem não está disponível nesta versão do Android.")))
+            onResult(Result.failure(IllegalStateException("O runtime nativo de clonagem não está disponível nesta arquitetura/build do Android.")))
+            return
+        }
+        if (!profile.integrityValid) {
+            onResult(Result.failure(IllegalStateException("Este perfil de voz não passou na verificação de integridade. Grave ou importe a amostra novamente.")))
             return
         }
         if (!isAvailable(context)) {
-            onResult(Result.failure(IllegalStateException("Os modelos locais de clonagem ainda não foram validados neste processo.")))
+            onResult(Result.failure(IllegalStateException("Os modelos locais Chatterbox (T3 + S3Gen) não foram encontrados ou falharam no SHA-256. Baixe ou importe os dois GGUFs oficiais.")))
             return
         }
         ClonedVoiceRuntime.activate(context, profile, onResult)
@@ -52,8 +56,16 @@ internal object ChatterboxVoiceCloneEngine : VoiceCloneEngine {
     }
 
     override fun preview(context: Context, profile: GarciaVoiceProfile, text: String, onResult: (Result<Unit>) -> Unit) {
+        if (!isNativeAvailable()) {
+            onResult(Result.failure(IllegalStateException("O runtime nativo Chatterbox não está disponível nesta arquitetura/build.")))
+            return
+        }
+        if (!profile.integrityValid) {
+            onResult(Result.failure(IllegalStateException("Este perfil de voz está corrompido ou incompleto. Salve a amostra novamente.")))
+            return
+        }
         if (!isAvailable(context)) {
-            onResult(Result.failure(IllegalStateException("Instale e valide os modelos locais Chatterbox antes de ouvir a voz clonada.")))
+            onResult(Result.failure(IllegalStateException("Instale e valide os modelos locais Chatterbox (T3 + S3Gen) antes de ouvir a voz clonada.")))
             return
         }
         ClonedVoiceRuntime.preview(context, profile, text, onResult)

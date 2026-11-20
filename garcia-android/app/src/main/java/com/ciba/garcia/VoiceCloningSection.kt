@@ -73,7 +73,13 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
         profiles = initial.second
         selectedFile = initial.third?.sample
         profileName = initial.third?.name.orEmpty()
-        status = if (initial.third != null) "Perfil local encontrado e validado." else "Nenhum perfil clonado está ativo."
+        status = when {
+            !nativeAvailable -> "Runtime nativo Chatterbox indisponível nesta arquitetura. Prévia e ativação ficam desabilitadas."
+            initial.third != null && modelsReady -> "Perfil local encontrado e validado. Modelos Chatterbox OK."
+            initial.third != null && !modelsReady -> "Perfil local encontrado, mas os modelos Chatterbox ainda não estão instalados."
+            modelsReady -> "Modelos Chatterbox OK. Grave ou importe uma amostra de 10–15 s e salve o perfil."
+            else -> "Nenhum perfil clonado está ativo. Instale os modelos e grave/importe uma amostra."
+        }
     }
 
     // Use the Android GetContent picker for broad compatibility with device
@@ -142,7 +148,9 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                 active.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 active.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                 active.setAudioEncodingBitRate(128_000)
-                active.setAudioSamplingRate(24_000)
+                // Prefer 44.1 kHz: many devices ignore lower rates for AAC.
+                // VoiceAudioNormalizer always resamples to mono PCM 24 kHz 16-bit for Chatterbox.
+                active.setAudioSamplingRate(44_100)
                 active.setAudioChannels(1)
                 active.setOutputFile(file.absolutePath)
                 active.prepare()
@@ -410,7 +418,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                             selectedFile = saved.first.sample
                             profileName = saved.first.name
                             profiles = saved.second
-                            status = "Perfil salvo localmente. Ouça a prévia ou toque em Usar esta voz para ativá-lo."
+                            status = "Perfil salvo e normalizado (WAV mono 24 kHz). Toque em Ouvir voz clonada para testar; depois em Usar esta voz."
                             busy = false
                         } catch (error: Throwable) {
                             busy = false
