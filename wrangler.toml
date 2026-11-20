@@ -9,6 +9,10 @@ AI_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 ALLOWED_APP_IDS = "com.ciba.garcia"
 MAX_OUTPUT_TOKENS = "512"
 ALLOWED_ORIGINS = ""
+GITHUB_REPOSITORY = "fabiociba7-br/ciba-ai"
+GITHUB_BRANCH = "main"
+GITHUB_RESEARCH_PUBLISH = "true"
+GITHUB_REPORTS_PATH = "reports/garcia-research"
 
 [ai]
 binding = "AI"
