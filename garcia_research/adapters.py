@@ -27,7 +27,7 @@ class LocalPromptAdapter:
         match = re.search(r"topic:\s*['\"](.+?)['\"]", prompt, re.IGNORECASE)
         topic = match.group(1) if match else prompt.strip()
         focus_match = re.search(r"focus:\s*([^.]+)", prompt, re.IGNORECASE)
-        focus = focus_match.group(1).strip() if focus_match else ""
+        focus = focus_match.group(1).strip().replace(",", " ") if focus_match else ""
         suffix = f" {focus}" if focus else ""
         queries = [
             f"{topic}{suffix} security architecture and best practices",
