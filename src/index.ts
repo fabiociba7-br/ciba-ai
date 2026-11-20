@@ -1513,6 +1513,110 @@ const handleOwnerToolApprovalCancel = async (
     : json({ error: "approval_not_found_or_not_cancellable" }, 404);
 };
 
+const handleOwnerToolApprovalExecute = async (
+  request: Request,
+  env: Env,
+  approvalId: string
+) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner || owner.owner_id !== device.owner_id) return json({ error: "active_owner_required" }, 403);
+  if (!(await isAppAllowed(env, device.app_id))) return json({ error: "app_not_allowed" }, 403);
+
+  const row = await env.DB.prepare(`
+    SELECT a.approval_id, a.owner_id, a.app_id, a.device_id, a.conversation_id,
+      a.invocation_id, a.tool_id, a.risk, a.input_json, a.input_sha256, a.status,
+      r.output_json, r.output_sha256
+    FROM tool_approvals a
+    LEFT JOIN tool_approval_results r ON r.approval_id = a.approval_id
+    WHERE a.approval_id = ? AND a.owner_id = ? AND a.app_id = ? AND a.device_id = ?
+  `).bind(approvalId, owner.owner_id, device.app_id, device.device_id).first<{
+    approval_id: string; owner_id: string; app_id: string; device_id: string;
+    conversation_id: string; invocation_id: string; tool_id: string; risk: string;
+    input_json: string; input_sha256: string; status: string;
+    output_json: string | null; output_sha256: string | null;
+  }>();
+  if (!row) return json({ error: "tool_approval_not_found" }, 404);
+  if (row.tool_id !== "garcia.research" || row.risk !== "external") {
+    return json({ error: "unsupported_tool_approval_execution" }, 403);
+  }
+
+  if (row.status === "consumed" && row.output_json && row.output_sha256) {
+    if (await sha256(row.output_json) !== row.output_sha256) return json({ error: "tool_result_integrity_failed" }, 409);
+    let saved: unknown;
+    try { saved = JSON.parse(row.output_json); } catch { return json({ error: "tool_result_corrupt" }, 409); }
+    const isVisual = saved !== null && typeof saved === "object" &&
+      typeof (saved as Record<string, unknown>).session_id === "string" &&
+      typeof (saved as Record<string, unknown>).image_url === "string";
+    return json({ executed: true, approval_id: approvalId,
+      tool_execution: { tool_id: row.tool_id, output: saved },
+      ...(isVisual ? { visual_studio: saved } : {}) });
+  }
+  if (row.status !== "approved") return json({ error: "tool_approval_not_approved_or_already_consumed" }, 409);
+  if (await sha256(row.input_json) !== row.input_sha256) return json({ error: "approval_integrity_check_failed" }, 409);
+
+  let input: unknown;
+  try { input = JSON.parse(row.input_json); }
+  catch { return json({ error: "invalid_approval_record" }, 409); }
+  const identity = { ownerId: row.owner_id, appId: row.app_id, deviceId: row.device_id };
+  const store = createD1ToolApprovalStore(env.DB);
+  const runtime = createGarciaCapabilityToolRuntime({
+    context: { conversationId: row.conversation_id, invocationId: row.invocation_id },
+    executionTimeoutMs: 45_000,
+    additionalTools: [createGarciaResearchTool({
+      ...env,
+      PUBLIC_API_BASE_URL: new URL(request.url).origin,
+      ownerId: row.owner_id,
+      appId: row.app_id,
+      deviceId: row.device_id,
+    })],
+    approval: { store, identity },
+    authorize: async (toolRequest) => {
+      if (toolRequest.toolId !== "garcia.research" || toolRequest.risk !== "external" ||
+          toolRequest.requiresApproval !== true || device.owner_id !== row.owner_id) return false;
+      const access = await requireCibaGenioAccess(env, "external_tools", row.app_id);
+      return access === null;
+    },
+  });
+  if (!runtime.durableApproval) return json({ error: "durable_approval_runtime_unavailable" }, 503);
+
+  try {
+    const plan = runtime.registry.prepare(row.tool_id, input, runtime.context);
+    const output = await runtime.durableApproval.flow.execute({
+      identity,
+      approvalId,
+      plan,
+      context: runtime.context,
+    });
+    const outputJson = JSON.stringify(output);
+    if (new TextEncoder().encode(outputJson).byteLength > 64_000) {
+      return json({ error: "tool_output_too_large" }, 502);
+    }
+    const outputHash = await sha256(outputJson);
+    await env.DB.prepare(`
+      INSERT OR IGNORE INTO tool_approval_results
+        (approval_id, owner_id, app_id, tool_id, output_json, output_sha256, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(approvalId, row.owner_id, row.app_id, row.tool_id, outputJson, outputHash, nowIso()).run();
+    const saved = await env.DB.prepare(
+      "SELECT output_json, output_sha256 FROM tool_approval_results WHERE approval_id = ? AND owner_id = ? AND app_id = ?"
+    ).bind(approvalId, row.owner_id, row.app_id).first<{ output_json: string; output_sha256: string }>();
+    if (!saved || await sha256(saved.output_json) !== saved.output_sha256) {
+      return json({ error: "tool_result_persistence_failed" }, 502);
+    }
+    const result = JSON.parse(saved.output_json) as unknown;
+    const isVisual = result !== null && typeof result === "object" &&
+      typeof (result as Record<string, unknown>).session_id === "string" &&
+      typeof (result as Record<string, unknown>).image_url === "string";
+    return json({ executed: true, approval_id: approvalId,
+      tool_execution: { tool_id: row.tool_id, output: result },
+      ...(isVisual ? { visual_studio: result } : {}) });
+  } catch {
+    return json({ error: "tool_execution_failed", approval_consumed: true }, 502);
+  }
+};
+
 // Metrics are scoped to the authenticated device and its active owner; no prompt or response content is collected.
 const handleOwnerObservability = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
@@ -4331,6 +4435,7 @@ const handleRequest = async (
       case "tool-approvals": return handleOwnerToolApprovals(request, env);
       case "tool-approval-decision": return handleOwnerToolApprovalDecision(request, env, ownerRoute.id!);
       case "tool-approval-cancel": return handleOwnerToolApprovalCancel(request, env, ownerRoute.id!);
+      case "tool-approval-execute": return handleOwnerToolApprovalExecute(request, env, ownerRoute.id!);
       case "observability": return handleOwnerObservability(request, env);
       case "dashboard": return handleOwnerDashboard(request, env);
       case "settings": return handleOwnerSettings(request, env);
