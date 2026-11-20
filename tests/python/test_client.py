@@ -7,7 +7,6 @@ def test_search_api_parses_abstract_and_caches():
     config = ResearchConfig(request_delay_min=0, request_delay_max=0)
     session = Mock(spec=requests.Session)
     session.headers = Mock()
-    session.headers = Mock()
     response = Mock()
     response.json.return_value = {"Heading": "OAuth", "AbstractText": "Use PKCE.",
                                   "AbstractURL": "https://example.org/oauth", "RelatedTopics": []}
