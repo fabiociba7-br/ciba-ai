@@ -119,13 +119,19 @@ internal object ChatterboxModelManager {
 
     suspend fun download(context: Context, progress: (DownloadProgress) -> Unit = {}): Models = withContext(Dispatchers.IO) {
         val dir = File(context.filesDir, "chatterbox-models").apply { mkdirs() }
-        require(StatFs(context.filesDir.absolutePath).availableBytes >= 1_500L * 1024 * 1024) {
-            "A Garcia precisa de pelo menos 1,5 GB livres para baixar e preparar os modelos."
-        }
         val t3 = File(dir, T3)
         val s3 = File(dir, S3)
-        if (!verified(t3, T3_SHA256)) downloadOne(T3, t3, T3_SHA256, progress)
-        if (!verified(s3, S3_SHA256)) downloadOne(S3, s3, S3_SHA256, progress)
+        val needsT3 = !verified(t3, T3_SHA256)
+        val needsS3 = !verified(s3, S3_SHA256)
+        if (needsT3 || needsS3) {
+            val replacingExisting = (needsT3 && t3.exists()) || (needsS3 && s3.exists())
+            val requiredMb = if (replacingExisting) 2_500L else 1_500L
+            require(StatFs(context.filesDir.absolutePath).availableBytes >= requiredMb * 1024 * 1024) {
+                "A Garcia precisa de pelo menos $requiredMb MB livres para baixar e validar os modelos."
+            }
+        }
+        if (needsT3) downloadOne(T3, t3, T3_SHA256, progress)
+        if (needsS3) downloadOne(S3, s3, S3_SHA256, progress)
         require(verified(t3, T3_SHA256) && verified(s3, S3_SHA256)) { "Os arquivos não passaram na validação GGUF." }
         Models(t3, s3)
     }
