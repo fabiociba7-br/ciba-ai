@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
@@ -172,7 +173,11 @@ internal fun GarciaBrowserDialog(onDismiss: () -> Unit, onSharePage: (String) ->
             }
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val uri = request?.url ?: return true
-                return uri.scheme !in setOf("http", "https")
+                if (uri.scheme in setOf("http", "https")) return false
+                if (request.isForMainFrame && uri.scheme in setOf("mailto", "tel", "sms")) {
+                    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                }
+                return true
             }
             override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: android.webkit.WebResourceError?) {
                 if (request?.isForMainFrame == true) {
@@ -312,6 +317,7 @@ internal fun GarciaBrowserDialog(onDismiss: () -> Unit, onSharePage: (String) ->
                         IconButton(onClick = { activeWebView?.goForward() }, enabled = activeWebView?.canGoForward() == true) { Icon(Icons.Default.ArrowForward, "Avançar") }
                         IconButton(onClick = { activeWebView?.reload() }) { Icon(Icons.Default.Refresh, "Recarregar") }
                         Text(if (loading) "Carregando $progress%" else pageTitle, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1)
+                        TextButton(onClick = { navigate("https://duck.ai") }) { Text("Duck.ai") }
                         TextButton(onClick = { shareCurrentPage(activeWebView) }) {
                             Icon(Icons.Default.Share, null)
                             Spacer(Modifier.width(4.dp))
@@ -320,28 +326,30 @@ internal fun GarciaBrowserDialog(onDismiss: () -> Unit, onSharePage: (String) ->
                     }
                     if (pageError.isNotBlank()) Text(pageError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     if (loading) LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
-                    AndroidView(
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                configureWebView(this)
-                                loadUrl("https://duckduckgo.com")
-                                webView = this
-                            }
-                        },
-                        update = { webView = it },
-                    )
-                    popupWebView?.let { popup ->
+                    Box(Modifier.fillMaxWidth().weight(1f)) {
                         AndroidView(
-                            modifier = Modifier.fillMaxWidth().weight(1f),
-                            factory = { FrameLayout(it).apply { addView(popup, FrameLayout.LayoutParams(-1, -1)) } },
-                            update = { container ->
-                                if (popup.parent !== container) {
-                                    (popup.parent as? android.view.ViewGroup)?.removeView(popup)
-                                    container.addView(popup, FrameLayout.LayoutParams(-1, -1))
+                            modifier = Modifier.fillMaxSize(),
+                            factory = { ctx ->
+                                WebView(ctx).apply {
+                                    configureWebView(this)
+                                    loadUrl("https://duckduckgo.com")
+                                    webView = this
                                 }
                             },
+                            update = { webView = it },
                         )
+                        popupWebView?.let { popup ->
+                            AndroidView(
+                                modifier = Modifier.fillMaxSize(),
+                                factory = { FrameLayout(it).apply { addView(popup, FrameLayout.LayoutParams(-1, -1)) } },
+                                update = { container ->
+                                    if (popup.parent !== container) {
+                                        (popup.parent as? android.view.ViewGroup)?.removeView(popup)
+                                        container.addView(popup, FrameLayout.LayoutParams(-1, -1))
+                                    }
+                                },
+                            )
+                        }
                     }
                     Text(
                         "O site é exibido diretamente. Logins, permissões, anexos e downloads são tratados pelo Android; a Garcia só recebe o conteúdo quando você escolhe compartilhá-lo.",
