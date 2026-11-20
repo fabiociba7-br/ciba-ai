@@ -32,55 +32,27 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     set(ORT_VERSION "1.20.0")
     set(ORT_AAR "${POCKET_DEPS}/onnxruntime-android-${ORT_VERSION}.aar")
     set(ORT_AAR_SHA256 "07a8f71ef890afed8c6087a56220e6d558a492804276ee2dd7cb7f6262242027")
-    set(ORT_SOURCE "${POCKET_DEPS}/onnxruntime-${ORT_VERSION}.tar.gz")
-    set(ORT_SOURCE_SHA256 "5d0aaced52921b86f3f2b2eaac18cbfc96184d73e83baf2553c94d9d306c4de9")
-    file(MAKE_DIRECTORY "${POCKET_DEPS}")
-
-    if(NOT EXISTS "${ORT_AAR}")
-        file(DOWNLOAD
-            "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/${ORT_VERSION}/onnxruntime-android-${ORT_VERSION}.aar"
-            "${ORT_AAR}" EXPECTED_HASH "SHA256=${ORT_AAR_SHA256}"
-            TLS_VERIFY ON SHOW_PROGRESS STATUS ORT_AAR_STATUS)
-        list(GET ORT_AAR_STATUS 0 ORT_AAR_CODE)
-        if(NOT ORT_AAR_CODE EQUAL 0)
-            file(REMOVE "${ORT_AAR}")
-            message(FATAL_ERROR "Could not download/verify ONNX Runtime Android: ${ORT_AAR_STATUS}")
-        endif()
-    endif()
-    file(SHA256 "${ORT_AAR}" ORT_AAR_ACTUAL_SHA256)
-    if(NOT ORT_AAR_ACTUAL_SHA256 STREQUAL ORT_AAR_SHA256)
-        message(FATAL_ERROR "ONNX Runtime AAR SHA-256 mismatch")
-    endif()
-
-    if(NOT EXISTS "${ORT_SOURCE}")
-        file(DOWNLOAD
-            "https://codeload.github.com/microsoft/onnxruntime/tar.gz/refs/tags/v${ORT_VERSION}"
-            "${ORT_SOURCE}" EXPECTED_HASH "SHA256=${ORT_SOURCE_SHA256}"
-            TLS_VERIFY ON SHOW_PROGRESS STATUS ORT_SOURCE_STATUS)
-        list(GET ORT_SOURCE_STATUS 0 ORT_SOURCE_CODE)
-        if(NOT ORT_SOURCE_CODE EQUAL 0)
-            file(REMOVE "${ORT_SOURCE}")
-            message(FATAL_ERROR "Could not download/verify ONNX Runtime headers: ${ORT_SOURCE_STATUS}")
-        endif()
-    endif()
-    file(SHA256 "${ORT_SOURCE}" ORT_SOURCE_ACTUAL_SHA256)
-    if(NOT ORT_SOURCE_ACTUAL_SHA256 STREQUAL ORT_SOURCE_SHA256)
-        message(FATAL_ERROR "ONNX Runtime source SHA-256 mismatch")
+    # Fetch the exact ONNX Runtime source tag for C/C++ headers. The previous
+    # codeload archive URL returned HTTP errors in GitHub Actions; using Git
+    # transport avoids accepting an empty archive and keeps the version pinned.
+    FetchContent_Declare(onnxruntime_headers
+        GIT_REPOSITORY https://github.com/microsoft/onnxruntime.git
+        GIT_TAG v${ORT_VERSION}
+        GIT_SHALLOW TRUE)
+    FetchContent_GetProperties(onnxruntime_headers)
+    if(NOT onnxruntime_headers_POPULATED)
+        FetchContent_Populate(onnxruntime_headers)
     endif()
 
     set(ORT_AAR_EXTRACT "${POCKET_DEPS}/ort-aar")
-    set(ORT_SOURCE_EXTRACT "${POCKET_DEPS}/ort-source")
-    file(MAKE_DIRECTORY "${ORT_AAR_EXTRACT}" "${ORT_SOURCE_EXTRACT}")
+    file(MAKE_DIRECTORY "${ORT_AAR_EXTRACT}")
     if(NOT EXISTS "${ORT_AAR_EXTRACT}/jni/arm64-v8a/libonnxruntime.so")
         file(ARCHIVE_EXTRACT INPUT "${ORT_AAR}" DESTINATION "${ORT_AAR_EXTRACT}")
     endif()
-    if(NOT EXISTS "${ORT_SOURCE_EXTRACT}/onnxruntime-${ORT_VERSION}/include/onnxruntime/core/session/onnxruntime_cxx_api.h")
-        file(ARCHIVE_EXTRACT INPUT "${ORT_SOURCE}" DESTINATION "${ORT_SOURCE_EXTRACT}")
-    endif()
     set(ORT_LIB "${ORT_AAR_EXTRACT}/jni/arm64-v8a/libonnxruntime.so")
-    set(ORT_HEADERS "${ORT_SOURCE_EXTRACT}/onnxruntime-${ORT_VERSION}/include")
+    set(ORT_HEADERS "${onnxruntime_headers_SOURCE_DIR}/include")
     if(NOT EXISTS "${ORT_LIB}" OR NOT EXISTS "${ORT_HEADERS}/onnxruntime/core/session/onnxruntime_cxx_api.h")
-        message(FATAL_ERROR "Verified ONNX Runtime files were not extracted correctly")
+        message(FATAL_ERROR "Verified ONNX Runtime Android library or pinned headers are missing")
     endif()
 
     # Consume only the pinned native source snapshot, not its separate Android app.
