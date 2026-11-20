@@ -64,3 +64,66 @@ Quando o destino for o próprio backend Ciba AI/Cloudflare, a Garcia usa uma API
 - Confirmar que segredos administrativos nunca aparecem no APK, tráfego cliente-servidor ou logs do Worker.
 - Rotacionar/revogar credenciais sem atualizar o aplicativo.
 - Confirmar falha segura quando o backend ou o serviço remoto estiver indisponível.
+
+## Catálogo extensível de provedores e integrações
+
+A Garcia deve ter um **catálogo central de provedores** e um **sistema de adaptadores por capacidade**, para que novas contas e serviços compatíveis possam ser adicionados pela interface sem alterações no código do aplicativo.
+
+A tela **Configurações → Conexões e credenciais** terá categorias e um fluxo de adicionar conexão:
+- **Execução e notebooks em nuvem**: Kaggle e Google Colab desde a primeira versão; permitir cadastrar outros ambientes de notebooks, GPU sob demanda, runners e computação remota.
+- **Servidores e infraestrutura**: servidores próprios/VPS, endpoints HTTP(S), SSH/SFTP e serviços compatíveis com APIs documentadas.
+- **Armazenamento e sincronização**: provedores de objetos e arquivos, serviços compatíveis com S3, WebDAV, SFTP e armazenamento próprio; permitir configurar destino, pasta/bucket, limites e política de sincronização.
+- **IA e modelos**: provedores de LLM, TTS, ASR, geração de imagens e repositórios de modelos.
+- **Desenvolvimento e automação**: GitHub, Composio e outros serviços compatíveis.
+- **Outros serviços**: opção de conexão personalizada para endpoints e APIs que sigam protocolos já suportados.
+
+### Kaggle e Google Colab
+
+Kaggle e Google Colab devem aparecer como provedores de primeira classe no catálogo, com configurações independentes:
+- autenticação/conta e estado da conexão;
+- seleção de notebook, projeto ou runtime, quando a API permitir;
+- parâmetros de execução, GPU/CPU e limites disponíveis, sempre conforme os recursos reais do provedor;
+- iniciar, acompanhar, consultar logs/saídas e interromper execuções, apenas quando suportado pela API e pelas permissões concedidas;
+- baixar e encaminhar artefatos para um destino de armazenamento configurado;
+- exibir claramente quotas, disponibilidade, expiração de sessão e limitações do plano, sem prometer GPU ou execução contínua.
+
+A integração deve usar APIs oficiais ou interfaces documentadas. Não automatizar cliques, contornar limites, nem presumir que uma sessão interativa do Colab equivale a uma API estável. Se uma operação não for oficialmente suportada, a Garcia deve informar a limitação e oferecer fluxo assistido/manual.
+
+### Como adicionar um novo provedor sem recompilar
+
+O catálogo terá duas camadas:
+
+1. **Definições declarativas de provedores**: nome, categoria, documentação, campos de configuração, método de autenticação, capacidades, endpoints permitidos, validação e ações disponíveis. Para um provedor que use um protocolo e capacidades já implementados, basta adicionar/editar sua definição pela interface ou importar uma configuração validada.
+2. **Adaptadores de protocolo/capacidade**: componentes reutilizáveis para OAuth/PKCE, API key, Bearer, REST/HTTP, S3, WebDAV, SFTP/SSH e execução remota. Um protocolo realmente novo, uma API proprietária ou uma capacidade que ainda não exista exigirá implementar e auditar um adaptador uma única vez; depois disso, outros provedores compatíveis poderão ser cadastrados sem nova alteração de código.
+
+Não permitir que uma configuração arbitrária execute código, scripts ou plugins não confiáveis dentro do processo da Garcia. Configurações importadas devem ser validadas, limitadas a capacidades conhecidas e exigir consentimento para permissões sensíveis.
+
+### Configuração por conexão
+
+Cada conexão poderá definir, conforme a capacidade do provedor:
+- nome amigável, categoria e provedor;
+- URL/base endpoint, região, porta e identificador do recurso;
+- autenticação e referência ao segredo no cofre correto;
+- limites de uso, timeout, tentativas e política de retentativa;
+- preferências de execução, armazenamento, sincronização e retenção;
+- prioridade, disponibilidade e regras de fallback;
+- permissões concedidas e operações que exigem confirmação.
+
+A interface deve oferecer ações **Adicionar**, **Testar conexão**, **Editar**, **Ativar/Desativar**, **Rotacionar credencial**, **Revogar** e **Remover**, além de mostrar o estado e a data da última validação. Campos e ações devem variar conforme as capacidades efetivamente suportadas pelo adaptador.
+
+### Roteamento entre execução e armazenamento
+
+A Garcia deve permitir selecionar um ambiente de execução (por exemplo, Kaggle ou Colab) e um destino de armazenamento (por exemplo, S3 compatível, WebDAV, SFTP ou servidor próprio) de forma independente. Os resultados de notebooks, modelos, áudio e outros artefatos poderão ser enviados ao destino escolhido, respeitando permissões, limites, retenção e confirmação para compartilhamento externo.
+
+A camada de orquestração deve trabalhar com referências de conexão e capacidades, nunca com segredos em texto claro. Logs e histórico registram identificadores e resultados sanitizados, não tokens nem conteúdo secreto.
+
+### Critérios adicionais de aceite
+
+- Kaggle e Google Colab aparecem no catálogo e podem ser configurados separadamente pela interface.
+- É possível cadastrar mais de uma conta ou instância do mesmo provedor, com nomes distintos.
+- É possível adicionar conexões de servidores e armazenamento sem recompilar quando usam adaptadores já suportados.
+- Um provedor novo baseado em protocolo suportado pode ser definido sem código; capacidades desconhecidas são recusadas com explicação clara.
+- Uma conexão pode ser testada, desativada, reativada, atualizada e removida pela Garcia.
+- Execuções e transferências mostram estado, progresso quando disponível, logs sanitizados e artefatos.
+- Limites de quota, permissões, custos e restrições do fornecedor são apresentados sem inferências ou promessas.
+- Configurações importadas não podem executar código arbitrário nem ampliar privilégios.
