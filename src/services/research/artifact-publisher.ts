@@ -15,6 +15,14 @@ export function renderResearchMarkdown(report: ResearchReport): string {
     "", "## Limitações", "", ...report.limitations.map((x) => "- " + x), "", "## Fontes", "",
     ...report.sources.map((s) => "- [" + s.title + "](" + s.url + ") — " + s.snippet)].join("\n");
 }
+export async function verifySignedArtifactUrl(secret: string, key: string, expires: number, signature: string): Promise<boolean> {
+  const now = Math.floor(Date.now() / 1000);
+  if (!key.startsWith("owners/") || key.includes("..") || !Number.isInteger(expires) || expires < now || expires > now + 86400) return false;
+  const expected = await hmac(secret, key + "\\n" + expires);
+  if (expected.length !== signature.length) return false;
+  let diff = 0; for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
+  return diff === 0;
+}
 export class CloudflareArtifactPublisher {
   constructor(private readonly env: ResearchEnv) {}
   private ownerPrefix(): string { return "owners/" + this.env.ownerId + "/"; }
