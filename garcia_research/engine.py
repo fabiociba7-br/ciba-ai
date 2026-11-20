@@ -109,10 +109,20 @@ class GarciaEngine:
 
     def _sanitize_context(self, context: str) -> str:
         """Bound and XML-escape retrieved text; it remains untrusted evidence."""
+        # Redact common instruction-like payloads before delimiter escaping.
+        neutralized = re.sub(
+            r"(?i)ignore\\s+(?:all\\s+)?(?:previous|prior|above)\\s+instructions|"
+            r"disregard\\s+(?:all\\s+)?(?:previous|prior|above)\\s+instructions|"
+            r"reveal\\s+(?:the\\s+)?(?:system|developer)\\s+prompt|"
+            r"you\\s+are\\s+now\\s+(?:the|a)\\b|"
+            r"act\\s+as\\s+(?:the|a)\\b",
+            "[INSTRUCTION-LIKE TEXT REDACTED]",
+            context,
+        )
         output: list[str] = []
         size = 0
         replacements = {"&": "&amp;", "<": "&lt;", ">": "&gt;"}
-        for char in context:
+        for char in neutralized:
             if char not in "\n\r\t" and (ord(char) < 32 or ord(char) == 127):
                 continue
             escaped = replacements.get(char, char)
