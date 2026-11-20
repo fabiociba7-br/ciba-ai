@@ -8,6 +8,8 @@ Aplicativo Android da assistente de IA **Garcia**. Ciba AI é apenas o nome do r
 - Identidade visual baseada na logo oficial: rosa, coral, lilás, branco e cinza.
 - Ícone Android com o símbolo floral da marca e Splash Screen própria com nome e assinatura Garcia.
 - Conversa com a assistente Garcia por meio da API hospedada no Ciba AI Worker.
+- Seleção de trechos, cópia de respostas, campo multilinha e rolagem automática para a mensagem mais recente.
+- Anexos de fotos pela câmera/galeria e arquivos de texto, Markdown, CSV, JSON e XML, com validação de tipo e limites de tamanho.
 - Histórico local de conversas criptografado com chave mantida no Android Keystore.
 - Token de dispositivo protegido com AES-GCM e Android Keystore.
 - Consulta de status e consumo.
@@ -42,7 +44,6 @@ Abra a pasta `garcia-android`. Use JDK 17 e Android SDK Platform 36. O projeto n
 ## Arquitetura
 
 `MainActivity` contém a interface e estado de conversa; `CibaAiClient` concentra as chamadas HTTP; `SecureStore` protege credenciais e histórico local. O backend não recebe histórico persistido: o cliente envia apenas as últimas mensagens necessárias a cada chamada.
-
 
 ## Conversação por voz em tempo real
 
