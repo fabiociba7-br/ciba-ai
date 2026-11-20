@@ -85,7 +85,7 @@ def test_garcia_loop_refines_query_from_gaps():
 def test_final_invalid_response_is_marked_inconclusive():
     retriever = FakeRetriever()
     llm = FakeLLM([valid_payload(confianca=0.2, lacunas=["missing source"])])
-    result = GarciaEngine(llm, retriever).generate_robust("OAuth2")
+    result = GarciaEngine(llm, retriever, EngineConfig(max_iterations=1)).generate_robust("OAuth2")
 
     assert result["confianca"] <= 0.69
     assert "inconclusiva" in result["raciocinio"]
