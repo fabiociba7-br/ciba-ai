@@ -8,23 +8,16 @@ on:
         required: false
         type: string
         default: "1.0.3"
-  pull_request_target:
-    branches:
-      - main
-    paths:
-      - "garcia-android/**"
-      - ".github/workflows/garcia-android-release.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: garcia-android-release-${{ github.event.pull_request.number || github.ref }}
+  group: garcia-android-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   signed-release:
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     name: Build and verify signed Garcia APK
     runs-on: ubuntu-latest
     env:
@@ -36,11 +29,8 @@ jobs:
       run:
         working-directory: garcia-android
     steps:
-      - name: Checkout trusted PR source
+      - name: Checkout trusted release ref
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
-          fetch-depth: 1
 
       - name: Validate signing secrets
         shell: bash
