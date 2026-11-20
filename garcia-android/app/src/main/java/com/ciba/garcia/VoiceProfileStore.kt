@@ -19,7 +19,8 @@ internal data class GarciaVoiceProfile(
     val createdAt: Long,
     val durationMs: Long,
     val sampleSha256: String,
-    val wavSha256: String
+    val wavSha256: String,
+    val integrityValid: Boolean = true
 )
 
 internal class VoiceProfileStore(context: Context) {
@@ -116,21 +117,21 @@ internal class VoiceProfileStore(context: Context) {
             val directory = File(root, id)
             val sample = File(directory, item.optString("sample"))
             val wav = File(directory, item.optString("wav"))
-            if (!isInside(root, sample) || !isInside(root, wav) || !sample.isFile || !wav.isFile) continue
+            if (!isInside(root, directory) || !isInside(root, sample) || !isInside(root, wav)) continue
             val sampleHash = item.optString("sample_sha256")
             val wavHash = item.optString("wav_sha256")
-            if (sampleHash.isBlank() || wavHash.isBlank()) continue
-            val hashesValid = verified(sample, sampleHash) && verified(wav, wavHash)
-            if (!hashesValid) continue
+            val hashesValid = sample.isFile && wav.isFile && sampleHash.isNotBlank() && wavHash.isNotBlank() &&
+                verified(sample, sampleHash) && verified(wav, wavHash)
             result += GarciaVoiceProfile(
                 id = id,
-                name = item.optString("name", "Minha voz"),
+                name = item.optString("name", "Minha voz").ifBlank { "Minha voz" },
                 sample = sample,
                 wav = wav,
                 createdAt = item.optLong("created_at", 0L),
                 durationMs = item.optLong("duration_ms", 0L),
                 sampleSha256 = sampleHash,
-                wavSha256 = wavHash
+                wavSha256 = wavHash,
+                integrityValid = hashesValid
             )
         }
         return result.sortedBy { it.name.lowercase() }
@@ -144,13 +145,13 @@ internal class VoiceProfileStore(context: Context) {
             ?: voicePrefs.getString("voice_id", null)?.removePrefix("clone:")?.takeIf { it.isNotBlank() }
     }
 
-    fun currentProfile(): GarciaVoiceProfile? = activeProfileId()?.let { id -> profiles().firstOrNull { it.id == id } }
+    fun currentProfile(): GarciaVoiceProfile? = activeProfileId()?.let { id -> profiles().firstOrNull { it.id == id && it.integrityValid } }
     fun currentFile(): File? = currentProfile()?.sample
     fun currentWav(): File? = currentProfile()?.wav
     fun currentName(): String = currentProfile()?.name.orEmpty()
 
     fun select(profile: GarciaVoiceProfile) {
-        require(isInside(root, profile.sample) && isInside(root, profile.wav) && profile.sample.isFile && profile.wav.isFile) { "O perfil de voz não está no armazenamento privado da Garcia." }
+        require(profile.integrityValid && isInside(root, profile.sample) && isInside(root, profile.wav) && profile.sample.isFile && profile.wav.isFile) { "O perfil de voz não passou na verificação SHA-256 ou não está no armazenamento privado da Garcia." }
         val currentVoice = voicePrefs.getString("voice_id", null) ?: voicePrefs.getString("system_voice_id", null)
         val editor = voicePrefs.edit()
             .putString("voice_mode", "cloned")
