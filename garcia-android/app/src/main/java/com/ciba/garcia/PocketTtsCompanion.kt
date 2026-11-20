@@ -40,6 +40,5 @@ internal object PocketTtsCompanion {
     }
 
     fun supportsArm64(context: Context): Boolean =
-        context.applicationInfo.nativeLibraryDir.isNotBlank() &&
-            android.os.Build.SUPPORTED_ABIS.any { it.equals("arm64-v8a", ignoreCase = true) }
+        android.os.Build.SUPPORTED_ABIS.any { it.equals("arm64-v8a", ignoreCase = true) }
 }
