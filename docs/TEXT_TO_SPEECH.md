@@ -35,7 +35,7 @@ Nenhum pacote Python, peso de modelo, checkpoint, binário nativo ou arquivo de 
 - Cada síntese exige consentimento explícito associado à ação do usuário.
 - Texto e áudio não são enviados a provedores externos.
 - A geração de voz não grava conversas nem adiciona memórias.
-- Clonagem de voz e perfis derivados de amostras pessoais não fazem parte desta integração.
+- Clonagem de voz e perfis derivados de amostras pessoais não fazem parte do bridge desktop descrito nesta seção. O runtime Android local é separado e está documentado abaixo.
 - Uma futura clonagem exigirá consentimento separado e verificável do titular da voz, além de política de armazenamento e exclusão.
 
 ## Próximas etapas técnicas
