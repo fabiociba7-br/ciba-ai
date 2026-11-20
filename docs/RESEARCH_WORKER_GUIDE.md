@@ -37,14 +37,19 @@ A resposta inclui session_id, iteration, image_url, visual_analysis e prompt_use
 
 O D1 conserva o histórico e cada iteração grava uma nova imagem no R2; a versão anterior permanece disponível.
 
-## Modelos de imagem
+## Modelo de imagem e custo
 
-O wrangler.toml configura openai/gpt-image-1.5 via binding Workers AI. A documentação do Cloudflare descreve geração e edição por prompt, com imagens de referência no parâmetro images[]. Esse é um modelo de provedor terceiro dentro do catálogo Cloudflare e pode gerar cobrança/depender da disponibilidade da conta. A síntese e visão usam o modelo configurado em AI_MODEL/GARCIA_VISION_MODEL.
+O modelo padrão é `@cf/black-forest-labs/flux-2-klein-4b`, hospedado no catálogo Workers AI. Ele unifica geração e edição com referências. O Worker envia multipart pelo binding `env.AI`, e as iterações usam a imagem anterior como `input_image_0`; a geração é limitada a 512×512 para cumprir o limite documentado de imagem de referência inferior a 512×512. O modelo aceita até quatro referências, mas o fluxo atual usa uma.
+
+A tabela de preços atual do Cloudflare informa 26,05 Neurons por tile 512×512 gerado e 5,37 Neurons por tile de entrada. Workers AI inclui 10.000 Neurons por dia sem custo; acima da franquia, o Workers Free bloqueia novas chamadas e o Workers Paid cobra excedentes. A geração visual consome essa mesma franquia compartilhada com LLM e visão. Acompanhe o painel de consumo; não existe garantia de uso ilimitado gratuito.
+
+O modelo é parceiro da Black Forest Labs e está marcado no catálogo como Cloudflare-hosted e zero data retention. Verifique também os termos/licença do provedor antes de usar comercialmente.
 
 Fontes oficiais:
-- Workers AI GPT Image 1.5: https://developers.cloudflare.com/workers-ai/models/openai/gpt-image-1.5/
-- Workers AI FLUX.2 Klein 4B: https://developers.cloudflare.com/workers-ai/models/flux-2-klein-4b/
-- R2 Workers API: https://developers.cloudflare.com/r2/get-started/workers-api/
+- [FLUX.2 Klein 4B — parâmetros e edição multipart](https://developers.cloudflare.com/workers-ai/models/flux-2-klein-4b/)
+- [Anúncio técnico — multipart e imagens de referência](https://developers.cloudflare.com/changelog/post/2026-01-15-flux-2-klein-4b-workers-ai/)
+- [Preços Workers AI e Neurons](https://developers.cloudflare.com/workers-ai/platform/pricing/)
+- [Workers AI Gemma 4 — visão multimodal](https://developers.cloudflare.com/workers-ai/models/gemma-4-26b-a4b-it/)
 
 ## Preparar Cloudflare
 
@@ -70,7 +75,7 @@ npx wrangler secret put ARTIFACT_URL_SECRET
 
 Use um valor aleatório forte com pelo menos 32 bytes. O segredo assina URLs temporárias de leitura de artefatos. Não o coloque no repositório nem no wrangler.toml.
 
-Defina PUBLIC_API_BASE_URL no wrangler.toml para a URL pública do Worker, por exemplo a URL real workers.dev ou domínio de API. As URLs de artefatos são assinadas e expiram em 30 dias; quem possuir o link pode acessá-lo até o vencimento. O bucket R2 permanece privado e não precisa de acesso público. O Worker usa automaticamente a origem da requisição atual para assinar URLs, inclusive em wrangler dev.
+O Worker usa automaticamente a origem da requisição atual para assinar URLs, inclusive em wrangler dev. As URLs de artefatos são assinadas e expiram em 30 dias; quem possuir o link pode acessá-lo até o vencimento. O bucket R2 permanece privado e não precisa de acesso público.
 
 ## Migração e teste local
 
