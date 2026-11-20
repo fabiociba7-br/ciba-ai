@@ -106,10 +106,13 @@ internal class LocalSpeechOutput(
                 }
             })
             ready = true
+            if (preferences.getString("system_voice_id", null).isNullOrBlank()) {
+                preferences.edit().putString("system_voice_id", chosen.name).apply()
+            }
             if (isCloneMode()) restoreCloneMode()
             else {
                 if (preferences.getString("voice_id", null).isNullOrBlank()) {
-                    preferences.edit().putString("voice_id", chosen.name).putString("system_voice_id", chosen.name).apply()
+                    preferences.edit().putString("voice_id", chosen.name).apply()
                 }
                 onAvailabilityChanged(true, statusLabel(chosen))
             }
