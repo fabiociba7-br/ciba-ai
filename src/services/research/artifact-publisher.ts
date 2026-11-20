@@ -61,7 +61,7 @@ export class CloudflareArtifactPublisher {
   }
   async verifySignedUrl(key: string, expires: number, signature: string): Promise<boolean> {
     const now = Math.floor(Date.now() / 1000);
-    if (!key.startsWith(this.ownerPrefix()) || !this.env.ARTIFACT_URL_SECRET || !Number.isInteger(expires) || expires < now || expires > now + 86400) return false;
+    if (!key.startsWith(this.ownerPrefix()) || !this.env.ARTIFACT_URL_SECRET || !Number.isInteger(expires) || expires < now || expires > now + 2592000) return false;
     const expected = await hmac(this.env.ARTIFACT_URL_SECRET, key + "\n" + expires);
     if (expected.length !== signature.length) return false;
     let diff = 0; for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
