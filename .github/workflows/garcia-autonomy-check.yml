@@ -1,0 +1,36 @@
+name: Garcia Autonomy Checks
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "migrations/**"
+      - "docs/garcia-*.md"
+      - ".github/workflows/garcia-autonomy-check.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: garcia-autonomy-${{ github.event.pull_request.number }}-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Typecheck and unit tests (no APK, no deploy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund --legacy-peer-deps
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
