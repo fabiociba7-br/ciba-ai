@@ -24,11 +24,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -297,70 +293,86 @@ internal fun GarciaBrowserDialog(onDismiss: () -> Unit, onSharePage: (String) ->
         else closePopup()
     }
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
             Box(Modifier.fillMaxSize()) {
-                Column(Modifier.fillMaxSize().padding(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Navegador", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                        IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, contentDescription = "Fechar") }
-                    }
-                    OutlinedTextField(
-                        value = address,
-                        onValueChange = { address = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        label = { Text("Pesquisar ou digitar endereço") },
-                        trailingIcon = {
-                            IconButton(onClick = { navigate(address) }) { Icon(Icons.Default.Search, contentDescription = "Pesquisar ou abrir") }
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { ctx ->
+                        WebView(ctx).apply {
+                            configureWebView(this)
+                            loadUrl("https://duckduckgo.com")
+                            webView = this
                         }
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = { activeWebView?.goBack() }, enabled = activeWebView?.canGoBack() == true) { Icon(Icons.Default.ArrowBack, "Voltar") }
-                        IconButton(onClick = { activeWebView?.goForward() }, enabled = activeWebView?.canGoForward() == true) { Icon(Icons.Default.ArrowForward, "Avançar") }
-                        IconButton(onClick = { activeWebView?.reload() }) { Icon(Icons.Default.Refresh, "Recarregar") }
-                        Text(if (loading) "Carregando $progress%" else pageTitle, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 1)
-                        TextButton(onClick = { navigate("https://duck.ai") }) { Text("Duck.ai") }
-                        TextButton(onClick = { shareCurrentPage(activeWebView) }) {
-                            Icon(Icons.Default.Share, null)
-                            Spacer(Modifier.width(4.dp))
-                            Text("Enviar à Garcia")
-                        }
-                    }
-                    if (pageError.isNotBlank()) Text(pageError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                    if (loading) LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
-                    Box(Modifier.fillMaxWidth().weight(1f)) {
-                        AndroidView(
-                            modifier = Modifier.fillMaxSize(),
-                            factory = { ctx ->
-                                WebView(ctx).apply {
-                                    configureWebView(this)
-                                    loadUrl("https://duckduckgo.com")
-                                    webView = this
-                                }
-                            },
-                            update = { webView = it },
-                        )
-                        popupWebView?.let { popup ->
-                            AndroidView(
-                                modifier = Modifier.fillMaxSize(),
-                                factory = { FrameLayout(it).apply { addView(popup, FrameLayout.LayoutParams(-1, -1)) } },
-                                update = { container ->
-                                    if (popup.parent !== container) {
-                                        (popup.parent as? android.view.ViewGroup)?.removeView(popup)
-                                        container.addView(popup, FrameLayout.LayoutParams(-1, -1))
-                                    }
-                                },
-                            )
-                        }
-                    }
-                    Text(
-                        "O site é exibido diretamente. Logins, permissões, anexos e downloads são tratados pelo Android; a Garcia só recebe o conteúdo quando você escolhe compartilhá-lo.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp),
+                    },
+                    update = { webView = it },
+                )
+
+                popupWebView?.let { popup ->
+                    AndroidView(
+                        modifier = Modifier.fillMaxSize(),
+                        factory = { FrameLayout(it).apply {
+                            addView(popup, FrameLayout.LayoutParams(-1, -1))
+                        } },
+                        update = { container ->
+                            if (popup.parent !== container) {
+                                (popup.parent as? android.view.ViewGroup)?.removeView(popup)
+                                container.addView(popup, FrameLayout.LayoutParams(-1, -1))
+                            }
+                        },
                     )
                 }
+
+                // Minimal floating controls keep the website itself full-screen.
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(8.dp),
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                    tonalElevation = 2.dp,
+                ) {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Fechar navegador")
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(12.dp),
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                    tonalElevation = 2.dp,
+                ) {
+                    IconButton(onClick = { shareCurrentPage(popupWebView ?: webView) }) {
+                        Icon(Icons.Default.Share, contentDescription = "Enviar página à Garcia")
+                    }
+                }
+
+                if (pageError.isNotBlank()) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 12.dp, start = 64.dp, end = 64.dp),
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = MaterialTheme.shapes.medium,
+                    ) {
+                        Text(
+                            pageError,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(12.dp),
+                        )
+                    }
+                }
+
                 fullScreenView?.let { videoView ->
                     AndroidView(
                         modifier = Modifier.fillMaxSize(),
