@@ -21,6 +21,19 @@ class VoiceActivityDetectorTest {
     }
 
     @Test
+    fun defaultSilenceWindowDoesNotCutShortNaturalPauses() {
+        val detector = VoiceActivityDetector()
+        assertNull(detector.shouldStop(speechFrame, 0, speechFrame.size, 0))
+        assertNull(detector.shouldStop(silenceFrame, 0, silenceFrame.size, 700))
+        assertNull(detector.shouldStop(silenceFrame, 0, silenceFrame.size, 1_200))
+        assertNull(detector.shouldStop(silenceFrame, 0, silenceFrame.size, 1_399))
+        assertEquals(
+            VoiceActivityDetector.StopReason.SILENCE,
+            detector.shouldStop(silenceFrame, 0, silenceFrame.size, 1_400)
+        )
+    }
+
+    @Test
     fun silenceWithoutSpeechTimesOutInsteadOfSubmittingEmptyAudio() {
         val detector = VoiceActivityDetector(noSpeechTimeoutMillis = 2_000)
         assertNull(detector.shouldStop(silenceFrame, 0, silenceFrame.size, 0))

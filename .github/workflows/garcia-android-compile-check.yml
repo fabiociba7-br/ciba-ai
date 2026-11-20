@@ -1,11 +1,10 @@
 name: Garcia Android Compile Check
 
 on:
-  workflow_dispatch:
   push:
-    paths:
-      - "garcia-android/**"
-      - ".github/workflows/garcia-android-compile-check.yml"
+    branches:
+      - feature/garcia-chatterbox-voice-profiles
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -42,4 +41,4 @@ jobs:
           gradle-version: "8.13"
 
       - name: Run voice activity unit tests and compile Android sources
-        run: gradle --no-daemon :app:testDebugUnitTest :app:externalNativeBuildDebug :app:compileDebugKotlin
+        run: gradle --no-daemon :app:testDebugUnitTest :app:externalNativeBuildDebug :chatterbox-runtime:externalNativeBuildDebug :app:compileDebugKotlin

@@ -1,0 +1,72 @@
+name: Build Garcia Chatterbox V3 Models
+
+on:
+  push:
+    branches:
+      - feature/garcia-chatterbox-voice-profiles
+    paths:
+      - ".github/workflows/garcia-chatterbox-v3-models.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: garcia-chatterbox-v3-models
+  cancel-in-progress: false
+
+jobs:
+  convert:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout Garcia
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Fetch pinned Chatterbox converter
+        shell: bash
+        run: |
+          git clone https://github.com/gianni-cor/chatterbox.cpp.git /tmp/chatterbox.cpp
+          cd /tmp/chatterbox.cpp
+          git checkout ddca05fb69c2910b0d7b5eae420d360ed98c067b
+          # The pinned converter predates V3; V3 keeps the same multilingual
+          # tensor layout, but the checkpoint filename is different.
+          sed -i 's/t3_mtl23ls_v2\.safetensors/t3_mtl23ls_v3.safetensors/g' scripts/convert-t3-mtl-to-gguf.py
+          sed -i 's/t3_mtl23ls_v2\.safetensors/t3_mtl23ls_v3.safetensors/g' scripts/convert-s3gen-to-gguf.py
+
+      - name: Install conversion dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy gguf safetensors huggingface_hub librosa soundfile
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Convert multilingual V3 T3 and S3Gen GGUFs
+        shell: bash
+        run: |
+          cd /tmp/chatterbox.cpp
+          mkdir -p models
+          unset HF_TOKEN
+          python scripts/convert-t3-mtl-to-gguf.py --quant q4_0 --out models/chatterbox-t3-mtl-v3-q4_0.gguf
+          python scripts/convert-s3gen-to-gguf.py --variant mtl --quant q4_0 --out models/chatterbox-s3gen-mtl-v3-q4_0.gguf
+          for f in models/*.gguf; do
+            test "$(head -c 4 "$f")" = "GGUF"
+            sha256sum "$f"
+          done
+
+      - name: Publish converted model assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          cd /tmp/chatterbox.cpp/models
+          gh release view garcia-chatterbox-v3-models --repo "${{ github.repository }}" >/dev/null 2>&1 || \
+            gh release create garcia-chatterbox-v3-models --repo "${{ github.repository }}" \
+              --title "Garcia Chatterbox Multilingual V3 Models" \
+              --notes "GGUFs converted from ResembleAI/chatterbox V3 using the pinned gianni-cor/chatterbox.cpp converter and Garcia's multilingual runtime patch."
+          sha256sum *.gguf > SHA256SUMS
+          gh release upload garcia-chatterbox-v3-models *.gguf SHA256SUMS --repo "${{ github.repository }}" --clobber

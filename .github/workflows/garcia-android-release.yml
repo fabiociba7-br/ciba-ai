@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feature/garcia-chatterbox-voice-profiles
     paths:
       - "garcia-android/gradle.properties"
       - ".github/workflows/garcia-android-release.yml"
@@ -13,7 +14,7 @@ on:
         description: "Versão pública do aplicativo"
         required: false
         type: string
-        default: "1.2.0"
+        default: "1.2.2"
 
 permissions:
   contents: read

@@ -149,6 +149,21 @@ private fun readTextAttachment(context: Context, uri: Uri): GarciaAttachment {
     return GarciaAttachment(type = "file", name = name.take(120), text = content)
 }
 
+private fun extractBrowserRequest(message: String): String? {
+    val text = message.trim()
+    val hasNavigationVerb = Regex("(?i)\\b(abra|acesse|acessa|entre|visite|navegue|vai para|vá para)\\b").containsMatchIn(text)
+    if (!hasNavigationVerb) return null
+    val url = Regex("(?i)(?:https?://)?(?:www\\.)?[a-z0-9][a-z0-9.-]*\\.[a-z]{2,}(?:/[^\\s]*)?").find(text)?.value
+    if (url != null) return url
+    val sitePhrase = Regex("(?i)\\b(?:abra|acesse|entre|visite|navegue)\\s+(?:no\\s+|na\\s+|em\\s+|o\\s+|a\\s+)?site\\s+(?:da\\s+|do\\s+)?(.+)$").find(text)
+    return sitePhrase?.groupValues?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+}
+
+private fun extractBrowserTask(message: String): String? {
+    val task = Regex("(?i)\\b(?:pesquise|pesquisar|procure|busque|buscar|encontre)\\s+(?:por\\s+)?(.+)$").find(message)?.groupValues?.get(1)?.trim()
+    return task?.takeIf { it.isNotBlank() }?.let { "pesquise $it" }
+}
+
 private val photoMarker = Regex("\\[\\[foto:(https://[^\\]\\s]+)\\]\\]")
 
 private fun splitPhotos(text: String): Pair<String, List<String>> =
@@ -431,8 +446,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
 
     val microphonePermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) {
-            if (input.isNotBlank() || attachment != null || busy || whisperBusy) {
-                error = "Envie ou limpe o texto pendente antes de iniciar outra captura."
+            if (attachment != null || busy || whisperBusy) {
+                error = "Conclua a operação atual e remova o anexo antes de iniciar outra captura."
             } else if (continuousVoice && streamingSpeech.isAvailable && !streamingUnavailable) {
                 streamingTranscript = ""
                 error = ""
@@ -507,6 +522,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var showSettings by remember { mutableStateOf(false) }
     var settingsSection by remember { mutableStateOf("menu") }
     var showBrowser by remember { mutableStateOf(false) }
+    var browserStartRequest by remember { mutableStateOf<String?>(null) }
+    var browserAutoSendPending by remember { mutableStateOf(false) }
+    var browserStartTask by remember { mutableStateOf<String?>(null) }
     var showLogs by remember { mutableStateOf(false) }
     var showChats by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -640,6 +658,17 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         val text = input.trim()
         val selectedAttachment = attachment
         if ((text.isEmpty() && selectedAttachment == null) || busy || !connected) return
+        if (selectedAttachment == null) {
+            val browserRequest = extractBrowserRequest(text)
+            if (browserRequest != null) {
+                browserStartRequest = browserRequest
+                browserStartTask = extractBrowserTask(text)
+                showBrowser = true
+                input = ""
+                error = ""
+                return
+            }
+        }
         val message = when (selectedAttachment?.type) {
             "file" -> buildString {
                 append("Arquivo anexado: ").append(selectedAttachment.name).append("\n\n")
@@ -652,19 +681,39 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             }
             else -> text
         }
-        if (message.length > 1_500) { error = "A mensagem com o anexo ultrapassa o limite de 1.500 caracteres. Reduza a pergunta ou o conteúdo do arquivo."; return }
+        val messageLimit = if (browserAutoSendPending) 18_000 else 1_500
+        if (message.length > messageLimit) {
+            error = if (browserAutoSendPending) "O conteúdo desta página é grande demais para análise automática." else "A mensagem com o anexo ultrapassa o limite de 1.500 caracteres. Reduza a pergunta ou o conteúdo do arquivo."
+            browserAutoSendPending = false
+            return
+        }
         val imagePayload = JSONArray()
         if (selectedAttachment?.type == "image") {
             imagePayload.put(JSONObject()
                 .put("mime_type", selectedAttachment.mimeType)
                 .put("data", selectedAttachment.base64))
         }
+        browserAutoSendPending = false
         history.add("user" to message); input = ""; attachment = null; awaitingTranscriptReview = false
         autoListenPending = false; persist(); busy = true; error = ""
         scope.launch {
             try {
+                val latestQuestion = history.lastOrNull { it.first == "user" }?.second.orEmpty()
+                val webContext = withContext(Dispatchers.IO) {
+                    val capability = "INFORMAÇÃO OPERACIONAL: este aplicativo possui conexão com o serviço da Garcia e navegador interno. Você pode receber resultados de pesquisa pública anexados ao contexto desta mensagem. Nunca afirme que não existe acesso à internet de forma absoluta; diferencie pesquisa automática, navegação manual e conexão com o serviço. Se não houver fontes anexadas, não diga que pesquisou."
+                    if (GarciaWebSearch.needsSearch(latestQuestion)) {
+                        runCatching { capability + "\n\n" + GarciaWebSearch.searchContext(latestQuestion) }
+                            .onFailure { GarciaLog.record(context, "Pesquisa na internet", it) }
+                            .getOrElse { capability + "\n\nA pesquisa automática falhou nesta solicitação: ${it.message ?: "erro de conexão"}. Não afirme que consultou fontes." }
+                    } else capability
+                }
                 val snapshot = JSONArray()
-                history.forEach { (role, content) -> snapshot.put(JSONObject().put("role", role).put("content", content)) }
+                history.forEachIndexed { index, (role, content) ->
+                    if (index == history.lastIndex && role == "user") {
+                        snapshot.put(JSONObject().put("role", "user").put("content", webContext))
+                    }
+                    snapshot.put(JSONObject().put("role", role).put("content", content))
+                }
                 val answer = withContext(Dispatchers.IO) { client.chat(snapshot, imagePayload) }
                 history.add("assistant" to answer); persist()
                 if (continuousVoice && voiceReplies && voiceAvailable) {
@@ -680,6 +729,13 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     LaunchedEffect(voiceAutoSendPending, continuousVoice, busy, input) {
         if (voiceAutoSendPending && continuousVoice && !busy && input.isNotBlank()) {
             voiceAutoSendPending = false
+            send()
+        }
+    }
+
+    LaunchedEffect(browserAutoSendPending, busy, input, connected) {
+        if (browserAutoSendPending && !busy && input.isNotBlank() && connected) {
+            browserAutoSendPending = false
             send()
         }
     }
@@ -756,7 +812,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     }
                     lines.add("$label: ${item.optInt("requests", 0)} / ${item.optInt("request_limit", 0)} solicitações")
                 }
-                usage = if (buckets.length() == 0) "Ainda não há solicitações contabilizadas hoje.\\nData (UTC): $day" else lines.joinToString("\\n")
+                usage = if (buckets.length() == 0) "Ainda não há solicitações contabilizadas hoje.\nData (UTC): $day" else lines.joinToString("\n")
                 GarciaLog.recordEvent(context, "uso", "Consulta de uso concluída · ${buckets.length()} limites")
             } catch (e: Exception) {
                 usageError = e.message ?: "Não foi possível consultar o uso."
@@ -897,12 +953,26 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     }
                     IconButton(
                         onClick = {
-                            if (whisperModelInfo == null) error = "Instale o modelo Whisper nas Configurações para ditar mensagens."
-                            else if (!whisperBusy && !busy && !continuousVoice) microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                            if (whisperRecording) {
+                                stopAndTranscribe()
+                            } else if (whisperModelInfo == null) {
+                                error = "Instale o modelo Whisper nas Configurações para ditar mensagens."
+                            } else if (!whisperBusy && !busy && !continuousVoice) {
+                                microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                            }
                         },
                         enabled = !busy && !whisperBusy && !continuousVoice && whisperModelInfo != null,
-                        modifier = Modifier.size(44.dp).background(Color(0xFFE8EEF8), CircleShape)
-                    ) { Icon(Icons.Default.Mic, contentDescription = "Falar para digitar", tint = Blue) }
+                        modifier = Modifier.size(44.dp).background(
+                            if (whisperRecording) Color(0xFFFCE4EC) else Color(0xFFE8EEF8),
+                            CircleShape
+                        )
+                    ) {
+                        Icon(
+                            if (whisperRecording) Icons.Default.Stop else Icons.Default.Mic,
+                            contentDescription = if (whisperRecording) "Parar e transcrever" else "Falar para digitar",
+                            tint = if (whisperRecording) Color(0xFFB94F7C) else Blue
+                        )
+                    }
                     BasicTextField(value = input, onValueChange = { input = it; if (it.isNotBlank()) autoListenPending = false },
                         modifier = Modifier.weight(1f).background(Color(0xFFF6EDF2), RoundedCornerShape(22.dp)).padding(horizontal = 17.dp, vertical = 12.dp),
                         textStyle = androidx.compose.ui.text.TextStyle(color = Color(0xFF303030), fontSize = 15.sp, lineHeight = 21.sp),
@@ -1058,14 +1128,28 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 if (!user) {
                                     TextButton(
                                         onClick = {
-                                            if (voiceAvailable) voiceOutput.speak(shownText)
-                                            else error = "Configure uma voz offline em português nas configurações de texto para fala do Android."
+                                            if (voiceSpeaking) {
+                                                voiceOutput.stop()
+                                                voiceSpeaking = false
+                                                autoListenPending = false
+                                                whisperStatus = "Reprodução de voz interrompida."
+                                            } else if (voiceAvailable) {
+                                                val started = voiceOutput.speak(shownText)
+                                                if (started) voiceSpeaking = true
+                                                else error = "Não foi possível iniciar a reprodução desta resposta."
+                                            } else {
+                                                error = "Configure uma voz em português nas configurações de texto para fala do Android."
+                                            }
                                         },
                                         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
                                     ) {
-                                        Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Icon(
+                                            if (voiceSpeaking) Icons.Default.Stop else Icons.Default.Mic,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp)
+                                        )
                                         Spacer(Modifier.width(5.dp))
-                                        Text("Ouvir resposta", fontSize = 12.sp)
+                                        Text(if (voiceSpeaking) "Parar de ouvir" else "Ouvir resposta", fontSize = 12.sp)
                                     }
                                     TextButton(
                                         onClick = {
@@ -1169,6 +1253,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         val voiceOptions = voiceOutput.availableVoices()
         val sectionTitle = when (settingsSection) {
             "voice" -> "Voz e conversação"
+            "voiceClone" -> "Clonar minha voz"
             "speech" -> "Transcrição de voz"
             "accounts" -> "Contas e integrações"
             "diagnostics" -> "Uso e diagnóstico"
@@ -1185,6 +1270,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         Spacer(Modifier.height(8.dp))
                         listOf(
                             "voice" to ("Voz e conversação" to "Escolha uma voz, ouça amostras e configure a conversa por voz"),
+                            "voiceClone" to ("Clonar minha voz" to "Importar ou gravar uma amostra e preparar um perfil de voz"),
                             "speech" to ("Transcrição de voz" to "Instalar, reparar ou remover o modelo Whisper"),
                             "accounts" to ("Contas e integrações" to "Facebook e serviços conectados"),
                             "diagnostics" to ("Uso e diagnóstico" to "Consumo, logs e estado da conexão"),
@@ -1258,6 +1344,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             }, enabled = voiceAvailable && voiceReplies && (whisperModelInfo != null || streamingSpeech.isAvailable) && !busy && !whisperRecording && !streamingListening)
                         }
                         Text(if (streamingSpeech.isAvailable) "No modo de conversa por voz, a Garcia responde falando. Fora desse modo, as respostas aparecem somente em texto. O reconhecimento de fala é offline e o áudio não é enviado ao servidor." else "No modo de conversa por voz, a Garcia responde falando. Fora desse modo, as respostas aparecem somente em texto. A fala é transcrita localmente pelo Whisper; o áudio bruto não é enviado ao servidor.", color = Muted, fontSize = 11.sp)
+                    } else if (settingsSection == "voiceClone") {
+                        VoiceCloningSection()
                     } else if (settingsSection == "speech") {
                         Text("Modelo de transcrição local", fontWeight = FontWeight.Bold)
                         Text(whisperStatus, color = Muted, fontSize = 12.sp)
@@ -1329,11 +1417,14 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
 
     if (showBrowser) {
         GarciaBrowserDialog(
-            onDismiss = { showBrowser = false },
+            initialRequest = browserStartRequest,
+            initialTask = browserStartTask,
+            onDismiss = { showBrowser = false; browserStartRequest = null; browserStartTask = null },
             onSharePage = { pageContext ->
                 input = pageContext
                 attachment = null
                 error = ""
+                browserAutoSendPending = true
                 showBrowser = false
             }
         )

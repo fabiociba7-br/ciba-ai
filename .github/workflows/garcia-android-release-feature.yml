@@ -1,31 +1,38 @@
 name: Garcia Android Signed Release (Feature)
 
 on:
+  push:
+    branches:
+      - feature/garcia-chatterbox-voice-profiles
+    paths:
+      - 'garcia-android/**'
+      - '.github/workflows/garcia-android-release-feature.yml'
   workflow_dispatch:
     inputs:
       version_name:
         description: "Versão pública do aplicativo"
         required: true
         type: string
-        default: "1.2.0"
+        default: "1.2.1"
 
 permissions:
   contents: read
 
 concurrency:
   group: garcia-android-signed-feature-release
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   signed-release:
-    name: Build and verify signed Garcia 1.2.0 APK
+    if: github.event_name == 'workflow_dispatch'
+    name: Build and verify signed Garcia release APK
     runs-on: ubuntu-latest
     env:
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       FACEBOOK_CLIENT_TOKEN: ${{ secrets.FACEBOOK_CLIENT_TOKEN }}
-      VERSION_NAME: ${{ inputs.version_name || '1.2.0' }}
+      VERSION_NAME: ${{ inputs.version_name || '1.2.1' }}
     defaults:
       run:
         working-directory: garcia-android
@@ -118,7 +125,7 @@ jobs:
       - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: Garcia-1.2.0-signed-run-${{ github.run_number }}
+          name: Garcia-${{ steps.resolve-version.outputs.version_name }}-signed-run-${{ github.run_number }}
           path: |
             garcia-android/${{ steps.verify.outputs.apk_path }}
             ${{ runner.temp }}/garcia-apk-sha256.txt
