@@ -42,11 +42,13 @@ export class VisualSessionManager {
   }
   async saveAsset(session: VisualSession, asset: Omit<VisualAsset, "id" | "sessionId" | "createdAt">): Promise<VisualAsset> {
     const id = crypto.randomUUID(), createdAt = new Date().toISOString();
+    const promptHistory = [...session.promptHistory, { iteration: session.currentIteration, prompt: asset.promptUsed,
+      sourceKind: asset.sourceKind, createdAt }].slice(-40);
     await this.env.DB.batch([
       this.env.DB.prepare("INSERT INTO visual_assets (id, session_id, iteration, r2_key, image_url, prompt_used, vision_analysis, user_feedback, source_kind, mime_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
         .bind(id, session.sessionId, session.currentIteration, asset.r2Key, asset.imageUrl, asset.promptUsed, asset.visionAnalysis, asset.userFeedback, asset.sourceKind, asset.mimeType, createdAt),
-      this.env.DB.prepare("UPDATE visual_sessions SET latest_image_r2_key = ?, updated_at = ? WHERE session_id = ? AND owner_id = ? AND app_id = ? AND device_id = ?")
-        .bind(asset.r2Key, createdAt, session.sessionId, this.env.ownerId, this.env.appId, this.env.deviceId),
+      this.env.DB.prepare("UPDATE visual_sessions SET latest_image_r2_key = ?, prompt_history = ?, updated_at = ? WHERE session_id = ? AND owner_id = ? AND app_id = ? AND device_id = ?")
+        .bind(asset.r2Key, JSON.stringify(promptHistory), createdAt, session.sessionId, this.env.ownerId, this.env.appId, this.env.deviceId),
     ]);
     return { ...asset, id, sessionId: session.sessionId, createdAt };
   }
