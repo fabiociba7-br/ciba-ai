@@ -79,6 +79,7 @@ internal class VoiceProfileStore(context: Context) {
         val extension = source.extension.lowercase().filter { it.isLetterOrDigit() }.take(8).ifBlank { "audio" }
         val sample = File(directory, "reference.$extension")
         val wav = File(directory, "reference.wav")
+        var saved = false
         try {
             source.copyTo(sample, overwrite = true)
             normalizedWav.copyTo(wav, overwrite = true)
@@ -97,13 +98,14 @@ internal class VoiceProfileStore(context: Context) {
             check(prefs.edit().putString("profiles_json", json.toString()).commit()) { "Não foi possível salvar os dados do perfil." }
             verifiedProfiles[sample.absolutePath] = ProfileStamp(sample.length(), sample.lastModified(), sampleHash)
             verifiedProfiles[wav.absolutePath] = ProfileStamp(wav.length(), wav.lastModified(), wavHash)
+            saved = true
             return profile
         } catch (error: Throwable) {
             directory.deleteRecursively()
             throw error
         } finally {
-            if (isInside(imports, source)) source.delete()
-            if (isInside(app.cacheDir, normalizedWav)) normalizedWav.delete()
+            if (saved && isInside(imports, source)) source.delete()
+            if (saved && isInside(app.cacheDir, normalizedWav)) normalizedWav.delete()
         }
     }
 
