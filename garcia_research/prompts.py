@@ -38,9 +38,16 @@ def _xml_text(value: str) -> str:
     return escape(value, {'"': "&quot;", "'": "&apos;"})
 
 
-def build_response_prompt(query: str, context: str, iteration: int, max_iterations: int) -> str:
+def build_response_prompt(
+    query: str,
+    context: str,
+    iteration: int,
+    max_iterations: int,
+    *,
+    context_is_sanitized: bool = False,
+) -> str:
     safe_query = _xml_text(query)
-    safe_context = _xml_text(context)
+    safe_context = context if context_is_sanitized else _xml_text(context)
     return (
         f"{SYSTEM_PROMPT}\n{CONSTRAINTS}\n"
         f"<task iteration=\"{iteration}\" max_iterations=\"{max_iterations}\">"
