@@ -34,15 +34,16 @@ export class VisualSessionManager {
     if (!row) throw new Error("visual_session_not_found");
     return mapSession(row);
   }
-  async iterate(sessionId: string, feedback: string): Promise<VisualSession> {
+  async iterate(sessionId: string, feedback: string, mode?: VisualMode): Promise<VisualSession> {
     const session = await this.getSession(sessionId);
     if (!feedback.trim() || feedback.length > 1200) throw new Error("invalid_visual_feedback");
     const nextIteration = session.currentIteration + 1;
+    const nextMode = mode || session.mode;
     const history = [...session.promptHistory, { iteration: nextIteration, feedback: feedback.trim(), at: new Date().toISOString() }].slice(-20);
-    const result = await this.env.DB.prepare("UPDATE visual_sessions SET current_iteration = ?, prompt_history = ?, updated_at = ? WHERE session_id = ? AND owner_id = ? AND app_id = ? AND device_id = ? AND current_iteration = ?")
-      .bind(nextIteration, JSON.stringify(history), new Date().toISOString(), sessionId, this.env.ownerId, this.env.appId, this.env.deviceId, session.currentIteration).run();
+    const result = await this.env.DB.prepare("UPDATE visual_sessions SET current_iteration = ?, mode = ?, prompt_history = ?, updated_at = ? WHERE session_id = ? AND owner_id = ? AND app_id = ? AND device_id = ? AND current_iteration = ?")
+      .bind(nextIteration, nextMode, JSON.stringify(history), new Date().toISOString(), sessionId, this.env.ownerId, this.env.appId, this.env.deviceId, session.currentIteration).run();
     if (result.meta.changes !== 1) throw new Error("visual_session_iteration_conflict");
-    return { ...session, currentIteration: nextIteration, promptHistory: history };
+    return { ...session, mode: nextMode, currentIteration: nextIteration, promptHistory: history };
   }
   async saveAsset(session: VisualSession, asset: Omit<VisualAsset, "id" | "sessionId" | "createdAt">): Promise<VisualAsset> {
     const id = crypto.randomUUID(), createdAt = new Date().toISOString();
