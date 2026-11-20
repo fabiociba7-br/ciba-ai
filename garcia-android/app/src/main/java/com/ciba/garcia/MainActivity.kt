@@ -306,7 +306,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var voiceStatus by remember { mutableStateOf("Verificando voz offline…") }
     var voiceReplies by remember { mutableStateOf(context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).getBoolean("enabled", true)) }
     var voiceSpeaking by remember { mutableStateOf(false) }
-    var continuousVoice by remember { mutableStateOf(context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).getBoolean("continuous", false)) }
+    var continuousVoice by remember { mutableStateOf(false) }
     var autoListenPending by remember { mutableStateOf(false) }
     var awaitingTranscriptReview by remember { mutableStateOf(false) }
     var streamingListening by remember { mutableStateOf(false) }
@@ -350,7 +350,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         LocalSpeechOutput(
             context,
             { available, message -> voiceAvailable = available; voiceStatus = message },
-            { voiceSpeaking = false; if (continuousVoice && voiceReplies && !awaitingTranscriptReview && input.isBlank()) autoListenPending = true },
+            { voiceSpeaking = false; if (continuousVoice && voiceReplies && voiceAvailable && !awaitingTranscriptReview && input.isBlank()) autoListenPending = true },
             { voiceSpeaking = true }
         )
     }
@@ -497,9 +497,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             error = "A permissão do microfone foi negada. Ative-a nas configurações do Android para conversar por voz."
         }
     }
-    LaunchedEffect(autoListenPending, continuousVoice, voiceReplies, input, attachment, busy, whisperBusy, whisperRecording) {
+    LaunchedEffect(autoListenPending, continuousVoice, voiceReplies, voiceAvailable, input, attachment, busy, whisperBusy, whisperRecording) {
         if (!autoListenPending) return@LaunchedEffect
-        if (!continuousVoice || !voiceReplies || input.isNotBlank() || attachment != null || whisperBusy || whisperRecording || streamingListening) {
+        if (!continuousVoice || !voiceReplies || !voiceAvailable || input.isNotBlank() || attachment != null || whisperBusy || whisperRecording || streamingListening) {
             autoListenPending = false
         } else if (!busy) {
             autoListenPending = false
@@ -511,6 +511,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         else error = "A permissão da câmera foi negada. Ative-a nas configurações do Android para fotografar."
     }
     LaunchedEffect(Unit) {
+        // Continuous conversation is always opt-in for each fresh app process.
+        context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
+            .edit().putBoolean("continuous", false).apply()
         withContext(Dispatchers.IO) {
             runCatching {
                 whisperModelStore.loadSavedModel()?.also { info ->
@@ -1440,12 +1443,13 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     } else if (settingsSection == "voice") {
                         Text("Diagnóstico de áudio", fontWeight = FontWeight.Bold)
                         val inputStatus = when {
+                            streamingSpeech.isAvailable && !streamingUnavailable && whisperModelInfo != null -> "On-device OK · Whisper OK (reserva)"
                             streamingSpeech.isAvailable && !streamingUnavailable -> "On-device OK"
                             whisperModelInfo != null -> "Whisper OK" + if (streamingUnavailable) " · fallback ativo" else ""
                             else -> "nenhum mecanismo local disponível"
                         }
                         Text("Entrada: $inputStatus", color = Muted, fontSize = 12.sp)
-                        Text("Saída: ${voiceOutput.diagnosticStatus()}", color = Muted, fontSize = 12.sp)
+                        Text("Saída: " + voiceOutput.diagnosticStatus(voiceAvailable, voiceStatus), color = Muted, fontSize = 12.sp)
                         Text(voiceStatus, color = Muted, fontSize = 12.sp)
                         Spacer(Modifier.height(8.dp))
                         Text("Voz da Garcia", fontWeight = FontWeight.Bold)
