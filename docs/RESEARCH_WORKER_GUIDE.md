@@ -60,7 +60,7 @@ Crie o namespace KV e copie o ID retornado para GARCIA_PROMPT_CACHE.id em wrangl
 npx wrangler kv namespace create GARCIA_PROMPT_CACHE
 ~~~
 
-O ID zero no arquivo é somente um placeholder para desenvolvimento local. Não faça deploy remoto até substituí-lo pelo ID real.
+O ID zero no arquivo é somente um placeholder para desenvolvimento local. Não faça deploy remoto até substituí-lo pelo ID real. O binding R2 usa simulação local no wrangler dev; crie o bucket remoto antes do deploy.
 
 Configure os secrets:
 
@@ -70,7 +70,7 @@ npx wrangler secret put ARTIFACT_URL_SECRET
 
 Use um valor aleatório forte com pelo menos 32 bytes. O segredo assina URLs temporárias de leitura de artefatos. Não o coloque no repositório nem no wrangler.toml.
 
-Defina PUBLIC_API_BASE_URL no wrangler.toml para a URL pública do Worker, por exemplo a URL real workers.dev ou domínio de API. As URLs de artefatos são assinadas e expiram; o bucket R2 permanece privado e não precisa de acesso público.
+Defina PUBLIC_API_BASE_URL no wrangler.toml para a URL pública do Worker, por exemplo a URL real workers.dev ou domínio de API. As URLs de artefatos são assinadas e expiram em 30 dias; quem possuir o link pode acessá-lo até o vencimento. O bucket R2 permanece privado e não precisa de acesso público. O Worker usa automaticamente a origem da requisição atual para assinar URLs, inclusive em wrangler dev.
 
 ## Migração e teste local
 
