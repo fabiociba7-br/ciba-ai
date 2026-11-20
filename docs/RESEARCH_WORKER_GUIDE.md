@@ -79,6 +79,12 @@ npx wrangler secret put ARTIFACT_URL_SECRET
 
 Use um valor aleatório forte com pelo menos 32 bytes. O segredo assina URLs temporárias de leitura de artefatos. Não o coloque no repositório nem no wrangler.toml.
 
+Para desenvolvimento local, crie `.dev.vars` (arquivo ignorado pelo Git) com o mesmo segredo:
+
+~~~dotenv
+ARTIFACT_URL_SECRET=cole_um_valor_aleatorio_hex_com_64_caracteres
+~~~
+
 O Worker usa automaticamente a origem da requisição atual para assinar URLs, inclusive em wrangler dev. As URLs de artefatos são assinadas e expiram em 30 dias; quem possuir o link pode acessá-lo até o vencimento. O bucket R2 permanece privado e não precisa de acesso público.
 
 ## Migração e teste local
