@@ -8,6 +8,7 @@ import { resolveAdminRoute } from "./http/routes";
 import { readJson } from "./http/request";
 import { GARCIA_DASHBOARD_HTML } from "./dashboard";
 import { encryptFacebookToken, decryptFacebookToken, facebookGraphGet } from "./facebook";
+import { selectRequestedFacebookPhotos } from "./facebook-photo-selection";
 export interface Env {
   DB: D1Database;
   AI: {
@@ -2886,6 +2887,12 @@ const handleChat = async (request: Request, env: Env) => {
       if (photo && !shownPhotos.includes(photo) && shownPhotos.length < 6) shownPhotos.push(photo);
       return "";
     });
+  }
+  const requestedPhotoSelection = selectRequestedFacebookPhotos(latestUserText, chatPhotos);
+  if (requestedPhotoSelection) {
+    shownPhotos.length = 0;
+    shownPhotos.push(...requestedPhotoSelection.photos);
+    responseText = requestedPhotoSelection.responseText;
   }
   responseText = responseText.replace(/\[\[foto:[^\]]*\]\]/g, "").replace(/\n{3,}/g, "\n\n").trim();
   if (!responseText && shownPhotos.length > 0) responseText = "Aqui estão as fotos do seu Facebook.";
