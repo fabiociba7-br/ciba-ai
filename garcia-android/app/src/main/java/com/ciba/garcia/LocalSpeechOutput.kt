@@ -261,6 +261,7 @@ internal class LocalSpeechOutput(
         val result = tts.speak(cleanText.take(MAX_SPOKEN_CHARS), TextToSpeech.QUEUE_FLUSH, null, utteranceId)
         if (result != TextToSpeech.SUCCESS) {
             activeUtteranceId = null
+            previewRestoreVoiceId?.let(::setVoiceInternal)
             previewRestoreVoiceId = null
         }
         return result == TextToSpeech.SUCCESS
