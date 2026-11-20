@@ -79,7 +79,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                     ChatterboxModelManager.importModels(context, uris) { progress -> downloadProgress = progress }
                     modelsReady = true
                     downloadProgress = null
-                    status = "Os dois modelos foram importados e validados. Chatterbox está pronto."
+                    status = if (nativeAvailable) "Os dois modelos foram importados e validados. Runtime nativo disponível." else "Modelos validados, mas o runtime nativo não está disponível nesta arquitetura."
                 } catch (error: Throwable) {
                     downloadProgress = null
                     status = error.message ?: "Falha ao importar os modelos."
@@ -175,6 +175,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
         Text("Importe uma gravação ou grave diretamente pelo microfone. A amostra fica armazenada na área privada da Garcia.", fontSize = 12.sp)
         Spacer(Modifier.height(10.dp))
         Text(if (modelsReady) "Modelos locais Chatterbox instalados e verificados por SHA-256." else "Para clonar a voz, instale aproximadamente 1,1 GB de modelos locais. O download é feito uma vez e fica no armazenamento privado.", fontSize = 12.sp)
+        Text("A síntese roda em CPU (até quatro threads). A primeira carga e cada frase podem demorar conforme o aparelho; latência e consumo ainda precisam ser medidos no seu Android. O modelo é multilingual com português, não o fine-tune dedicado pt-BR.", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
         if (!nativeAvailable) Text("O runtime nativo de clonagem não está disponível para esta arquitetura. As opções de prévia e ativação ficarão desabilitadas.", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
         if (!modelsReady) {
             downloadProgress?.let { progress ->
@@ -204,7 +205,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                             ChatterboxModelManager.download(context) { progress -> downloadProgress = progress }
                             modelsReady = true
                             downloadProgress = null
-                            status = "Modelos locais instalados e validados. Agora salve uma referência para criar um perfil."
+                            status = "Modelos locais instalados e validados. Salve uma referência de 5–30 segundos para criar um perfil."
                         } catch (error: Throwable) {
                             downloadProgress = null
                             status = error.message ?: "Falha ao baixar os modelos."
