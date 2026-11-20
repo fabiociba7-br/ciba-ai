@@ -54,7 +54,8 @@ class RobustDuckDuckGoClient:
     def _sleep_backoff(self, attempt: int, retry_after: float | None = None) -> None:
         exponential = min(self.config.backoff_base_seconds * (2 ** attempt),
                           self.config.backoff_max_seconds)
-        wait = min(max(retry_after if retry_after is not None else exponential, 0.0),
+        base = retry_after if retry_after is not None else exponential
+        wait = min(max(base + random.uniform(0.0, min(base * 0.25, 2.0)), 0.0),
                    self.config.backoff_max_seconds)
         logger.warning("Search temporarily unavailable; waiting %.1f seconds.", wait)
         time.sleep(wait)
