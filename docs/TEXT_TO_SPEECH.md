@@ -65,5 +65,5 @@ A branch candidata `feature/garcia-voice-cloning-mainline` adiciona um runtime A
 ### Limites ainda não validados
 
 - O GGUF atualmente distribuído é o Chatterbox Multilingual V3 geral: aceita português, mas não é o fine-tune dedicado brasileiro. O pacote pt-BR dedicado existe upstream, porém ainda não foi convertido e validado neste pipeline.
-- A implementação Android atual é CPU-only, com até quatro threads. Latência, pico de RAM, aquecimento e qualidade de similaridade ainda precisam ser medidos em aparelho físico.
+- A implementação Android atual é CPU-only, com até quatro threads e CFM em 7 passos. Latência, pico de RAM, aquecimento e qualidade de similaridade ainda precisam ser medidos em aparelho físico.
 - Até o teste de dispositivo e o CI nativo passarem, o status de `text_to_speech`/`voice_conversion` em `native-capabilities.ts` permanece `planned` / `review_required`. Não anunciar como capacidade disponível.
