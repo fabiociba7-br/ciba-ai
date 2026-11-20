@@ -241,22 +241,26 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                 modifier = Modifier.fillMaxWidth()
             ) { Text(if (busy) "Aguarde..." else "Baixar modelos de voz") }
             Spacer(Modifier.height(6.dp))
-            OutlinedButton(
-                onClick = { status = if (pendingModelUris.isEmpty()) "Selecione o primeiro arquivo GGUF (T3 ou S3Gen)." else "Selecione o segundo arquivo GGUF para concluir a importação."; modelPicker.launch(arrayOf("application/octet-stream", "application/x-gguf", "*/*")) },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Importar modelos GGUF do aparelho") }
-            Text(if (pendingModelUris.isEmpty()) "Selecione um arquivo GGUF por vez. Depois escolha o segundo; a ordem não importa. A Garcia identifica cada modelo pelo SHA-256 oficial." else "1 de 2 arquivos selecionado. Toque novamente no botão e escolha o outro modelo GGUF.", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
             if (busy && downloadProgress != null) { val p = downloadProgress!!; val ratio = if (p.totalBytes > 0L) (p.downloadedBytes.toFloat() / p.totalBytes).coerceIn(0f, 1f) else 0f; Text("Importando ${p.fileName}", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold); if (p.totalBytes > 0L) { LinearProgressIndicator(progress = { ratio }, modifier = Modifier.fillMaxWidth()); Text("${(ratio * 100).toInt()}% · ${p.downloadedBytes / (1024 * 1024)} MB de ${p.totalBytes / (1024 * 1024)} MB · faltam ${(p.totalBytes - p.downloadedBytes).coerceAtLeast(0) / (1024 * 1024)} MB", fontSize = 11.sp) } else { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()); Text("${p.downloadedBytes / (1024 * 1024)} MB importados", fontSize = 11.sp) } }
         }
-        if (modelsReady) {
-            Text("Gerenciar modelos Chatterbox", style = MaterialTheme.typography.titleSmall)
-            OutlinedButton(
-                onClick = { status = if (pendingModelUris.isEmpty()) "Selecione o primeiro modelo GGUF." else "Selecione o segundo modelo GGUF."; modelPicker.launch(arrayOf("application/octet-stream", "application/x-gguf", "*/*")) },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Importar / substituir modelos GGUF") }
-        }
+        Text("Gerenciar modelos Chatterbox", style = MaterialTheme.typography.titleSmall)
+        OutlinedButton(
+            onClick = {
+                pendingModelUris = emptyList()
+                status = "Selecione o primeiro arquivo GGUF (T3 ou S3Gen). A importação pode ser refeita mesmo quando já existe um SHA-256 salvo."
+                modelPicker.launch(arrayOf("application/octet-stream", "application/x-gguf", "*/*"))
+            },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text(if (modelsReady) "Importar novamente / substituir modelos GGUF" else "Importar modelos GGUF do aparelho") }
+        Text(
+            if (pendingModelUris.isEmpty()) {
+                if (modelsReady) "Os modelos atuais serão mantidos até os dois novos arquivos serem selecionados e validados. Escolha um GGUF por vez; a ordem não importa."
+                else "Selecione um arquivo GGUF por vez e depois o segundo. A Garcia confere os SHA-256 oficiais."
+            } else "1 de 2 arquivos selecionado. Toque novamente para escolher o segundo GGUF.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.secondary
+        )
         if (profiles.isNotEmpty()) {
             Text("Perfis de voz salvos", style = MaterialTheme.typography.titleSmall)
             profiles.forEach { profile ->
