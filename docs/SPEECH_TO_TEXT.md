@@ -21,7 +21,7 @@ A Garcia integra `whisper.cpp` no Android por JNI/NDK. A captura e inferência s
 - Validação de tamanho e cabeçalho GGML, cálculo SHA-256 e nova verificação do hash ao reabrir.
 - Captura pelo microfone somente após ação do usuário e permissão `RECORD_AUDIO`.
 - Limite absoluto de gravação de 120 segundos. O áudio permanece em memória e é apagado após uso.
-- Detector local de atividade de voz: encerra após 1,1 s de silêncio depois da fala; cancela após 10 s sem detectar fala.
+- Detector local de atividade de voz: encerra após 700 ms de silêncio depois da fala (`SILENCE`); cancela após 10 s sem detectar fala (`NO_SPEECH`) e encerra no limite de 120 s (`MAX_DURATION`). O motivo aparece no status do Whisper e no log local.
 - No modo de ditado, a pausa final inicia a transcrição Whisper; o texto aparece no campo para revisão/edição e só é enviado após o usuário tocar em Enviar.
 - Na conversação contínua, o resultado parcial aparece durante a fala e o resultado final é enviado automaticamente à Garcia, pois esse comportamento faz parte do modo contínuo explicitamente ativado.
 - Iniciar nova captura interrompe imediatamente a reprodução TTS em andamento.
@@ -36,13 +36,13 @@ O aplicativo não inclui pesos no Git nem baixa modelos automaticamente. Nesta e
 
 ## Resposta falada local
 
-- `LocalSpeechOutput.kt` usa o mecanismo TextToSpeech do Android.
-- Só seleciona vozes em português instaladas no aparelho e explicitamente marcadas como sem necessidade de rede.
-- Se não houver voz offline pt-BR/português, a função informa que é preciso instalar dados de voz offline; não usa voz em nuvem.
-- A preferência para ler respostas automaticamente fica nas Configurações e pode ser desligada.
-- A fala é interrompida quando o usuário desativa a opção ou encerra a tela.
-
-Esta implementação usa TTS local do Android, não Chatterbox. Chatterbox permanece fora do runtime Android até existir uma distribuição móvel comprovada, licenciada e compatível.
+- `LocalSpeechOutput.kt` mantém dois modos explícitos: `SYSTEM` usa Android TextToSpeech com voz em português instalada e offline; `CLONED` usa Chatterbox local, `ClonedVoiceRuntime` e reprodução PCM 24 kHz por `AudioTrack`.
+- O modo `CLONED` não faz fallback silencioso para `SYSTEM`. Se runtime, perfil ou modelos falharem, a Garcia informa o motivo; o usuário pode selecionar uma voz Android nas Configurações com um toque.
+- `voiceReplies` habilita leitura automática tanto no chat de texto quanto na conversa por voz. `continuousVoice` continua opt-in e controla somente o ciclo de escuta automática após a fala.
+- A conversação contínua é inicializada desligada a cada novo processo do app; o usuário precisa ativá-la explicitamente em cada sessão.
+- Na reinicialização, a disponibilidade dos modelos Chatterbox é revalidada no disco por `ChatterboxModelManager.installed()` e SHA-256; não depende apenas de um mapa em RAM.
+- A interface apresenta diagnóstico de entrada (on-device/Whisper/nenhum) e saída (SYSTEM/CLONED), incluindo o perfil e o motivo de indisponibilidade.
+- Nenhum áudio ou modelo é enviado ao Worker ou a serviços externos. Não há fallback de rede para STT ou TTS.
 
 ## Privacidade e limites
 1. A gravação só começa após toque explícito e permissão do microfone.
