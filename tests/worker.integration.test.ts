@@ -76,7 +76,7 @@ describe("Ciba AI Worker integration", () => {
     expect(html).toContain("Histórico de alterações da memória");
     expect(html).toContain("/v1/owner/memory/history");
     expect(html).toContain("Aprovações de ferramentas");
-    expect(html).toContain("Aguardando execução; esta tela não executa ferramentas.");
+    expect(html).toContain("Aprovar não executa a ação; apenas registra sua autorização de uso único.");
     expect(html).toContain("/v1/owner/tool-approvals");
     const scriptStart = html.indexOf("<script>") + "<script>".length;
     const scriptEnd = html.lastIndexOf("</script>");
