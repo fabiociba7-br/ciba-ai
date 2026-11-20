@@ -151,9 +151,21 @@ export class VisualCurator {
       if (!best) throw new Error("visual_search_no_vision_curated_images");
       image = best.image; analysis = best.analysis; sourceUrl = best.candidate.pageUrl;
     } else {
-      const imageInput: Record<string, unknown> = { prompt, quality: "medium", size: "1024x1024" };
-      if (previousImage) imageInput.images = ["data:" + previousImage.mimeType + ";base64," + toBase64(previousImage.bytes)];
-      const generated = await this.env.AI.run(this.env.GARCIA_IMAGE_MODEL || "openai/gpt-image-1.5", imageInput);
+      const form = new FormData();
+      form.set("prompt", prompt);
+      form.set("width", "512");
+      form.set("height", "512");
+      form.set("guidance", "3.5");
+      if (previousImage) {
+        form.set("input_image_0", new Blob([previousImage.bytes], { type: previousImage.mimeType }), "previous-iteration." +
+          (previousImage.mimeType === "image/jpeg" ? "jpg" : previousImage.mimeType === "image/webp" ? "webp" : "png"));
+      }
+      const serialized = new Response(form);
+      const contentType = serialized.headers.get("content-type");
+      if (!serialized.body || !contentType) throw new Error("image_multipart_serialization_failed");
+      const generated = await this.env.AI.run(this.env.GARCIA_IMAGE_MODEL || "@cf/black-forest-labs/flux-2-klein-4b", {
+        multipart: { body: serialized.body, contentType },
+      });
       image = await fetchGeneratedImage(generated);
       analysis = await analyzeImage(this.env, image, prompt, feedback);
     }
