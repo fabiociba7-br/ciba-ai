@@ -55,7 +55,7 @@ object VoiceEngineCatalog {
             supportsVoiceCloning = true,
             supportedLanguages = setOf("pt", "en", "fr", "de", "it", "es", "nl"),
             licenseSummary = "Código MIT; pesos CC-BY-4.0, com atribuição obrigatória.",
-            integrationNotes = "Validar runtime Android comunitário ARM64, importação do modelo e consumo real."
+            integrationNotes = "Companion PocketTTS-Android-Engine 0.5.5; Portuguese FP32 e clonagem WAV listados. Validar pt-BR e aparelho ARM64 antes de marcar pronto."
         ),
         VoiceEngineDescriptor(
             id = "neutts",
