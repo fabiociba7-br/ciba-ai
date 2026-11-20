@@ -66,8 +66,8 @@ internal object ClonedVoiceRuntime {
         cacheFiles(profile).all { it.isFile && it.length() > 16L }
 
     /** Must be called on the serialized executor while holding lock. */
-    private fun loadProfileLocked(context: Context, profile: GarciaVoiceProfile) {
-        if (ready.get() && loadedProfileId == profile.id) return
+    private fun loadProfileLocked(context: Context, profile: GarciaVoiceProfile, force: Boolean = false) {
+        if (!force && ready.get() && loadedProfileId == profile.id) return
         check(ChatterboxNative.isLibraryLoaded()) { "O runtime nativo Chatterbox não está carregado neste aparelho." }
         validateReference(profile.wav)
         val models = ChatterboxModelManager.installed(context)
@@ -105,7 +105,7 @@ internal object ClonedVoiceRuntime {
         executor.execute {
             val result = runCatching {
                 cancelled.set(false)
-                synchronized(lock) { loadProfileLocked(context, profile) }
+                synchronized(lock) { loadProfileLocked(context, profile, force = true) }
             }
             loading = false
             result.exceptionOrNull()?.let { GarciaLog.recordEvent(context, "Voz clonada", "Falha ao ativar perfil: " + safeMessage(it)) }
@@ -196,6 +196,13 @@ internal object ClonedVoiceRuntime {
             } catch (error: Throwable) {
                 track?.let { runCatching { it.pause(); it.flush(); it.release() } }
                 track = null
+                if (!cancelled.get()) {
+                    synchronized(lock) {
+                        ready.set(false)
+                        loadedProfileId = null
+                        if (ChatterboxNative.isLibraryLoaded()) runCatching { ChatterboxNative.nativeRelease() }
+                    }
+                }
                 val safe = IllegalStateException(safeMessage(error))
                 GarciaLog.recordEvent(context, "Voz clonada", "Falha de síntese/reprodução: " + safe.message)
                 onError(safe)
