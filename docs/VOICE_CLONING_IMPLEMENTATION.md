@@ -1,6 +1,6 @@
 # Garcia — clonagem de voz local no Android
 
-Status: implementação candidata na branch `feature/garcia-voice-cloning-mainline`. O código Kotlin, o módulo JNI/CMake e o fluxo de perfis foram portados e endurecidos; a validação CMake/NDK desta branch e a prova auditiva/performance em aparelho real ainda são gates. Não classificar como produção ou capacidade disponível antes desses gates.
+Status: implementação candidata na branch `feature/garcia-voice-cloning-mainline`, PR #36 em rascunho. O código Kotlin, o módulo JNI/CMake e o fluxo de perfis foram portados e endurecidos; a validação CMake/NDK da head atual e a prova auditiva/performance em aparelho real ainda são gates. Não classificar como produção ou capacidade disponível antes desses gates.
 
 ## Arquitetura
 
