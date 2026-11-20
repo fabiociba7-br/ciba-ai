@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+from html import unescape
 import re
 import time
 from dataclasses import asdict, dataclass
@@ -172,7 +173,7 @@ class GarciaEngine:
             if isinstance(value, dict):
                 title = value.get("title")
                 if isinstance(title, str) and title.strip():
-                    titles.add(title.strip())
+                    titles.add(unescape(title.strip()))
                 for child in value.values():
                     collect(child)
             elif isinstance(value, list):
@@ -208,13 +209,15 @@ class GarciaEngine:
         query = query.strip()
         if not query:
             return self._error_response("A consulta está vazia.", "Consulta técnica não informada.")
+        if len(query) > 1_000:
+            return self._error_response("A consulta excede o limite permitido.", "Reduza a consulta para até 1.000 caracteres.")
         current_query = query
         last_response: dict[str, Any] | None = None
         try:
             for iteration in range(1, self.config.max_iterations + 1):
                 context = self._retrieve(current_query, **kwargs)
                 prompt = build_response_prompt(current_query, context, iteration,
-                                                self.config.max_iterations)
+                                                self.config.max_iterations, context_is_sanitized=True)
                 raw = self.llm.generate(prompt)
                 try:
                     candidate = self._parse_response(raw)
