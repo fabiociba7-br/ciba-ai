@@ -433,6 +433,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 error = "Instale um modelo em Configurações > Modelos e downloads antes de iniciar a conversa por voz."
             } else scope.launch {
                 try {
+                    if (parakeetModelStatus.installed && !parakeetEngine.isReady) {
+                        withContext(Dispatchers.Default) { parakeetEngine.load(parakeetModelStore.modelDirectory()) }
+                    }
                     withContext(Dispatchers.IO) { whisperRecorder.start() }
                     whisperRecording = true
                     whisperStatus = "Gravando… toque em parar quando terminar"
@@ -501,12 +504,10 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 whisperStatus = if (info != null) "Whisper pronto · SHA-256 ${info.sha256.take(12)}…" else "Modelo de voz não instalado"
             }.onFailure { whisperStatus = it.message ?: "Modelo salvo inválido"; GarciaLog.record(context, "Whisper inicialização", it) }
             runCatching {
-                val saved = parakeetModelStore.status()
-                if (saved.installed) parakeetEngine.load(parakeetModelStore.modelDirectory())
-                saved
+                parakeetModelStore.status()
             }.onSuccess { saved ->
                 parakeetModelStatus = saved
-                if (saved.installed) whisperStatus = "Parakeet PT-BR pronto · reconhecimento local ativo"
+                if (saved.installed) whisperStatus = "Parakeet PT-BR instalado · será carregado ao iniciar a conversa por voz"
             }.onFailure { failure ->
                 modelCatalogStatus = failure.message ?: "Falha ao carregar Parakeet PT-BR"
                 GarciaLog.record(context, "Parakeet inicialização", failure)
@@ -961,7 +962,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                                         whisperRecording = false
                                 whisperStatus = "Conversa por voz encerrada"
                             } else if (!whisperBusy) {
-                                if (parakeetEngine.isReady.not() && whisperModelInfo == null) error = "Instale o Parakeet PT-BR ou Whisper em Configurações > Modelos e downloads."
+                                if (!parakeetModelStatus.installed && whisperModelInfo == null) error = "Instale o Parakeet PT-BR ou Whisper em Configurações > Modelos e downloads."
                                 else if (!voiceAvailable) error = voiceStatus
                                 else if (input.isNotBlank() || attachment != null) error = "Envie ou limpe o texto pendente antes de iniciar a conversa por voz."
                                 else {
@@ -973,7 +974,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 }
                             }
                         },
-                        enabled = (!busy && !whisperBusy && !parakeetBusy && (parakeetEngine.isReady || whisperModelInfo != null)) || continuousVoice,
+                        enabled = (!busy && !whisperBusy && !parakeetBusy && (parakeetModelStatus.installed || whisperModelInfo != null)) || continuousVoice,
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = if (continuousVoice) Color(0xFFB94F7C) else Blue)
                     ) {
@@ -1476,8 +1477,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     if (whisperRecording) { whisperRecording = false; whisperRecorder.cancel() }
                                                                 whisperStatus = "Conversa por voz pausada"
                                 } else if (!voiceReplies) error = "Ative também a leitura automática das respostas."
-                                else if (!parakeetEngine.isReady && whisperModelInfo == null) error = "Instale o Parakeet PT-BR ou Whisper em Modelos e downloads."
-                            }, enabled = voiceAvailable && voiceReplies && (parakeetEngine.isReady || whisperModelInfo != null) && !busy && !whisperBusy && !parakeetBusy && !whisperRecording)
+                                else if (!parakeetModelStatus.installed && whisperModelInfo == null) error = "Instale o Parakeet PT-BR ou Whisper em Modelos e downloads."
+                            }, enabled = voiceAvailable && voiceReplies && (parakeetModelStatus.installed || whisperModelInfo != null) && !busy && !whisperBusy && !parakeetBusy && !whisperRecording)
                         }
                         Text(
                             "Com respostas faladas ligadas, a Garcia também lê as respostas no chat de texto. A conversação contínua controla somente a reabertura automática do microfone. Entrada e saída usam recursos locais; nenhum áudio ou modelo é enviado ao Worker ou a terceiros.",
@@ -1532,11 +1533,10 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                                     parakeetProgress = if (total > 0L) ((done * 100) / total).toInt().coerceIn(0, 100) else 0
                                                 }
                                             }
-                                            withContext(Dispatchers.Default) { parakeetEngine.load(parakeetModelStore.modelDirectory()) }
                                             parakeetModelStatus = status
                                             modelUpdateAvailable = false
-                                            modelCatalogStatus = "Parakeet PT-BR instalado, verificado e carregado."
-                                            whisperStatus = "Parakeet PT-BR pronto · reconhecimento local ativo"
+                                            modelCatalogStatus = "Parakeet PT-BR instalado e verificado. Será carregado ao iniciar a conversa por voz."
+                                            whisperStatus = "Parakeet PT-BR instalado · carregamento sob demanda"
                                             GarciaLog.recordEvent(context, "Modelos", "Parakeet PT-BR instalado e carregado · revisão ${status.revision}")
                                         } catch (e: Exception) {
                                             parakeetModelStatus = parakeetModelStore.status()
