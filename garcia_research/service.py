@@ -1,0 +1,55 @@
+"""Public API for Garcia research."""
+from __future__ import annotations
+import logging
+from .client import RobustDuckDuckGoClient
+from .config import ResearchConfig
+from .exceptions import ResearchError, SearchBlockedError
+from .models import ResearchReport
+from .orchestrator import LLMClient, ResearchOrchestrator
+from .publisher import GitHubPublisher
+from .synthesizer import synthesize_results
+
+logger = logging.getLogger(__name__)
+
+class GarciaResearchService:
+    def __init__(self, config: ResearchConfig, llm_client: LLMClient | None = None) -> None:
+        self.config = config
+        self.llm_client = llm_client
+        self.search_client = RobustDuckDuckGoClient(config)
+        self.orchestrator = ResearchOrchestrator(config, llm_client)
+
+    def run(self, topic: str) -> ResearchReport:
+        """Execute query planning, search, synthesis and optional Git publication."""
+        topic = topic.strip()
+        if not topic:
+            raise ValueError("topic must not be empty.")
+        queries = self.orchestrator.generate_queries(topic)
+        raw_data = []
+        for query in queries:
+            try:
+                raw_data.append(self.search_client.search(query))
+            except SearchBlockedError:
+                logger.exception("Search provider blocked the research run.")
+                if not raw_data:
+                    raise
+                break
+            except ResearchError:
+                logger.exception("Search query failed; continuing.")
+        if not raw_data:
+            raise ResearchError("No search results were collected.")
+        report = synthesize_results(raw_data, topic, self.llm_client)
+        report.queries = queries
+        if self.config.repo_path is not None:
+            report.publication = GitHubPublisher(self.config).publish(report)
+        elif self.config.publish_enabled:
+            raise ValueError("publish_enabled requires repo_path.")
+        return report
+
+    def close(self) -> None:
+        self.search_client.close()
+
+    def __enter__(self) -> "GarciaResearchService":
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
