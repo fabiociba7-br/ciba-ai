@@ -96,7 +96,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                         ChatterboxModelManager.importModels(context, selected) { progress -> downloadProgress = progress }
                         modelsReady = true
                         downloadProgress = null
-                        status = if (nativeAvailable) "T3 e S3Gen importados e verificados. Runtime nativo carregado; teste a prévia para validar a síntese." else "Modelos verificados, mas o runtime nativo não está disponível nesta arquitetura."
+                        status = if (nativeAvailable) "T3 e S3Gen importados e verificados. Biblioteca nativa disponível; ouça a prévia para testar a inicialização e a síntese." else "Modelos verificados, mas a biblioteca nativa não está disponível para esta arquitetura."
                     } catch (error: Throwable) {
                         downloadProgress = null
                         status = error.message ?: "Falha ao importar os modelos. Confira os arquivos e o espaço livre."
