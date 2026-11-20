@@ -36,7 +36,7 @@ private fun createVoiceRecorder(context: Context): MediaRecorder =
 private const val VOICE_SAMPLE_TEXT = """Olá, meu nome é [seu nome]. Esta é minha voz, falando de forma natural. Hoje o dia está agradável. Gosto de conversar com clareza. Como você está? Que ótima notícia! Agora vou falar um pouco mais devagar e depois no meu ritmo habitual."""
 
 @Composable
-internal fun VoiceCloningSection() {
+internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
     val context = LocalContext.current
     val store = remember { VoiceProfileStore(context) }
     var profiles by remember { mutableStateOf(store.profiles()) }
@@ -44,8 +44,7 @@ internal fun VoiceCloningSection() {
     var modelsReady by remember { mutableStateOf(ChatterboxModelManager.installed(context) != null) }
     var busy by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableStateOf<ChatterboxModelManager.DownloadProgress?>(null) }
-    var checksumStatus by remember { mutableStateOf("Nenhum SHA256SUMS selecionado.") }
-    var activeWav by remember { mutableStateOf(store.currentWav()) }
+    val nativeAvailable = ChatterboxNative.isLibraryLoaded()
     var selectedFile by remember { mutableStateOf(store.currentFile()) }
     var profileName by remember { mutableStateOf(store.currentName()) }
     var status by remember { mutableStateOf(if (selectedFile != null) "Amostra salva neste aparelho." else "Nenhuma amostra de voz selecionada.") }
@@ -75,23 +74,6 @@ internal fun VoiceCloningSection() {
                 }
             }
         }
-    }
-
-    val checksumPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            scope.launch {
-                busy = true
-                checksumStatus = "Lendo e validando SHA256SUMS..."
-                status = "Validando arquivo de hashes do Chatterbox..."
-                try {
-                    checksumStatus = ChatterboxModelManager.verifyChecksumFile(context, uri)
-                    status = "SHA256SUMS validado com sucesso."
-                } catch (error: Throwable) {
-                    checksumStatus = error.message ?: "Falha ao validar SHA256SUMS."
-                    status = checksumStatus
-                } finally { busy = false }
-            }
-        } else { status = "Seleção do SHA256SUMS cancelada." }
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -161,7 +143,8 @@ internal fun VoiceCloningSection() {
         if (busy) { Spacer(Modifier.height(6.dp)); Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp); Text(status, fontSize = 12.sp) } }
         Text("Importe uma gravação ou grave diretamente pelo microfone. A amostra fica armazenada na área privada da Garcia.", fontSize = 12.sp)
         Spacer(Modifier.height(10.dp))
-        Text(if (modelsReady) "Modelos Chatterbox instalados neste aparelho." else "Para clonar a voz, a Garcia precisa baixar aproximadamente 1,1 GB de modelos. O download é feito uma vez e fica no armazenamento privado.", fontSize = 12.sp)
+        Text(if (modelsReady) "Modelos locais Chatterbox instalados e verificados por SHA-256." else "Para clonar a voz, instale aproximadamente 1,1 GB de modelos locais. O download é feito uma vez e fica no armazenamento privado.", fontSize = 12.sp)
+        if (!nativeAvailable) Text("O runtime nativo de clonagem não está disponível para esta arquitetura. As opções de prévia e ativação ficarão desabilitadas.", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
         if (!modelsReady) {
             downloadProgress?.let { progress ->
                 val total = progress.totalBytes
@@ -207,8 +190,6 @@ internal fun VoiceCloningSection() {
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Importar modelos GGUF do aparelho") }
             Text("Selecione os dois arquivos oficiais (T3 e S3Gen) juntos. A importação e a verificação serão exibidas aqui.", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
-            OutlinedButton(onClick = { status = "Selecione o arquivo SHA256SUMS baixado junto com os modelos..."; checksumPicker.launch(arrayOf("text/plain", "application/octet-stream")) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Importar / validar SHA256SUMS") }
-            Text(checksumStatus, fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
             if (busy && downloadProgress != null) { val p = downloadProgress!!; val ratio = if (p.totalBytes > 0L) (p.downloadedBytes.toFloat() / p.totalBytes).coerceIn(0f, 1f) else 0f; Text("Importando ${p.fileName}", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold); if (p.totalBytes > 0L) { LinearProgressIndicator(progress = { ratio }, modifier = Modifier.fillMaxWidth()); Text("${(ratio * 100).toInt()}% · ${p.downloadedBytes / (1024 * 1024)} MB de ${p.totalBytes / (1024 * 1024)} MB · faltam ${(p.totalBytes - p.downloadedBytes).coerceAtLeast(0) / (1024 * 1024)} MB", fontSize = 11.sp) } else { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()); Text("${p.downloadedBytes / (1024 * 1024)} MB importados", fontSize = 11.sp) } }
         }
         if (modelsReady) {
@@ -218,89 +199,65 @@ internal fun VoiceCloningSection() {
                 enabled = !busy,
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Importar / substituir modelos GGUF") }
-            OutlinedButton(
-                onClick = { status = "Selecione o arquivo SHA256SUMS..."; checksumPicker.launch(arrayOf("text/plain", "application/octet-stream")) },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Importar / validar SHA256SUMS") }
-            Text(checksumStatus, fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
-        }
-        if (activeWav != null && modelsReady && selectedFile == store.currentFile()) {
-            OutlinedButton(
-                onClick = {
-                    val wav = activeWav
-                    if (wav != null) {
-                        busy = true
-                        status = "Preparando o perfil de voz..."
-                        ClonedVoiceRuntime.activate(context, wav) { result ->
-                            scope.launch {
-                                busy = false
-                                status = result.fold(
-                                    { "Voz clonada e pronta para uso nas conversas por voz." },
-                                    { "Falha ao preparar a voz: ${it.message}" }
-                                )
-                            }
-                        }
-                    }
-                },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Preparar perfil salvo") }
-        }
-        if (ClonedVoiceRuntime.isReady()) {
-            Button(
-                onClick = {
-                    status = "Gerando uma frase de teste com sua voz..."
-                    ClonedVoiceRuntime.speak(
-                        context,
-                        "Olá! Eu sou a Garcia. Esta é uma demonstração da voz que você escolheu para mim.",
-                        onStarted = {},
-                        onDone = { scope.launch { status = "Teste de voz concluído." } },
-                        onError = { error -> scope.launch { status = "Falha no teste de voz: ${error.message}" } }
-                    )
-                },
-                enabled = !busy,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("Ouvir voz clonada") }
         }
         if (profiles.isNotEmpty()) {
             Text("Perfis de voz salvos", style = MaterialTheme.typography.titleSmall)
             profiles.forEach { profile ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(
-                        onClick = {
-                            store.select(profile)
-                            selectedFile = profile.sample
-                            profileName = profile.name
-                            activeWav = profile.wav
-                            status = "Perfil '${profile.name}' selecionado."
-                            if (modelsReady) {
+                val active = store.activeProfileId() == profile.id
+                Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+                    Text(if (active) profile.name + " · Voz ativa" else profile.name, fontWeight = if (active) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal)
+                    Text("Referência: ${profile.durationMs / 1000}s · SHA-256 validado · armazenamento privado", fontSize = 10.sp, color = MaterialTheme.colorScheme.secondary)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(
+                            onClick = {
                                 busy = true
-                                ClonedVoiceRuntime.activate(context, profile.wav) { result ->
+                                status = "Gerando uma amostra com o perfil '${profile.name}'..."
+                                val accepted = voiceOutput.previewClonedProfile(profile) { result ->
+                                    scope.launch {
+                                        busy = false
+                                        status = result.fold({ "Prévia da voz clonada concluída." }, { "Falha na prévia: ${it.message}" })
+                                    }
+                                }
+                                if (!accepted) {
+                                    busy = false
+                                    status = "Instale os modelos locais Chatterbox antes de ouvir a voz clonada."
+                                }
+                            },
+                            enabled = !busy && modelsReady && nativeAvailable
+                        ) { Text("Ouvir voz clonada") }
+                        TextButton(
+                            onClick = {
+                                busy = true
+                                status = "Ativando '${profile.name}' para as respostas da Garcia..."
+                                val accepted = voiceOutput.selectClonedProfile(profile) { result ->
                                     scope.launch {
                                         busy = false
                                         status = result.fold(
-                                            { "Voz '${profile.name}' pronta para a conversa." },
-                                            { "Falha ao carregar o perfil: ${it.message}" }
+                                            { "Voz '${profile.name}' definida para as respostas da Garcia." },
+                                            { "Não foi possível ativar a voz: ${it.message}" }
                                         )
                                     }
                                 }
-                            }
-                        },
-                        enabled = !busy,
-                        modifier = Modifier.weight(1f)
-                    ) { Text(if (store.activeProfileId() == profile.id) "✓ " + profile.name else profile.name) }
-                    OutlinedButton(onClick = {
-                        store.delete(profile.id)
-                        profiles = store.profiles()
-                        if (store.activeProfileId() == null) {
-                            selectedFile = null
-                            activeWav = null
-                            profileName = ""
-                            ClonedVoiceRuntime.release()
-                            status = "Perfil excluído."
-                        }
-                    }, enabled = !busy) { Text("Excluir") }
+                                if (!accepted) {
+                                    busy = false
+                                    status = "Não foi possível ativar: instale e valide os modelos locais primeiro."
+                                }
+                            },
+                            enabled = !busy && modelsReady && nativeAvailable && !active
+                        ) { Text(if (active) "Ativa" else "Usar esta voz") }
+                        TextButton(
+                            onClick = {
+                                val wasActive = active
+                                store.delete(profile.id)
+                                voiceOutput.onProfileDeleted(profile.id, wasActive)
+                                profiles = store.profiles()
+                                if (selectedFile?.parentFile == profile.sample.parentFile) selectedFile = null
+                                status = if (wasActive) "Perfil excluído. Voz do sistema restaurada." else "Perfil excluído."
+                            },
+                            enabled = !busy
+                        ) { Text("Excluir") }
+                    }
+                    HorizontalDivider()
                 }
             }
         }
@@ -352,7 +309,7 @@ internal fun VoiceCloningSection() {
                         status = "Convertendo a amostra para WAV mono..."
                         try {
                             val profile = withContext(Dispatchers.IO) {
-                                val target = File(context.filesDir, "voice-references/profile-${UUID.randomUUID()}.wav")
+                                val target = File(context.cacheDir, "voice-normalized-${UUID.randomUUID()}.wav")
                                 target.parentFile?.mkdirs()
                                 VoiceAudioNormalizer.toMonoWav(file, target)
                                 store.save(file, profileName, target)
@@ -360,20 +317,8 @@ internal fun VoiceCloningSection() {
                             selectedFile = profile.sample
                             profileName = profile.name
                             profiles = store.profiles()
-                            activeWav = profile.wav
-                            status = "Perfil salvo. A amostra está pronta para o Chatterbox."
-                            if (modelsReady) {
-                                status = "Preparando sua voz. Na primeira vez, a análise pode demorar."
-                                ClonedVoiceRuntime.activate(context, profile.wav) { result ->
-                                    scope.launch {
-                                        busy = false
-                                        status = result.fold(
-                                            { "Voz clonada e pronta. A Garcia já pode falar com este perfil." },
-                                            { "Não foi possível preparar a voz: ${it.message}" }
-                                        )
-                                    }
-                                }
-                            } else busy = false
+                            status = "Perfil salvo localmente. Ouça a prévia ou toque em Usar esta voz para ativá-lo."
+                            busy = false
                         } catch (error: Throwable) {
                             busy = false
                             status = error.message ?: "Falha ao preparar o áudio."
