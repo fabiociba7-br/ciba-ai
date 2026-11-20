@@ -2,6 +2,16 @@ import type { ResearchSourceImage } from "./types";
 import { SearchBlockedError } from "./duckduckgo";
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const jitter = (min: number, max: number) => min + Math.random() * (max - min);
+function retryDelay(response: Response, attempt: number): number {
+  const raw = response.headers.get("retry-after");
+  if (raw) {
+    const seconds = Number(raw);
+    if (Number.isFinite(seconds)) return Math.min(Math.max(seconds * 1000, 1000), 30_000);
+    const date = Date.parse(raw);
+    if (Number.isFinite(date)) return Math.min(Math.max(date - Date.now(), 1000), 30_000);
+  }
+  return jitter(1800, 3200) * (attempt + 1);
+}
 function isSafePublicHttpUrl(value: string): boolean {
   try {
     const u = new URL(value), host = u.hostname.toLowerCase();
@@ -17,7 +27,13 @@ export class DuckDuckGoImageClient {
   async search(query: string): Promise<ResearchSourceImage[]> {
     const pageUrl = new URL("https://duckduckgo.com/");
     pageUrl.searchParams.set("q", query); pageUrl.searchParams.set("iax", "images"); pageUrl.searchParams.set("ia", "images");
-    const page = await this.fetcher(pageUrl.toString(), { cache: "no-store", headers: { Accept: "text/html", "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8" }, signal: AbortSignal.timeout(8000) });
+    let page: Response | null = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      page = await this.fetcher(pageUrl.toString(), { cache: "no-store", headers: { Accept: "text/html", "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8" }, signal: AbortSignal.timeout(8000) });
+      if (page.status !== 429 && page.status !== 503) break;
+      if (attempt < 2) await sleep(retryDelay(page, attempt));
+    }
+    if (!page) throw new Error("duckduckgo_images_page_failed");
     if (page.status === 429 || page.status === 503) throw new SearchBlockedError("duckduckgo_images_http_" + page.status);
     if (!page.ok) throw new Error("duckduckgo_images_page_http_" + page.status);
     const html = await page.text();
@@ -29,11 +45,11 @@ export class DuckDuckGoImageClient {
     api.searchParams.set("vqd", token); api.searchParams.set("f", ",,,"); api.searchParams.set("p", "1");
     let response: Response | null = null;
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      if (attempt) await sleep(jitter(1800, 3200) * attempt);
       response = await this.fetcher(api.toString(), { cache: "no-store", headers: {
         Accept: "application/json, text/javascript, */*; q=0.01", Referer: pageUrl.toString(),
       }, signal: AbortSignal.timeout(8000) });
       if (response.status !== 429 && response.status !== 503) break;
+      if (attempt < 2) await sleep(retryDelay(response, attempt));
     }
     if (!response?.ok) throw new Error("duckduckgo_images_api_failed");
     const payload: unknown = await response.json();
