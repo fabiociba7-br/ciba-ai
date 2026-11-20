@@ -237,8 +237,8 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
             profiles.forEach { profile ->
                 val active = store.activeProfileId() == profile.id
                 Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-                    Text(if (active) profile.name + " · Voz ativa" else profile.name, fontWeight = if (active) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal)
-                    Text("Referência: ${profile.durationMs / 1000}s · SHA-256 validado · armazenamento privado", fontSize = 10.sp, color = MaterialTheme.colorScheme.secondary)
+                    Text(if (active && profile.integrityValid) profile.name + " · Voz ativa" else if (active) profile.name + " · Referência inválida" else profile.name, fontWeight = if (active) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Normal)
+                    Text(if (profile.integrityValid) "Referência: ${profile.durationMs / 1000}s · SHA-256 validado · armazenamento privado" else "SHA-256 inválido ou arquivo ausente. Exclua e importe a referência novamente.", fontSize = 10.sp, color = if (profile.integrityValid) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         TextButton(
                             onClick = {
@@ -255,7 +255,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                                     status = "Instale os modelos locais Chatterbox antes de ouvir a voz clonada."
                                 }
                             },
-                            enabled = !busy && modelsReady && nativeAvailable
+                            enabled = !busy && modelsReady && nativeAvailable && profile.integrityValid
                         ) { Text("Ouvir voz clonada") }
                         TextButton(
                             onClick = {
@@ -275,7 +275,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                                     status = "Não foi possível ativar: instale e valide os modelos locais primeiro."
                                 }
                             },
-                            enabled = !busy && modelsReady && nativeAvailable
+                            enabled = !busy && modelsReady && nativeAvailable && profile.integrityValid
                         ) { Text(if (active && voiceOutput.isClonedRuntimeReady()) "Recarregar" else if (active) "Preparar" else "Usar esta voz") }
                         TextButton(
                             onClick = {
