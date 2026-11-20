@@ -97,7 +97,10 @@ async function analyzeImage(env: ResearchEnv, image: ImageBytes, prompt: string,
       ], max_completion_tokens: 350, chat_template_kwargs: { enable_thinking: false },
     });
     const parsed = jsonObject(textFromAI(raw));
-    return { score: Math.min(100, Math.max(0, Number(parsed?.score) || 50)), available: true,
+    if (!parsed || typeof parsed.analysis !== "string" || !parsed.analysis.trim()) {
+      return { score: 0, available: false, analysis: "A análise de visão não retornou uma avaliação estruturada." };
+    }
+    return { score: Math.min(100, Math.max(0, Number(parsed.score) || 50)), available: true,
       analysis: typeof parsed?.analysis === "string" ? parsed.analysis.slice(0, 1800) : "Imagem analisada; valide visualmente a aderência ao pedido." };
   } catch {
     return { score: 0, available: false, analysis: "A análise automática de visão não ficou disponível nesta execução." };
