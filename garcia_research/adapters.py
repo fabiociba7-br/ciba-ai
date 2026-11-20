@@ -34,7 +34,7 @@ class LocalPromptAdapter:
             (message.get("content", "") for message in messages if message.get("role") == "user"),
             "",
         )
-        titles = re.findall(r'"title"\\s*:\\s*"([^"]+)"', user_content)
+        titles = re.findall(r'"title"\s*:\s*"([^"]+)"', user_content)
         return json.dumps({
             "raciocinio": (
                 "O adaptador local não executa inferência semântica; por isso, "
