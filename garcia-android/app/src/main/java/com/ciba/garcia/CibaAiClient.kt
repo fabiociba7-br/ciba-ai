@@ -97,12 +97,22 @@ class CibaAiClient(private val store: SecureStore) {
         if (images.length() > 0) messages.getJSONObject(messages.length() - 1).put("images", images)
         val response = request("/v1/ai/chat", "POST", JSONObject().put("messages", messages), true)
         val text = response.optString("response").ifBlank { "A Garcia recebeu uma resposta vazia do serviço." }
-        val photos = response.optJSONArray("photos")
-        if (photos == null || photos.length() == 0) { response.put("response", text); return response }
         val markers = StringBuilder()
-        for (i in 0 until photos.length()) {
-            val url = photos.optJSONObject(i)?.optString("url").orEmpty()
-            if (url.startsWith("https://")) markers.append("\n[[foto:").append(url).append("]]")
+        val visual = response.optJSONObject("visual_studio")
+        if (visual != null) {
+            val imageUrl = visual.optString("image_url")
+            val sessionId = visual.optString("session_id")
+            val iteration = visual.optInt("iteration", 0)
+            if (imageUrl.startsWith("https://") && sessionId.length == 36 && iteration >= 0) {
+                markers.append("\n[[visual:").append(imageUrl).append("|").append(sessionId).append("|").append(iteration).append("]]")
+            }
+        }
+        val photos = response.optJSONArray("photos")
+        if (photos != null) {
+            for (i in 0 until photos.length()) {
+                val url = photos.optJSONObject(i)?.optString("url").orEmpty()
+                if (url.startsWith("https://")) markers.append("\n[[foto:").append(url).append("]]")
+            }
         }
         response.put("response", text + markers.toString())
         return response
@@ -226,6 +236,18 @@ class CibaAiClient(private val store: SecureStore) {
         if (approvalId != null) payload.put("approval_id", approvalId)
         if (allow != null) payload.put("allow", allow)
         return request("/v1/owner/composio/invoke", "POST", payload, authenticated = true)
+    }
+
+    fun decideToolApproval(approvalId: String, allow: Boolean): JSONObject {
+        require(approvalId.matches(Regex("[A-Za-z0-9_-]{16,128}"))) { "Identificador de aprovação inválido." }
+        return request("/v1/owner/tool-approvals/$approvalId/decision", "POST",
+            JSONObject().put("allow", allow), authenticated = true)
+    }
+
+    fun executeToolApproval(approvalId: String): JSONObject {
+        require(approvalId.matches(Regex("[A-Za-z0-9_-]{16,128}"))) { "Identificador de aprovação inválido." }
+        return request("/v1/owner/tool-approvals/$approvalId/execute", "POST",
+            JSONObject(), authenticated = true)
     }
 
     fun usage(): JSONObject = request("/v1/usage", "GET", authenticated = true)

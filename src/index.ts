@@ -16,6 +16,13 @@ export interface Env {
   ADMIN_TOKEN: string;
   FACEBOOK_APP_SECRET?: string;
   COMPOSIO_API_KEY?: string;
+  GARCIA_ARTIFACTS: R2Bucket;
+  GARCIA_PROMPT_CACHE: KVNamespace;
+  GARCIA_IMAGE_MODEL?: string;
+  GARCIA_VISION_MODEL?: string;
+  PUBLIC_API_BASE_URL?: string;
+  ARTIFACT_URL_SECRET?: string;
+  ARTIFACT_URL_TTL_SECONDS?: string;
   // Remote Composio execution is fail-closed unless explicitly enabled per environment.
   COMPOSIO_EXECUTION_ENABLED?: string;
   AI_MODEL?: string;
@@ -44,6 +51,8 @@ import { createNativeCapabilityRegistry } from "./core/native-capabilities";
 import { createD1ToolApprovalStore } from "./core/tools/durable-consent";
 import { createCibaToolRegistry } from "./core/tools/registry";
 import { createGarciaCapabilityToolRuntime } from "./core/tools/garcia-capability-tools";
+import { createGarciaResearchTool } from "./services/research";
+import { verifySignedArtifactUrl } from "./services/research/artifact-publisher";
 import { handleMcpRequest } from "./core/mcp/protocol";
 import { enqueueAgentJob, getAgentJob, cancelAgentJob } from "./core/agent-queue-store";
 import { runOneAgentQueueJob } from "./core/agent-queue-runner";
@@ -1504,6 +1513,111 @@ const handleOwnerToolApprovalCancel = async (
     : json({ error: "approval_not_found_or_not_cancellable" }, 404);
 };
 
+const handleOwnerToolApprovalExecute = async (
+  request: Request,
+  env: Env,
+  approvalId: string
+) => {
+  const device = await authenticateDevice(request, env);
+  if (!device) return json({ error: "unauthorized" }, 401);
+  const owner = await getActiveOwnerForDevice(env, device.owner_id);
+  if (!owner || owner.owner_id !== device.owner_id) return json({ error: "active_owner_required" }, 403);
+  if (!(await isAppAllowed(env, device.app_id))) return json({ error: "app_not_allowed" }, 403);
+
+  const row = await env.DB.prepare(`
+    SELECT a.approval_id, a.owner_id, a.app_id, a.device_id, a.conversation_id,
+      a.invocation_id, a.tool_id, a.risk, a.input_json, a.input_sha256, a.status,
+      r.output_json, r.output_sha256
+    FROM tool_approvals a
+    LEFT JOIN tool_approval_results r ON r.approval_id = a.approval_id
+    WHERE a.approval_id = ? AND a.owner_id = ? AND a.app_id = ? AND a.device_id = ?
+  `).bind(approvalId, owner.owner_id, device.app_id, device.device_id).first<{
+    approval_id: string; owner_id: string; app_id: string; device_id: string;
+    conversation_id: string; invocation_id: string; tool_id: string; risk: string;
+    input_json: string; input_sha256: string; status: string;
+    output_json: string | null; output_sha256: string | null;
+  }>();
+  if (!row) return json({ error: "tool_approval_not_found" }, 404);
+  if (row.tool_id !== "garcia.research" || row.risk !== "external") {
+    return json({ error: "unsupported_tool_approval_execution" }, 403);
+  }
+
+  if (row.status === "consumed" && row.output_json && row.output_sha256) {
+    if (await sha256(row.output_json) !== row.output_sha256) return json({ error: "tool_result_integrity_failed" }, 409);
+    let saved: unknown;
+    try { saved = JSON.parse(row.output_json); } catch { return json({ error: "tool_result_corrupt" }, 409); }
+    const isVisual = saved !== null && typeof saved === "object" &&
+      typeof (saved as Record<string, unknown>).session_id === "string" &&
+      typeof (saved as Record<string, unknown>).image_url === "string";
+    return json({ executed: true, approval_id: approvalId,
+      tool_execution: { tool_id: row.tool_id, output: saved },
+      ...(isVisual ? { visual_studio: saved } : {}) });
+  }
+  if (row.status !== "approved") return json({ error: "tool_approval_not_approved_or_already_consumed" }, 409);
+  if (await sha256(row.input_json) !== row.input_sha256) return json({ error: "approval_integrity_check_failed" }, 409);
+
+  let input: unknown;
+  try { input = JSON.parse(row.input_json); }
+  catch { return json({ error: "invalid_approval_record" }, 409); }
+  const identity = { ownerId: row.owner_id, appId: row.app_id, deviceId: row.device_id };
+  const store = createD1ToolApprovalStore(env.DB);
+  const runtime = createGarciaCapabilityToolRuntime({
+    context: { conversationId: row.conversation_id, invocationId: row.invocation_id },
+    executionTimeoutMs: 45_000,
+    additionalTools: [createGarciaResearchTool({
+      ...env,
+      PUBLIC_API_BASE_URL: new URL(request.url).origin,
+      ownerId: row.owner_id,
+      appId: row.app_id,
+      deviceId: row.device_id,
+    })],
+    approval: { store, identity },
+    authorize: async (toolRequest) => {
+      if (toolRequest.toolId !== "garcia.research" || toolRequest.risk !== "external" ||
+          toolRequest.requiresApproval !== true || device.owner_id !== row.owner_id) return false;
+      const access = await requireCibaGenioAccess(env, "external_tools", row.app_id);
+      return access === null;
+    },
+  });
+  if (!runtime.durableApproval) return json({ error: "durable_approval_runtime_unavailable" }, 503);
+
+  try {
+    const plan = runtime.registry.prepare(row.tool_id, input, runtime.context);
+    const output = await runtime.durableApproval.flow.execute({
+      identity,
+      approvalId,
+      plan,
+      context: runtime.context,
+    });
+    const outputJson = JSON.stringify(output);
+    if (typeof outputJson !== "string") return json({ error: "tool_output_not_serializable" }, 502);
+    if (new TextEncoder().encode(outputJson).byteLength > 64_000) {
+      return json({ error: "tool_output_too_large" }, 502);
+    }
+    const outputHash = await sha256(outputJson);
+    await env.DB.prepare(`
+      INSERT OR IGNORE INTO tool_approval_results
+        (approval_id, owner_id, app_id, tool_id, output_json, output_sha256, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(approvalId, row.owner_id, row.app_id, row.tool_id, outputJson, outputHash, nowIso()).run();
+    const saved = await env.DB.prepare(
+      "SELECT output_json, output_sha256 FROM tool_approval_results WHERE approval_id = ? AND owner_id = ? AND app_id = ?"
+    ).bind(approvalId, row.owner_id, row.app_id).first<{ output_json: string; output_sha256: string }>();
+    if (!saved || await sha256(saved.output_json) !== saved.output_sha256) {
+      return json({ error: "tool_result_persistence_failed" }, 502);
+    }
+    const result = JSON.parse(saved.output_json) as unknown;
+    const isVisual = result !== null && typeof result === "object" &&
+      typeof (result as Record<string, unknown>).session_id === "string" &&
+      typeof (result as Record<string, unknown>).image_url === "string";
+    return json({ executed: true, approval_id: approvalId,
+      tool_execution: { tool_id: row.tool_id, output: result },
+      ...(isVisual ? { visual_studio: result } : {}) });
+  } catch {
+    return json({ error: "tool_execution_failed", approval_consumed: true }, 502);
+  }
+};
+
 // Metrics are scoped to the authenticated device and its active owner; no prompt or response content is collected.
 const handleOwnerObservability = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
@@ -2645,7 +2759,8 @@ const handleChat = async (request: Request, env: Env) => {
           invocationId: crypto.randomUUID(),
         },
         executeReadOnlyProposals: true,
-        additionalTools: composioChatTools,
+        executionTimeoutMs: 45_000,
+        additionalTools: [createGarciaResearchTool({ ...env, PUBLIC_API_BASE_URL: new URL(request.url).origin, ownerId: owner.owner_id, appId: device.app_id, deviceId: device.device_id }), ...composioChatTools],
         approval: {
           store: createD1ToolApprovalStore(env.DB),
           identity: {
@@ -2665,6 +2780,12 @@ const handleChat = async (request: Request, env: Env) => {
           if (toolRequest.toolId === "garcia.capabilities.list" ||
               toolRequest.toolId === "garcia.capabilities.get" ||
               toolRequest.toolId === "facebook.connection.status") return true;
+
+          if (toolRequest.toolId === "garcia.research") {
+            if (toolRequest.risk !== "external" || toolRequest.requiresApproval !== true) return false;
+            const access = await requireCibaGenioAccess(env, "external_tools", device.app_id);
+            return access === null;
+          }
 
           const composioPolicy = composioChatPolicies.get(toolRequest.toolId);
           if (!composioPolicy || !env.COMPOSIO_API_KEY) return false;
@@ -2768,6 +2889,13 @@ const handleChat = async (request: Request, env: Env) => {
   }
   responseText = responseText.replace(/\[\[foto:[^\]]*\]\]/g, "").replace(/\n{3,}/g, "\n\n").trim();
   if (!responseText && shownPhotos.length > 0) responseText = "Aqui estão as fotos do seu Facebook.";
+  const rawToolOutput = orchestration.toolExecution?.output;
+  const visualStudioOutput = orchestration.toolExecution?.toolId === "garcia.research" &&
+    rawToolOutput !== null && typeof rawToolOutput === "object" && !Array.isArray(rawToolOutput) &&
+    typeof (rawToolOutput as Record<string, unknown>).session_id === "string" &&
+    typeof (rawToolOutput as Record<string, unknown>).image_url === "string"
+    ? rawToolOutput
+    : undefined;
 
   return json({
     model,
@@ -2776,25 +2904,30 @@ const handleChat = async (request: Request, env: Env) => {
     ...(orchestration.toolExecution
       ? { tool_execution: orchestration.toolExecution }
       : {}),
+    ...(visualStudioOutput ? { visual_studio: visualStudioOutput } : {}),
     ...(orchestration.toolExecutionError
       ? { tool_execution_error: orchestration.toolExecutionError }
       : {}),
     ...(orchestration.toolApproval
       ? { tool_approval: orchestration.toolApproval }
       : {}),
-    ...(orchestration.toolProposal?.toolId.startsWith("composio.") &&
+    ...(orchestration.toolProposal &&
+      (orchestration.toolProposal.toolId.startsWith("composio.") ||
+        orchestration.toolProposal.toolId === "garcia.research") &&
       orchestration.toolProposal.requiresApproval
       ? {
           tool_proposal: {
             tool_id: orchestration.toolProposal.toolId,
-            tool_name: composioChatPolicies.get(orchestration.toolProposal.toolId)?.toolName ??
-              orchestration.toolProposal.toolId.slice("composio.".length),
+            tool_name: orchestration.toolProposal.toolId === "garcia.research"
+              ? "Estúdio Visual da Garcia"
+              : composioChatPolicies.get(orchestration.toolProposal.toolId)?.toolName ??
+                orchestration.toolProposal.toolId.slice("composio.".length),
             risk: orchestration.toolProposal.risk,
             requires_approval: orchestration.toolProposal.requiresApproval,
             input: orchestration.toolProposal.input,
             conversation_id: orchestration.toolProposal.conversationId,
             invocation_id: orchestration.toolProposal.invocationId,
-            execution_available: env.COMPOSIO_EXECUTION_ENABLED === "true",
+            execution_available: orchestration.toolProposal.toolId === "garcia.research" || env.COMPOSIO_EXECUTION_ENABLED === "true",
           },
         }
       : {}),
@@ -4123,6 +4256,23 @@ const handleRequest = async (
 ): Promise<Response> => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+  if (request.method === "GET" && url.pathname.startsWith("/v1/artifacts/")) {
+    const key = decodeURIComponent(url.pathname.slice("/v1/artifacts/".length));
+    const expires = Number(url.searchParams.get("expires"));
+    const signature = url.searchParams.get("sig") || "";
+    if (!env.ARTIFACT_URL_SECRET || !await verifySignedArtifactUrl(env.ARTIFACT_URL_SECRET, key, expires, signature)) {
+      return json({ error: "artifact_url_invalid_or_expired" }, 403);
+    }
+    const object = await env.GARCIA_ARTIFACTS.get(key);
+    if (!object) return json({ error: "artifact_not_found" }, 404);
+    const headers = new Headers();
+    object.writeHttpMetadata(headers);
+    headers.set("etag", object.httpEtag);
+    headers.set("cache-control", "private, max-age=300");
+    headers.set("x-content-type-options", "nosniff");
+    headers.set("content-disposition", "inline");
+    return new Response(object.body, { headers });
+  }
   if ((url.pathname === "/privacy" || url.pathname === "/data-deletion") && request.method === "GET") {
     const isDeletion = url.pathname === "/data-deletion";
     const title = isDeletion ? "Exclusão de dados — Garcia" : "Política de Privacidade — Garcia";
@@ -4286,6 +4436,7 @@ const handleRequest = async (
       case "tool-approvals": return handleOwnerToolApprovals(request, env);
       case "tool-approval-decision": return handleOwnerToolApprovalDecision(request, env, ownerRoute.id!);
       case "tool-approval-cancel": return handleOwnerToolApprovalCancel(request, env, ownerRoute.id!);
+      case "tool-approval-execute": return handleOwnerToolApprovalExecute(request, env, ownerRoute.id!);
       case "observability": return handleOwnerObservability(request, env);
       case "dashboard": return handleOwnerDashboard(request, env);
       case "settings": return handleOwnerSettings(request, env);

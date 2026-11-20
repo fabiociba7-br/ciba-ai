@@ -56,6 +56,8 @@ export interface GarciaCapabilityToolOptions {
   additionalTools?: CibaToolDefinition[];
   /** Optional D1 approval store and server-derived identity for protected actions. */
   approval?: { store: DurableToolApprovalStore; identity: DurableToolApprovalIdentity };
+  /** Maximum execution window for trusted server-side adapter tools. */
+  executionTimeoutMs?: number;
 }
 
 /**
@@ -129,7 +131,7 @@ export function createGarciaCapabilityTools(
       ...(options.additionalTools ?? []).map((tool) => tool.id),
     ],
     authorize: options.authorize,
-    timeoutMs: 15_000,
+    timeoutMs: options.executionTimeoutMs ?? 15_000,
     maxInputBytes: 32_000,
     maxOutputBytes: 64_000,
     maxConcurrentExecutions: 4,
@@ -192,6 +194,7 @@ export function createGarciaCapabilityToolRuntime(
     getFacebookConnectionStatus: options.getFacebookConnectionStatus,
     additionalTools: options.additionalTools,
     approval: options.approval,
+    executionTimeoutMs: options.executionTimeoutMs,
   });
   const context = Object.freeze({
     conversationId: descriptors.conversationId.value as string,

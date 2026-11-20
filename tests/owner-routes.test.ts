@@ -20,6 +20,8 @@ describe("owner HTTP route resolver", () => {
     const id = "job_1234567890abcd";
     expect(resolveOwnerRoute(`/v1/owner/tool-approvals/${id}/decision`, "POST"))
       .toEqual({ route: "tool-approval-decision", id });
+    expect(resolveOwnerRoute(`/v1/owner/tool-approvals/${id}/execute`, "POST"))
+      .toEqual({ route: "tool-approval-execute", id });
     expect(resolveOwnerRoute(`/v1/owner/agent-jobs/${id}/cancel`, "POST"))
       .toEqual({ route: "agent-job-cancel", id });
     expect(resolveOwnerRoute(`/v1/owner/agent-jobs/${id}`, "GET"))
