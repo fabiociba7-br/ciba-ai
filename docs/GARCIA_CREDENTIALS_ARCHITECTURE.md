@@ -127,3 +127,55 @@ A camada de orquestração deve trabalhar com referências de conexão e capacid
 - Execuções e transferências mostram estado, progresso quando disponível, logs sanitizados e artefatos.
 - Limites de quota, permissões, custos e restrições do fornecedor são apresentados sem inferências ou promessas.
 - Configurações importadas não podem executar código arbitrário nem ampliar privilégios.
+
+
+## Importação de modelos de IA e envio ao servidor
+
+A Garcia deve oferecer uma área **Modelos de IA → Importar modelo**, acessível pelo aplicativo, para que o proprietário possa adicionar modelos sem editar código ou recompilar o APK. O fluxo deve aceitar, conforme os formatos e provedores suportados:
+
+- selecionar arquivos do aparelho ou de armazenamento conectado;
+- importar de repositórios públicos/privados compatíveis (por exemplo, Hugging Face), usando URL ou identificador do repositório e autenticação cadastrada no gerenciador central;
+- receber artefatos produzidos no Kaggle ou Google Colab e encaminhá-los ao servidor;
+- selecionar o destino de armazenamento/servidor já configurado, com opção de usar uma área temporária de quarentena antes da publicação no catálogo.
+
+### Fluxo de importação
+
+1. O usuário escolhe o modelo, os arquivos ou o repositório de origem e o destino no servidor.
+2. A Garcia coleta metadados: nome, versão, tarefa/modalidade (LLM, ASR, TTS, imagem etc.), arquitetura/família, formato, quantização, tamanho, idioma, origem, licença e requisitos de hardware, quando disponíveis.
+3. Antes do envio, apresenta tamanho estimado, destino, permissões, eventuais custos e política de retenção; o usuário confirma a transferência.
+4. A transferência ao servidor é autenticada, criptografada em trânsito, retomável após interrupções e acompanhada por progresso. Arquivos grandes não devem ser carregados integralmente na memória do aparelho.
+5. O servidor recebe o material em quarentena, verifica integridade/hash, formato, manifesto, licença e origem; executa verificações de segurança e validação estrutural antes de permitir seu uso.
+6. Após aprovação, registra o modelo em um catálogo/registro central, com versão, localização do artefato, estado, metadados e permissões. O modelo só fica disponível para seleção depois de passar pelas validações.
+7. A Garcia permite testar o modelo em ambiente isolado e, mediante confirmação, disponibilizá-lo para inferência ou encaminhá-lo a um fluxo de treinamento/ajuste fino compatível.
+
+### Importar não é o mesmo que treinar
+
+A interface deve distinguir claramente três operações:
+- **Importar/registrar**: enviar e armazenar os pesos e metadados no servidor.
+- **Usar**: disponibilizar um modelo já treinado para inferência, respeitando compatibilidade e recursos.
+- **Treinar/ajustar**: iniciar um job separado, com base de dados, objetivo, método, ambiente de execução, orçamento/limites e parâmetros explicitamente configurados pelo usuário.
+
+Não afirmar que a Garcia aprendeu ou treinou apenas porque recebeu um arquivo. O treinamento só ocorre quando houver um pipeline de treino compatível e uma execução concluída com métricas/artefatos verificáveis. Importar um modelo não deve substituir automaticamente o modelo principal nem alterar o comportamento da Garcia: ativação, troca de modelo, fine-tuning ou publicação exigem prévia validação e confirmação do proprietário.
+
+### Segurança, licenças e compatibilidade
+
+- Nunca executar código, scripts, extensões ou pesos importados com privilégios administrativos apenas por terem sido enviados.
+- Tratar modelos e arquivos como conteúdo não confiável; usar quarentena, limites de tamanho, validação de formato, hashes, verificação de arquivos compactados e ambiente isolado.
+- Não carregar modelos com mecanismos de execução remota/código customizado habilitados por padrão (por exemplo, opções equivalentes a `trust_remote_code`); qualquer exceção exige revisão e confirmação explícitas.
+- Verificar licença e restrições de uso/comercialização/redistribuição antes de habilitar download, compartilhamento ou publicação.
+- Não aceitar arquivos de configuração que executem comandos arbitrários no servidor.
+- Armazenar pesos em armazenamento configurado, com controle de acesso, versionamento, integridade, política de retenção e possibilidade de excluir/reverter uma versão.
+- Separar credenciais de download, credenciais do servidor e permissões de execução. Nunca devolver segredos do servidor ao aparelho.
+- Mostrar incompatibilidades de arquitetura, formato, runtime, memória, GPU/CPU, ABI e idioma; não prometer que qualquer modelo pode rodar em qualquer dispositivo.
+- Para modelos privados, restringir o acesso por proprietário/conta e evitar que pesos ou URLs assinadas apareçam em logs e histórico.
+
+### Critérios adicionais de aceite
+
+- Importar um modelo pelo seletor de arquivos do Android e enviá-lo a um servidor configurado.
+- Importar por repositório/URL quando o conector correspondente estiver disponível.
+- Retomar transferência interrompida e verificar hash após upload.
+- Ver o progresso, estado de validação, erros sanitizados, licença, tamanho e destino.
+- Encontrar o modelo no catálogo central após aprovação, com versões e metadados.
+- Testar em sandbox e ativar para inferência somente após validação e confirmação.
+- Iniciar treinamento/ajuste fino apenas como ação separada, com parâmetros e confirmação explícitos.
+- Confirmar que arquivos não validados não são executados nem disponibilizados automaticamente.
