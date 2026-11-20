@@ -50,7 +50,11 @@ internal class OnDeviceSpeechRecognizer(
                         SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Não detectei fala. Vou ouvir novamente."
                         SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "O reconhecedor de voz está ocupado."
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Permissão do microfone não concedida."
-                        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "O serviço de reconhecimento offline não concluiu a operação."
+                        SpeechRecognizer.ERROR_NETWORK,
+                        SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
+                        SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED,
+                        SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE ->
+                            "O reconhecimento on-device não conseguiu usar o pacote pt-BR. Instale Português (Brasil) para uso offline nas Configurações do Android, em Idiomas e entrada / Reconhecimento de fala. Vou usar o Whisper local quando disponível."
                         else -> "Falha no reconhecimento de voz (código $error)."
                     }
                     onError(message, retry)
