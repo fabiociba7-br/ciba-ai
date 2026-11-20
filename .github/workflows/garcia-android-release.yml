@@ -82,6 +82,12 @@ jobs:
           chmod 600 "$RUNNER_TEMP/garcia-release.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/garcia-release.jks" >> "$GITHUB_ENV"
 
+      - name: Run unit tests before release assembly
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest
+
       - name: Build signed release APK
         shell: bash
         run: |
