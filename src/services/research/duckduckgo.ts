@@ -47,6 +47,7 @@ function retryAfter(response: Response): number | null {
   const date = Date.parse(raw); return Number.isFinite(date) ? Math.min(Math.max(date - Date.now(), 0), 20_000) : null;
 }
 export class RobustDuckDuckGoClient {
+  private lastRequestAt = 0;
   constructor(private readonly fetcher: typeof fetch = fetch, private readonly maxRetries = 2) {}
   async search(query: string): Promise<ResearchSource[]> {
     const key = query.trim().replace(/\s+/g, " ").toLowerCase();
@@ -56,7 +57,13 @@ export class RobustDuckDuckGoClient {
     let last: Error = new Error("duckduckgo_request_failed");
     for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
       if (attempt) await sleep(jitter(1_500, 3_500) * attempt);
+      else if (this.lastRequestAt > 0) {
+        const elapsed = Date.now() - this.lastRequestAt;
+        const interval = jitter(1_500, 3_500);
+        if (elapsed < interval) await sleep(interval - elapsed);
+      }
       try {
+        this.lastRequestAt = Date.now();
         const response = await this.fetcher(url.toString(), {
           method: "GET", cache: "no-store", redirect: "follow",
           headers: { Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
