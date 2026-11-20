@@ -9,13 +9,21 @@ AI_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 ALLOWED_APP_IDS = "com.ciba.garcia"
 MAX_OUTPUT_TOKENS = "512"
 ALLOWED_ORIGINS = ""
-GITHUB_REPOSITORY = "fabiociba7-br/ciba-ai"
-GITHUB_BRANCH = "main"
-GITHUB_RESEARCH_PUBLISH = "true"
-GITHUB_REPORTS_PATH = "reports/garcia-research"
+GARCIA_IMAGE_MODEL = "openai/gpt-image-1.5"
+GARCIA_VISION_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+PUBLIC_API_BASE_URL = ""
+ARTIFACT_URL_TTL_SECONDS = "3600"
 
 [ai]
 binding = "AI"
+
+[[r2_buckets]]
+binding = "GARCIA_ARTIFACTS"
+bucket_name = "garcia-artifacts"
+
+[[kv_namespaces]]
+binding = "GARCIA_PROMPT_CACHE"
+id = "00000000000000000000000000000000"
 
 [[d1_databases]]
 binding = "DB"
