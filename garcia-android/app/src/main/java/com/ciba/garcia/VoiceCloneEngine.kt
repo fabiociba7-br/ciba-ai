@@ -20,7 +20,15 @@ internal interface VoiceCloneEngine {
 internal object ChatterboxVoiceCloneEngine : VoiceCloneEngine {
     override fun isNativeAvailable(): Boolean = ChatterboxNative.isLibraryLoaded()
     override fun areModelsInstalled(context: Context): Boolean = ChatterboxModelManager.installed(context) != null
-    override fun isAvailable(context: Context): Boolean = isNativeAvailable() && (isReady() || ClonedVoiceRuntime.isLoading() || ChatterboxModelManager.isVerifiedInMemory(context))
+    /**
+     * A cold process must validate the official GGUF pair on disk. The RAM-only
+     * verification stamp is an optimization, never the source of truth.
+     */
+    override fun isAvailable(context: Context): Boolean {
+        if (!isNativeAvailable()) return false
+        if (isReady() || ClonedVoiceRuntime.isLoading()) return true
+        return areModelsInstalled(context)
+    }
     override fun isReady(): Boolean = ClonedVoiceRuntime.isReady()
 
     override fun activate(context: Context, profile: GarciaVoiceProfile, onResult: (Result<Unit>) -> Unit) {
