@@ -1,11 +1,16 @@
 import { RobustDuckDuckGoClient } from "./duckduckgo";
-import { GitHubResearchPublisher } from "./github-publisher";
+import { CloudflareArtifactPublisher } from "./artifact-publisher";
+import { VisualCurator } from "./visual-curator";
 import { generateQueries, synthesizeResearch } from "./synthesizer";
 import type { ResearchEnv, ResearchReport, ResearchToolInput } from "./types";
+
 export class GarciaResearchService {
   constructor(private readonly env: ResearchEnv, private readonly search = new RobustDuckDuckGoClient()) {}
-  async research(input: ResearchToolInput): Promise<ResearchReport> {
-    const topic = input.topic.trim();
+  async research(input: ResearchToolInput): Promise<ResearchReport | Awaited<ReturnType<VisualCurator["createOrIterate"]>>> {
+    if (input.visual_mode === true || input.session_id || input.mode) {
+      return new VisualCurator(this.env).createOrIterate(input);
+    }
+    const topic = (input.topic || "").trim();
     if (topic.length < 3 || topic.length > 300) throw new Error("invalid_research_topic");
     const depth = input.depth || "standard";
     if (!["quick", "standard", "deep"].includes(depth)) throw new Error("invalid_research_depth");
@@ -21,15 +26,7 @@ export class GarciaResearchService {
     const synthesis = await synthesizeResearch(this.env, topic, depth, queries, sources);
     const report: ResearchReport = { topic, depth, queries, ...synthesis, sources, generatedAt: new Date().toISOString(),
       ...(failures.length ? { limitations: [...synthesis.limitations, "Falhas parciais de busca: " + failures.slice(0, 3).join(", ")] } : {}) };
-    const shouldPublish = this.env.GITHUB_RESEARCH_PUBLISH === "true" ||
-      (this.env.GITHUB_RESEARCH_PUBLISH !== "false" && Boolean(this.env.GITHUB_TOKEN && this.env.GITHUB_REPOSITORY));
-    if (shouldPublish) {
-      if (!this.env.GITHUB_TOKEN || !this.env.GITHUB_REPOSITORY) {
-        throw new Error("github_publisher_not_configured");
-      }
-      report.published = await new GitHubResearchPublisher(this.env.GITHUB_TOKEN, this.env.GITHUB_REPOSITORY,
-        this.env.GITHUB_BRANCH || "main", this.env.GITHUB_REPORTS_PATH || "reports/garcia-research").publish(report);
-    }
+    report.artifacts = await new CloudflareArtifactPublisher(this.env).publishResearch(report);
     return report;
   }
 }
