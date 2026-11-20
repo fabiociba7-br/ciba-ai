@@ -25,6 +25,15 @@ internal object ChatterboxModelManager {
     data class Models(val t3: File, val s3: File)
     data class DownloadProgress(val fileName: String, val downloadedBytes: Long, val totalBytes: Long)
 
+    fun isVerifiedInMemory(context: Context): Boolean {
+        val dir = File(context.filesDir, "chatterbox-models")
+        val t3 = File(dir, T3)
+        val s3 = File(dir, S3)
+        return valid(t3) && valid(s3) &&
+            verifiedFiles[t3.absolutePath] == FileStamp(t3.length(), t3.lastModified()) &&
+            verifiedFiles[s3.absolutePath] == FileStamp(s3.length(), s3.lastModified())
+    }
+
     fun installed(context: Context): Models? {
         val dir = File(context.filesDir, "chatterbox-models")
         val t3 = File(dir, T3)
