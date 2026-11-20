@@ -2,7 +2,7 @@ export type OwnerRoute =
   | "composio-policy" | "composio-invoke" | "composio-tools" | "composio-session"
   | "facebook-status" | "facebook-link" | "facebook-data"
   | "available-apps" | "apps-connect" | "app-identity"
-  | "tool-approvals" | "tool-approval-decision" | "tool-approval-cancel"
+  | "tool-approvals" | "tool-approval-decision" | "tool-approval-cancel" | "tool-approval-execute"
   | "observability" | "dashboard" | "settings" | "access-grants"
   | "memory-history" | "profile" | "memory-insights" | "memory-reviews"
   | "memory-candidates" | "memory-retrieve" | "memory"
@@ -29,6 +29,8 @@ export function resolveOwnerRoute(path: string, method: string): OwnerRouteMatch
   if (decision && method === "POST") return { route: "tool-approval-decision", id: decision[1] };
   const cancelApproval = path.match(new RegExp("^/v1/owner/tool-approvals/(" + ID + ")/cancel$"));
   if (cancelApproval && method === "POST") return { route: "tool-approval-cancel", id: cancelApproval[1] };
+  const executeApproval = path.match(new RegExp("^/v1/owner/tool-approvals/(" + ID + ")/execute$"));
+  if (executeApproval && method === "POST") return { route: "tool-approval-execute", id: executeApproval[1] };
   if (path === "/v1/owner/observability" && method === "GET") return { route: "observability" };
   if (path === "/v1/owner/dashboard" && method === "GET") return { route: "dashboard" };
   if (path === "/v1/owner/settings" && ["GET", "POST"].includes(method)) return { route: "settings" };
