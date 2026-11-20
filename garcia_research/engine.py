@@ -212,8 +212,9 @@ class GarciaEngine:
                         "confianca": 0.0,
                         "lacunas": [str(exc)],
                     }
+                candidate = self._ground_sources(candidate, context)
                 last_response = candidate
-                candidate = self._ground_sources(candidate, context)\n                if self._validate_response(candidate, min_confidence=self.config.min_confidence,
+                if self._validate_response(candidate, min_confidence=self.config.min_confidence,
                                            max_gaps=self.config.max_gaps):
                     return self._normalize(candidate)
                 if iteration < self.config.max_iterations:
