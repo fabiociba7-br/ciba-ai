@@ -1533,11 +1533,90 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             fontSize = 11.sp
                         )
                     } else if (settingsSection == "speech") {
-                        Text("Modelo de transcrição local", fontWeight = FontWeight.Bold)
-                        Text(whisperStatus, color = Muted, fontSize = 12.sp)
-                        Text("Modelo multilíngue tiny quantizado · 32 MB. O arquivo fica no aparelho e é verificado por SHA-256.", color = Muted, fontSize = 12.sp)
+                        Text("GERENCIADOR DE MODELOS", fontWeight = FontWeight.Bold)
+                        Text("Downloads opcionais ficam no armazenamento privado do aparelho. Os modelos não são incluídos no APK.", color = Muted, fontSize = 12.sp)
+                        Spacer(Modifier.height(10.dp))
+                        Text("RECONHECIMENTO DE VOZ · PORTUGUÊS BRASILEIRO", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("Parakeet TDT 0.6B v3 · Sherpa-ONNX · aprox. 640 MiB · licença CC-BY-4.0", color = Muted, fontSize = 12.sp)
+                        Text(
+                            when {
+                                parakeetBusy -> "Baixando/verificando… ${parakeetProgress}%"
+                                parakeetModelStatus.installed && modelUpdateAvailable -> "Instalado · atualização disponível"
+                                parakeetModelStatus.installed -> "Instalado · revisão ${parakeetModelStatus.revision?.take(7) ?: "verificada"}"
+                                parakeetModelStatus.bytesInstalled > 0L -> "Pacote parcial · ${parakeetModelStatus.bytesInstalled / (1024 * 1024)} MiB"
+                                else -> "Não instalado"
+                            },
+                            color = if (parakeetModelStatus.installed) Color(0xFF247A4B) else Muted,
+                            fontSize = 12.sp
+                        )
+                        Text("É um modelo de transcrição por turnos, não streaming: a Garcia captura sua fala, detecta a pausa e então transcreve localmente. A avaliação publicada ainda não inclui WER com fala humana; o desempenho precisa ser medido neste aparelho.", color = Muted, fontSize = 11.sp)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = {
+                                    parakeetBusy = true
+                                    scope.launch {
+                                        try {
+                                            val status = withContext(Dispatchers.IO) { parakeetModelStore.checkForUpdates() }
+                                            parakeetModelStatus = status
+                                            modelUpdateAvailable = status.updateAvailable
+                                            modelCatalogStatus = if (status.updateAvailable) "Atualização do Parakeet PT-BR disponível." else "Catálogo consultado · sem atualização."
+                                        } catch (e: Exception) {
+                                            modelCatalogStatus = e.message ?: "Não foi possível consultar atualizações."
+                                        } finally { parakeetBusy = false }
+                                    }
+                                },
+                                enabled = !parakeetBusy && !whisperBusy && !whisperRecording,
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Procurar atualização") }
+                            Button(
+                                onClick = {
+                                    parakeetBusy = true
+                                    parakeetProgress = 0
+                                    scope.launch {
+                                        try {
+                                            val status = withContext(Dispatchers.IO) {
+                                                parakeetModelStore.checkForUpdates()
+                                                parakeetModelStore.download { done, total ->
+                                                    parakeetProgress = if (total > 0L) ((done * 100) / total).toInt().coerceIn(0, 100) else 0
+                                                }
+                                            }
+                                            withContext(Dispatchers.Default) { parakeetEngine.load(parakeetModelStore.modelDirectory()) }
+                                            parakeetModelStatus = status
+                                            modelUpdateAvailable = false
+                                            modelCatalogStatus = "Parakeet PT-BR instalado, verificado e carregado."
+                                            whisperStatus = "Parakeet PT-BR pronto · reconhecimento local ativo"
+                                            GarciaLog.recordEvent(context, "Modelos", "Parakeet PT-BR instalado e carregado · revisão ${status.revision}")
+                                        } catch (e: Exception) {
+                                            parakeetModelStatus = parakeetModelStore.status()
+                                            modelCatalogStatus = e.message ?: "Falha ao instalar Parakeet PT-BR"
+                                            GarciaLog.record(context, "Parakeet download", e)
+                                        } finally { parakeetBusy = false }
+                                    }
+                                },
+                                enabled = !parakeetBusy && !whisperBusy && !whisperRecording,
+                                modifier = Modifier.weight(1f)
+                            ) { Text(if (parakeetBusy) "Aguarde…" else if (parakeetModelStatus.installed && modelUpdateAvailable) "Atualizar" else if (parakeetModelStatus.installed) "Reparar" else "Instalar") }
+                        }
+                        if (parakeetBusy) LinearProgressIndicator(progress = { parakeetProgress / 100f }, modifier = Modifier.fillMaxWidth())
+                        if (parakeetModelStatus.installed) {
+                            TextButton(
+                                onClick = {
+                                    parakeetEngine.release()
+                                    parakeetModelStore.remove()
+                                    parakeetModelStatus = parakeetModelStore.status()
+                                    modelUpdateAvailable = false
+                                    modelCatalogStatus = "Modelo Parakeet removido do aparelho."
+                                },
+                                enabled = !parakeetBusy && !whisperBusy && !whisperRecording
+                            ) { Text("Remover Parakeet PT-BR") }
+                        }
+                        if (modelCatalogStatus.isNotBlank()) Text(modelCatalogStatus, color = Muted, fontSize = 11.sp)
+                        HorizontalDivider(Modifier.padding(vertical = 10.dp))
+                        Text("RECONHECIMENTO DE VOZ · MULTILÍNGUE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("Whisper tiny quantizado · 32 MB · alternativa local.", color = Muted, fontSize = 12.sp)
+                        Text(if (whisperModelInfo != null) "Instalado · ${whisperModelInfo!!.sizeBytes / (1024 * 1024)} MiB" else "Não instalado", color = Muted, fontSize = 12.sp)
                         Button(onClick = {
-                            if (!whisperBusy && !whisperRecording) scope.launch {
+                            if (!whisperBusy && !whisperRecording && !parakeetBusy) scope.launch {
                                 whisperBusy = true; whisperDownloadProgress = 0; whisperStatus = "Baixando modelo Whisper oficial…"
                                 try {
                                     val info = withContext(Dispatchers.IO) {
@@ -1547,24 +1626,25 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     }
                                     whisperModelInfo = info
                                     whisperStatus = "Whisper pronto · modelo verificado · SHA-256 ${info.sha256.take(12)}…"
-                                    GarciaLog.recordEvent(context, "Voz", "Modelo Whisper baixado, verificado e carregado · ${info.sizeBytes} bytes")
+                                    GarciaLog.recordEvent(context, "Voz", "Whisper baixado, verificado e carregado · ${info.sizeBytes} bytes")
                                 } catch (e: Exception) {
                                     whisperStatus = e.message ?: "Falha ao baixar o modelo Whisper"
                                     GarciaLog.record(context, "Whisper download", e)
                                 } finally { whisperBusy = false }
                             }
-                        }, enabled = !whisperBusy && !whisperRecording, modifier = Modifier.fillMaxWidth()) {
-                            Text(if (whisperBusy) "Baixando modelo… ${whisperDownloadProgress}%" else if (whisperModelInfo == null) "Baixar e instalar Whisper (32 MB)" else "Baixar novamente / reparar Whisper")
+                        }, enabled = !whisperBusy && !whisperRecording && !parakeetBusy, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (whisperBusy) "Baixando Whisper… ${whisperDownloadProgress}%" else if (whisperModelInfo == null) "Baixar Whisper (32 MB)" else "Reparar Whisper")
                         }
-                        OutlinedButton(onClick = { whisperModelPicker.launch(arrayOf("application/octet-stream", "application/x-ggml", "application/*", "*/*")) }, enabled = !whisperBusy && !whisperRecording, modifier = Modifier.fillMaxWidth()) { Text("Importar modelo manualmente (opcional)") }
+                        OutlinedButton(onClick = { whisperModelPicker.launch(arrayOf("application/octet-stream", "application/x-ggml", "application/*", "*/*")) }, enabled = !whisperBusy && !whisperRecording && !parakeetBusy, modifier = Modifier.fillMaxWidth()) { Text("Importar modelo Whisper") }
                         if (whisperModelInfo != null) {
-                            Text("Modelo: ${whisperModelInfo!!.file.name} · ${whisperModelInfo!!.sizeBytes / (1024 * 1024)} MB", color = Muted, fontSize = 11.sp)
+                            Text("Arquivo: ${whisperModelInfo!!.file.name} · SHA-256 validado", color = Muted, fontSize = 11.sp)
                             TextButton(onClick = {
                                 scope.launch(Dispatchers.IO) { runCatching { WhisperNative.nativeRelease(); whisperModelStore.forgetModel() } }
-                                whisperModelInfo = null; whisperStatus = "Modelo removido"
-                            }, enabled = !whisperBusy && !whisperRecording) { Text("Remover modelo") }
+                                whisperModelInfo = null; whisperStatus = "Whisper removido"
+                            }, enabled = !whisperBusy && !whisperRecording && !parakeetBusy) { Text("Remover Whisper") }
                         }
-                    } else if (settingsSection == "accounts") {
+                        Text("Próximos grupos: motores de voz (TTS) e modelos de linguagem. Eles serão cadastrados aqui quando os motores forem definidos; nenhum modelo de linguagem atual será substituído.", color = Muted, fontSize = 11.sp)
+                    }                    } else if (settingsSection == "accounts") {
                         Text("Dispositivo ativado e token protegido pelo Android Keystore.", color = Muted, fontSize = 12.sp)
                         if (connected) {
                             Text("Conta Facebook", fontWeight = FontWeight.Bold)
