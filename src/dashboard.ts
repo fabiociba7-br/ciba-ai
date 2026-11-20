@@ -41,6 +41,20 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <div class="panel"><div class="metric-label">Aplicativos conectados</div><div class="metric" id="apps-count">—</div><div class="small muted">Com dispositivos vinculados</div></div>
 <div class="panel"><div class="metric-label">Dispositivos ativos</div><div class="metric" id="devices-count">—</div><div class="small muted">No proprietário atual</div></div>
 </div>
+<section class="panel" style="margin-bottom:16px">
+<h3>Saúde e uso da infraestrutura</h3>
+<p class="small muted">Indicadores agregados da sua instalação. Dados de latência, erros HTTP, Neurons e consumo real do D1 são consultados diretamente nos painéis da Cloudflare.</p>
+<div class="grid" style="margin:12px 0">
+<div class="panel"><div class="metric-label">Requisições do dispositivo · 24h</div><div class="metric" id="obs-requests">—</div></div>
+<div class="panel"><div class="metric-label">Minutos com atividade · 24h</div><div class="metric" id="obs-active">—</div></div>
+<div class="panel"><div class="metric-label">Pico por minuto</div><div class="metric" id="obs-peak">—</div></div>
+<div class="panel"><div class="metric-label">Dados históricos</div><div class="metric" id="obs-history">—</div></div>
+</div>
+<div class="rowline"><span>Última leitura</span><strong id="obs-updated">—</strong></div>
+<div id="obs-daily" class="small muted">Carregando métricas...</div>
+<div class="actions"><button id="observability-refresh" class="secondary">Atualizar métricas</button><a href="https://dash.cloudflare.com/" target="_blank" rel="noopener noreferrer" style="color:#9fc3ff;align-self:center">Abrir painel Cloudflare</a></div>
+<div class="notice small">Privacidade: o painel não exibe IDs de dispositivos nem armazena conversas. Se não houver registros, os contadores aparecem como indisponíveis em vez de presumir consumo zero.</div>
+</section>
 <div class="columns">
 <section class="panel"><h3>Capacidades privadas</h3>
 <div class="switchrow"><div><strong>Memória privada</strong><div class="small muted">Armazenamento curado e controlado</div></div><input id="memory" type="checkbox" aria-label="Ativar memória privada"></div>
@@ -269,11 +283,43 @@ approve.disabled=true;reject.disabled=true;
 try{await api("/v1/owner/tool-approvals/"+encodeURIComponent(item.approval_id)+"/decision","POST",{allow:false});say("Solicitação rejeitada.");await loadToolApprovals()}
 catch(error){say(error.message);approve.disabled=false;reject.disabled=false}
 });
-actions.appendChild(approve);actions.appendChild(reject);card.appendChild(actions);}else{card.appendChild(el("small","Autorizada. Aguardando execução; esta tela não executa ferramentas."));}host.appendChild(card);
+actions.appendChild(approve);actions.appendChild(reject);card.appendChild(actions);}else if(item.status==="approved"){card.appendChild(el("small","Autorizada, mas ainda não executada. Você pode cancelar esta autorização enquanto ela não for consumida."));var cancelActions=el("div","");cancelActions.className="actions";var cancel=el("button","Cancelar autorização");cancel.className="danger";cancel.addEventListener("click",async function(){if(!confirm("Cancelar a autorização de uso único de "+item.tool_id+"? A ferramenta não será executada com esta aprovação."))return;cancel.disabled=true;try{await api("/v1/owner/tool-approvals/"+encodeURIComponent(item.approval_id)+"/cancel","POST",{});say("Autorização cancelada.");await loadToolApprovals()}catch(error){say(error.message);cancel.disabled=false}});cancelActions.appendChild(cancel);card.appendChild(cancelActions);}else{card.appendChild(el("small","Estado: "+item.status+". Esta solicitação não pode mais ser aprovada nesta tela."));}host.appendChild(card);
 });
 }catch(error){host.appendChild(el("p","Não foi possível carregar as aprovações: "+error.message))}
 };
-var refresh=async function(){var data=await api("/v1/owner/dashboard");render(data);await loadAvailableApps();await loadMemories();await loadMemoryReviews();await loadMemoryInsights();await loadOwnerProfile();await loadMemoryHistory();await loadToolApprovals()};
+var loadObservability=async function(){
+var dailyHost=byId("obs-daily");
+try{
+var data=await api("/v1/owner/observability");
+var recent=data.request_metrics&&data.request_metrics.last_24_hours||{};
+byId("obs-requests").textContent=data.data_available?String(recent.device_requests||0):"Sem dados";
+byId("obs-active").textContent=data.data_available?String(recent.active_minutes||0):"Sem dados";
+byId("obs-peak").textContent=data.data_available?String(recent.peak_requests_per_minute||0):"Sem dados";
+byId("obs-history").textContent=(data.request_metrics.daily||[]).length?String(data.request_metrics.daily.length)+" dias":"Sem dados";
+byId("obs-updated").textContent=dateText(data.generated_at);
+dailyHost.replaceChildren();
+var rows=data.request_metrics.daily||[];
+if(!rows.length){dailyHost.appendChild(el("p","Ainda não há registros históricos de cotas para exibir."));return}
+var max=1;rows.forEach(function(row){max=Math.max(max,Number(row.global_bucket_requests)||0,Number(row.app_bucket_requests)||0,Number(row.device_bucket_requests)||0)});
+rows.slice().reverse().forEach(function(row){
+var line=el("div","");line.className="rowline";line.style.display="block";
+line.appendChild(el("strong",row.day));
+var values=[["Global",row.global_bucket_requests],["Aplicativo",row.app_bucket_requests],["Dispositivo",row.device_bucket_requests]];
+values.forEach(function(pair){
+var wrap=el("div","");wrap.style.display="grid";wrap.style.gridTemplateColumns="82px 1fr 48px";wrap.style.alignItems="center";wrap.style.gap="8px";wrap.style.marginTop="5px";
+wrap.appendChild(el("small",pair[0]));
+var track=el("div","");track.style.height="7px";track.style.background="#26364b";track.style.borderRadius="8px";track.style.overflow="hidden";
+var fill=el("div","");fill.style.height="100%";fill.style.width=Math.min(100,(Number(pair[1]||0)/max)*100)+"%";fill.style.background="#79aaff";track.appendChild(fill);wrap.appendChild(track);
+wrap.appendChild(el("small",String(pair[1]||0)));line.appendChild(wrap);
+});
+dailyHost.appendChild(line);
+});
+}catch(error){
+byId("obs-requests").textContent="—";byId("obs-active").textContent="—";byId("obs-peak").textContent="—";byId("obs-history").textContent="—";
+dailyHost.replaceChildren(el("p","Não foi possível carregar métricas: "+error.message));
+}
+};
+var refresh=async function(){var data=await api("/v1/owner/dashboard");render(data);await loadAvailableApps();await loadMemories();await loadMemoryReviews();await loadMemoryInsights();await loadOwnerProfile();await loadMemoryHistory();await loadToolApprovals();await loadObservability()};
 byId("connect").addEventListener("click",async function(){var value=byId("token").value.trim();if(value.length<32){loginSay("Informe um token válido.");return}token=value;byId("connect").disabled=true;loginSay("Verificando acesso...");try{await refresh();byId("login").style.display="none";byId("app").style.display="block";byId("logout").style.display="inline-block";byId("token").value="";loginSay("")}catch(e){token=null;loginSay(e.message)}finally{byId("connect").disabled=false}});
 byId("refresh").addEventListener("click",async function(){try{await refresh();say("Dados atualizados.")}catch(e){say(e.message)}});
 byId("memory-search-button").addEventListener("click",function(){loadMemories();loadMemoryReviews()});
@@ -281,6 +327,7 @@ byId("memory-insights-refresh").addEventListener("click",function(){loadMemoryIn
 byId("owner-profile-refresh").addEventListener("click",function(){loadOwnerProfile()});
 byId("memory-history-refresh").addEventListener("click",function(){loadMemoryHistory()});
 byId("tool-approvals-refresh").addEventListener("click",function(){loadToolApprovals()});
+byId("observability-refresh").addEventListener("click",function(){loadObservability()});
 byId("memory-scope").addEventListener("change",function(){loadMemories();loadMemoryReviews();loadMemoryHistory()});
 byId("memory-expired").addEventListener("change",function(){loadMemories()});
 byId("memory").addEventListener("change",function(){loadMemories();loadMemoryReviews();loadMemoryInsights();loadOwnerProfile();loadMemoryHistory()});
