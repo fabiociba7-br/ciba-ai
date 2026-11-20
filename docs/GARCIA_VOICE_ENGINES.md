@@ -10,7 +10,7 @@
 
 | Motor | Destino | Situação inicial | Observações |
 |---|---|---|---|
-| Pocket TTS | Android local via mecanismo TTS complementar | Experimental / integração inicial | PocketTTS-Android-Engine 0.5.5 (MIT) oferece pacote Portuguese FP32 e clonagem WAV. Modelos CC BY 4.0; compatibilidade pt-BR e desempenho no aparelho Garcia ainda precisam de validação. |
+| Pocket TTS | Android local, runtime nativo dentro da Garcia | Experimental / integração nativa em andamento | Portar JNI/C++ e gerenciamento de modelos do projeto de referência v0.5.5. Pacotes de modelo separados do APK; pesos CC BY 4.0. Validar pt-BR, ARM64 e desempenho no aparelho real. |
 | NeuTTS | Android local | Experimental / idioma limitado | Protótipo Android comunitário; os modelos avaliados não incluem PT-BR atualmente. |
 | VoxCPM2 | Laboratório remoto | Somente laboratório | Plano A em Kaggle/Colab com GPU; não prometer execução local Android. |
 | XTTS-v2 | Laboratório remoto | Somente laboratório | Plano B; revisar licença Coqui Public Model License e qualidade PT-BR. |
@@ -53,10 +53,10 @@ Detalhes de autenticação, cadastro de novos provedores, limites de quota, oper
 
 ## Primeira integração Android — Pocket TTS
 
-A primeira interface da Garcia fica em Configurações → Clonagem de voz. Ela detecta e abre o aplicativo complementar `org.pockettts.android.engine`, ou direciona à página oficial para instalação. O usuário administra o pacote de modelo e os perfis de referência no próprio Pocket TTS e seleciona esse serviço como mecanismo preferido nas configurações Android.
+A interface fica em Configurações → Voz e clonagem. A Garcia administra diretamente a instalação dos modelos, a gravação/importação de referências WAV, os perfis e a seleção da voz. O motor Pocket TTS é uma biblioteca nativa embarcada no próprio APK da Garcia; não há aplicativo complementar.
 
-A Garcia continua usando a API pública Android `TextToSpeech`; a fala é encaminhada ao mecanismo preferido do sistema. Essa etapa evita duplicar JNI/ONNX e mantém os pesos fora do APK Garcia. Os modelos e gravações permanecem no armazenamento privado do aplicativo complementar; a Garcia não acessa seus arquivos internos.
+A Garcia chama seu adaptador `VoiceEngine` diretamente por Kotlin/JNI/C++, recebendo PCM para o subsistema de áudio interno. Modelos e gravações ficam no armazenamento privado da Garcia, fora do APK, e são gerenciados pela própria interface.
 
-A integração está marcada como experimental. A documentação do motor lista um pacote português e clonagem WAV, mas a validação pública em aparelho descrita pelo projeto cobre inglês e alemão. É obrigatório validar o locale pt-BR, síntese, clonagem, funcionamento sem rede e fallback no aparelho real antes de marcar o motor como pronto. O runtime publicado exige Android API 26+ e ABI arm64-v8a; aparelhos sem ARM64 não são compatíveis.
+A integração está marcada como experimental. A referência lista pacote português e clonagem WAV, mas isso não comprova qualidade pt-BR. É obrigatório validar síntese, clonagem, funcionamento sem rede, consumo de memória e estabilidade no aparelho real. A primeira versão nativa terá ABI arm64-v8a; x86_64 não será declarado até validação.
 
-Ver auditoria, licenças, limites e gates em [POCKET_TTS_ANDROID_AUDIT.md](POCKET_TTS_ANDROID_AUDIT.md).
+Ver arquitetura nativa, licenças, limites e gates em [POCKET_TTS_ANDROID_AUDIT.md](POCKET_TTS_ANDROID_AUDIT.md).
