@@ -31,31 +31,41 @@ internal class VoiceProfileStore(context: Context) {
 
     fun importAudio(uri: Uri): File {
         val target = File(imports, "reference-${UUID.randomUUID()}.audio")
-        val input = app.contentResolver.openInputStream(uri) ?: error("Não foi possível abrir o áudio selecionado.")
-        input.use { source ->
-            FileOutputStream(target).use { output ->
-                val buffer = ByteArray(64 * 1024)
-                var copied = 0L
-                while (true) {
-                    val count = source.read(buffer)
-                    if (count < 0) break
-                    copied += count
-                    require(copied <= MAX_AUDIO_BYTES) { "O áudio deve ter no máximo 50 MB." }
-                    output.write(buffer, 0, count)
+        try {
+            val input = app.contentResolver.openInputStream(uri) ?: error("Não foi possível abrir o áudio selecionado.")
+            input.use { source ->
+                FileOutputStream(target).use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var copied = 0L
+                    while (true) {
+                        val count = source.read(buffer)
+                        if (count < 0) break
+                        copied += count
+                        require(copied <= MAX_AUDIO_BYTES) { "O áudio deve ter no máximo 50 MB." }
+                        output.write(buffer, 0, count)
+                    }
+                    output.fd.sync()
                 }
-                output.fd.sync()
             }
+            validateAudio(target)
+            return target
+        } catch (error: Throwable) {
+            target.delete()
+            throw error
         }
-        runCatching { validateAudio(target) }.onFailure { target.delete(); throw it }
-        return target
     }
 
     fun saveRecording(source: File): File {
         validateAudio(source)
         val target = File(imports, "recording-${UUID.randomUUID()}.m4a")
-        source.copyTo(target, overwrite = true)
-        validateAudio(target)
-        return target
+        try {
+            source.copyTo(target, overwrite = true)
+            validateAudio(target)
+            return target
+        } catch (error: Throwable) {
+            target.delete()
+            throw error
+        }
     }
 
     fun save(source: File, name: String, normalizedWav: File): GarciaVoiceProfile {
@@ -165,7 +175,8 @@ internal class VoiceProfileStore(context: Context) {
         json.remove(profileId)
         check(prefs.edit().putString("profiles_json", json.toString()).commit()) { "Não foi possível atualizar os perfis salvos." }
         val directory = File(root, profileId)
-        if (isInside(root, directory)) directory.deleteRecursively()
+        if (isInside(root, directory)) check(!directory.exists() || directory.deleteRecursively()) { "Não foi possível apagar os arquivos locais do perfil." }
+        if (prefs.getString("active_profile_id", null) == profileId) prefs.edit().remove("active_profile_id").apply()
         if (activeProfileId() == profileId) {
             val systemVoice = voicePrefs.getString("system_voice_id", null)
             voicePrefs.edit()
