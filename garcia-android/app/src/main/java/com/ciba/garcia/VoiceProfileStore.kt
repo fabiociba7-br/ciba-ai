@@ -8,6 +8,7 @@ import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.security.MessageDigest
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONObject
 
 internal data class GarciaVoiceProfile(
@@ -83,6 +84,8 @@ internal class VoiceProfileStore(context: Context) {
                 .put("sample_sha256", profile.sampleSha256)
                 .put("wav_sha256", profile.wavSha256))
             check(prefs.edit().putString("profiles_json", json.toString()).commit()) { "Não foi possível salvar os dados do perfil." }
+            verifiedProfiles[sample.absolutePath] = ProfileStamp(sample.length(), sample.lastModified(), sampleHash)
+            verifiedProfiles[wav.absolutePath] = ProfileStamp(wav.length(), wav.lastModified(), wavHash)
             return profile
         } catch (error: Throwable) {
             directory.deleteRecursively()
@@ -107,7 +110,7 @@ internal class VoiceProfileStore(context: Context) {
             val sampleHash = item.optString("sample_sha256")
             val wavHash = item.optString("wav_sha256")
             if (sampleHash.isBlank() || wavHash.isBlank()) continue
-            val hashesValid = runCatching { sha256(sample) == sampleHash && sha256(wav) == wavHash }.getOrDefault(false)
+            val hashesValid = verified(sample, sampleHash) && verified(wav, wavHash)
             if (!hashesValid) continue
             result += GarciaVoiceProfile(
                 id = id,
@@ -214,6 +217,14 @@ internal class VoiceProfileStore(context: Context) {
         }
     }
 
+    private fun verified(file: File, expected: String): Boolean {
+        val stamp = ProfileStamp(file.length(), file.lastModified(), expected)
+        if (verifiedProfiles[file.absolutePath] == stamp) return true
+        val matches = runCatching { sha256(file) == expected }.getOrDefault(false)
+        if (matches) verifiedProfiles[file.absolutePath] = stamp else verifiedProfiles.remove(file.absolutePath)
+        return matches
+    }
+
     private fun sha256(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().buffered().use { input ->
@@ -233,7 +244,10 @@ internal class VoiceProfileStore(context: Context) {
         return childPath.startsWith(rootPath) && childPath != rootPath
     }
 
+    private data class ProfileStamp(val length: Long, val modified: Long, val checksum: String)
+
     companion object {
+        private val verifiedProfiles = ConcurrentHashMap<String, ProfileStamp>()
         private const val MAX_AUDIO_BYTES = 50L * 1024 * 1024
         private const val MIN_DURATION_MS = 5_000L
         private const val MAX_DURATION_MS = 30_000L
