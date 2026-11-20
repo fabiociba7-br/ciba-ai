@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { parseDuckDuckGoHtml, RobustDuckDuckGoClient } from "../../src/services/research/duckduckgo";
-import { CloudflareArtifactPublisher } from "../../src/services/research/artifact-publisher";
+import { CloudflareArtifactPublisher, verifySignedArtifactUrl } from "../../src/services/research/artifact-publisher";
 import { GarciaResearchService } from "../../src/services/research/service";
 import type { ResearchEnv, ResearchReport, ResearchSource } from "../../src/services/research/types";
 
@@ -43,6 +43,10 @@ describe("Garcia native research and visual storage", () => {
     const urls = await publisher.publishResearch(report);
     expect(urls.json_url).toContain("/v1/artifacts/owners%2Fowner-test");
     expect(urls.markdown_url).toContain(".md?");
+    const signed = new URL(urls.json_url);
+    const key = decodeURIComponent(signed.pathname.slice("/v1/artifacts/".length));
+    expect(await verifySignedArtifactUrl("test-secret", key, Number(signed.searchParams.get("expires")), signed.searchParams.get("sig") || "")).toBe(true);
+    expect(await verifySignedArtifactUrl("wrong-secret", key, Number(signed.searchParams.get("expires")), signed.searchParams.get("sig") || "")).toBe(false);
     expect((env.GARCIA_ARTIFACTS as never as { put: ReturnType<typeof vi.fn> }).put).toHaveBeenCalledTimes(2);
   });
   it("runs query planning, search, synthesis and R2 publication through Workers AI", async () => {
