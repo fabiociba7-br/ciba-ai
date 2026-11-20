@@ -18,3 +18,9 @@ include = ["garcia_research*"]
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]
 addopts = "-q"
+
+[project.scripts]
+garcia-research = "garcia_research.cli:main"
+
+[tool.setuptools.package-data]
+garcia_research = ["tool_schema.json"]
