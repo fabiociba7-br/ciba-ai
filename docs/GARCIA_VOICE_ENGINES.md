@@ -10,7 +10,7 @@
 
 | Motor | Destino | Situação inicial | Observações |
 |---|---|---|---|
-| Pocket TTS | Android local | Experimental | Runtime Android comunitário precisa de auditoria; português consta entre idiomas suportados pelo projeto original. |
+| Pocket TTS | Android local via mecanismo TTS complementar | Experimental / integração inicial | PocketTTS-Android-Engine 0.5.5 (MIT) oferece pacote Portuguese FP32 e clonagem WAV. Modelos CC BY 4.0; compatibilidade pt-BR e desempenho no aparelho Garcia ainda precisam de validação. |
 | NeuTTS | Android local | Experimental / idioma limitado | Protótipo Android comunitário; os modelos avaliados não incluem PT-BR atualmente. |
 | VoxCPM2 | Laboratório remoto | Somente laboratório | Plano A em Kaggle/Colab com GPU; não prometer execução local Android. |
 | XTTS-v2 | Laboratório remoto | Somente laboratório | Plano B; revisar licença Coqui Public Model License e qualidade PT-BR. |
@@ -49,3 +49,14 @@ VoxCPM2 e XTTS-v2 serão preparados para laboratório remoto, começando por Kag
 A saída de áudio, checkpoints e artefatos devem poder ser encaminhados para qualquer destino de armazenamento configurado no gerenciador central. Assim, ambiente de computação e armazenamento são recursos independentes e selecionáveis pela interface da Garcia.
 
 Detalhes de autenticação, cadastro de novos provedores, limites de quota, operações suportadas e segurança estão em [GARCIA_CREDENTIALS_ARCHITECTURE.md](GARCIA_CREDENTIALS_ARCHITECTURE.md). Kaggle e Colab devem ser integrados por APIs/interfaces documentadas; recursos não suportados oficialmente devem permanecer assistidos/manual, sem automação frágil de interface ou contorno de limites.
+
+
+## Primeira integração Android — Pocket TTS
+
+A primeira interface da Garcia fica em Configurações → Clonagem de voz. Ela detecta e abre o aplicativo complementar `org.pockettts.android.engine`, ou direciona à página oficial para instalação. O usuário administra o pacote de modelo e os perfis de referência no próprio Pocket TTS e seleciona esse serviço como mecanismo preferido nas configurações Android.
+
+A Garcia continua usando a API pública Android `TextToSpeech`; a fala é encaminhada ao mecanismo preferido do sistema. Essa etapa evita duplicar JNI/ONNX e mantém os pesos fora do APK Garcia. Os modelos e gravações permanecem no armazenamento privado do aplicativo complementar; a Garcia não acessa seus arquivos internos.
+
+A integração está marcada como experimental. A documentação do motor lista um pacote português e clonagem WAV, mas a validação pública em aparelho descrita pelo projeto cobre inglês e alemão. É obrigatório validar o locale pt-BR, síntese, clonagem, funcionamento sem rede e fallback no aparelho real antes de marcar o motor como pronto. O runtime publicado exige Android API 26+ e ABI arm64-v8a; aparelhos sem ARM64 não são compatíveis.
+
+Ver auditoria, licenças, limites e gates em [POCKET_TTS_ANDROID_AUDIT.md](POCKET_TTS_ANDROID_AUDIT.md).
