@@ -1549,50 +1549,22 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             fontSize = 11.sp
                         )
                     } else if (settingsSection == "cloning") {
-                        val pocketInstalled = PocketTtsCompanion.isInstalled(context)
-                        val arm64Available = PocketTtsCompanion.supportsArm64(context)
-                        Text("Pocket TTS · clonagem offline", fontWeight = FontWeight.Bold)
+                        val arm64Available = android.os.Build.SUPPORTED_ABIS.any { it.equals("arm64-v8a", ignoreCase = true) }
+                        Text("Pocket TTS nativo · clonagem offline", fontWeight = FontWeight.Bold)
                         Text(
-                            if (pocketInstalled) "Aplicativo complementar instalado." else "O motor Pocket TTS ainda não está instalado neste aparelho.",
-                            color = Muted,
-                            fontSize = 12.sp
-                        )
-                        Text(
-                            "Este motor executa a síntese no próprio aparelho. A Garcia abre o gerenciador do Pocket TTS para importar o modelo português e cadastrar uma gravação de referência autorizada. Os perfis e modelos ficam no armazenamento privado desse aplicativo complementar.",
+                            "A Garcia está sendo preparada para incorporar o motor Pocket TTS diretamente ao aplicativo. Clonagem, modelos e perfis serão gerenciados pela própria Garcia, sem instalar outro aplicativo.",
                             color = Muted,
                             fontSize = 12.sp
                         )
                         if (!arm64Available) {
-                            Text("Atenção: este aparelho não informa suporte ARM64; o pacote Android publicado pelo projeto exige arm64-v8a.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                            Text("A primeira versão do motor nativo exige ARM64 (arm64-v8a). Este aparelho não informa essa ABI.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
                         }
                         Spacer(Modifier.height(8.dp))
-                        Button(
-                            onClick = {
-                                if (pocketInstalled) {
-                                    if (!PocketTtsCompanion.open(context)) error = "Não foi possível abrir o Pocket TTS instalado."
-                                } else {
-                                    runCatching { PocketTtsCompanion.openReleasePage(context) }
-                                        .onFailure { error = "Não foi possível abrir a página oficial de instalação do Pocket TTS." }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(if (pocketInstalled) "Abrir gerenciador Pocket TTS" else "Instalar Pocket TTS")
-                        }
-                        OutlinedButton(
-                            onClick = { runCatching { PocketTtsCompanion.openTextToSpeechSettings(context) }
-                                .onFailure { error = "Não foi possível abrir as configurações de síntese do Android." } },
-                            modifier = Modifier.fillMaxWidth()
-                        ) { Text("Selecionar mecanismo de voz do Android") }
                         Text(
-                            "Depois de instalar, importe o pacote Portuguese FP32 e uma gravação WAV limpa de 5 a 15 segundos. Em seguida, selecione Pocket TTS como mecanismo preferido nas configurações Android. A Garcia continuará usando a API de voz do Android, que encaminhará a fala ao mecanismo escolhido. A instalação do aplicativo não significa que o modelo ou o perfil já estejam prontos.",
+                            "Estado: integração nativa em desenvolvimento. O motor ainda não está disponível para clonagem nesta versão. Não instale um aplicativo complementar; aguarde a versão da Garcia com o runtime e o gerenciador de modelos incorporados.",
                             color = Muted,
-                            fontSize = 11.sp
+                            fontSize = 12.sp
                         )
-                        TextButton(onClick = {
-                            runCatching { PocketTtsCompanion.openReleasePage(context) }
-                                .onFailure { error = "Não foi possível abrir a página do Pocket TTS." }
-                        }) { Text("Página oficial, versões e modelos") }
                     } else if (settingsSection == "speech") {
                         Text("Modelo de transcrição local", fontWeight = FontWeight.Bold)
                         Text(whisperStatus, color = Muted, fontSize = 12.sp)
