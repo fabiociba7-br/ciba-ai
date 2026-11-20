@@ -76,6 +76,15 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - A transcrição preenche o campo de texto para revisão antes do envio; não encaminha áudio ao servidor.
 - A síntese usa Android TextToSpeech e só seleciona voz em português que não exige rede. A leitura automática pode ser desligada nas Configurações.
 - O detector de atividade de voz encerra a captura após 1,1 s de silêncio; sem fala, cancela após 10 s. A transcrição continua editável e exige toque em Enviar.
-- O modo contínuo é opt-in, persistente e só retoma a escuta após o término da fala TTS; texto/anexos pendentes bloqueiam nova captura. Desativar a leitura automática também desativa o modo contínuo.
+- O modo contínuo é opt-in e só retoma a escuta após o término da fala TTS; texto/anexos pendentes bloqueiam nova captura. A sessão contínua é encerrada ao abrir novamente o aplicativo e exige nova ativação explícita. Desativar a leitura automática também desativa o modo contínuo.
 - O workflow executa testes unitários do detector e compilação nativa/Kotlin; teste de áudio e TTS ainda exige aparelho real.
 - Não foi gerado APK.
+
+
+## Ajuste de saída falada — 20/11/2026
+
+- Respostas automáticas por voz são restritas à sessão de conversa por voz iniciada explicitamente pelo usuário. Perguntas enviadas pelo chat de texto recebem respostas somente escritas.
+- Ao abrir o aplicativo, qualquer sessão contínua anterior é encerrada; não há microfone ou fala automática iniciados sem nova ação.
+- Antes da síntese, a Garcia remove marcadores Markdown (asteriscos, sublinhados, títulos, listas, links e blocos de código) e os delimitadores de parênteses, preservando o texto legível. A mensagem original exibida no chat não é alterada.
+- A taxa de fala do Android TTS foi ajustada para 1,15x, mantendo o pitch natural.
+- Testes unitários cobrem limpeza de Markdown, parênteses, links, código e listas. O teste em aparelho real ainda é necessário para avaliar a voz e a velocidade percebida.
