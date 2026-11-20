@@ -274,8 +274,8 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                                     status = "Não foi possível ativar: instale e valide os modelos locais primeiro."
                                 }
                             },
-                            enabled = !busy && modelsReady && nativeAvailable && !active
-                        ) { Text(if (active) "Ativa" else "Usar esta voz") }
+                            enabled = !busy && modelsReady && nativeAvailable && (!active || !voiceOutput.isClonedRuntimeReady())
+                        ) { Text(if (active && voiceOutput.isClonedRuntimeReady()) "Ativa" else if (active) "Preparar" else "Usar esta voz") }
                         TextButton(
                             onClick = {
                                 scope.launch {
