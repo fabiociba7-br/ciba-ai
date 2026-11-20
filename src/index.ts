@@ -2784,6 +2784,13 @@ const handleChat = async (request: Request, env: Env) => {
   }
   responseText = responseText.replace(/\[\[foto:[^\]]*\]\]/g, "").replace(/\n{3,}/g, "\n\n").trim();
   if (!responseText && shownPhotos.length > 0) responseText = "Aqui estão as fotos do seu Facebook.";
+  const rawToolOutput = orchestration.toolExecution?.output;
+  const visualStudioOutput = orchestration.toolExecution?.toolId === "garcia.research" &&
+    rawToolOutput !== null && typeof rawToolOutput === "object" && !Array.isArray(rawToolOutput) &&
+    typeof (rawToolOutput as Record<string, unknown>).session_id === "string" &&
+    typeof (rawToolOutput as Record<string, unknown>).image_url === "string"
+    ? rawToolOutput
+    : undefined;
 
   return json({
     model,
@@ -2792,6 +2799,7 @@ const handleChat = async (request: Request, env: Env) => {
     ...(orchestration.toolExecution
       ? { tool_execution: orchestration.toolExecution }
       : {}),
+    ...(visualStudioOutput ? { visual_studio: visualStudioOutput } : {}),
     ...(orchestration.toolExecutionError
       ? { tool_execution_error: orchestration.toolExecutionError }
       : {}),
@@ -2806,7 +2814,7 @@ const handleChat = async (request: Request, env: Env) => {
           tool_proposal: {
             tool_id: orchestration.toolProposal.toolId,
             tool_name: orchestration.toolProposal.toolId === "garcia.research"
-              ? "Pesquisa técnica da Garcia"
+              ? "Estúdio Visual da Garcia"
               : composioChatPolicies.get(orchestration.toolProposal.toolId)?.toolName ??
                 orchestration.toolProposal.toolId.slice("composio.".length),
             risk: orchestration.toolProposal.risk,
@@ -2814,7 +2822,7 @@ const handleChat = async (request: Request, env: Env) => {
             input: orchestration.toolProposal.input,
             conversation_id: orchestration.toolProposal.conversationId,
             invocation_id: orchestration.toolProposal.invocationId,
-            execution_available: env.COMPOSIO_EXECUTION_ENABLED === "true",
+            execution_available: orchestration.toolProposal.toolId === "garcia.research" || env.COMPOSIO_EXECUTION_ENABLED === "true",
           },
         }
       : {}),
