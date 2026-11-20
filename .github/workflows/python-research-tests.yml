@@ -8,6 +8,7 @@ on:
       - feat/garcia-cognitive-engine
     paths:
       - "garcia_research/**"
+      - "src/services/research/**"
       - "tests/python/**"
       - "pyproject.toml"
       - ".github/workflows/python-research-tests.yml"
