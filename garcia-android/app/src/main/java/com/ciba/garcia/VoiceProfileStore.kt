@@ -227,6 +227,37 @@ internal class VoiceProfileStore(context: Context) {
                 (data.getShort(34).toInt() and 0xffff) == 16) {
                 "A gravação precisa ser PCM mono, 24 kHz e 16 bits."
             }
+            val dataBytes = file.length() - 44L
+            require(dataBytes > 0L && dataBytes % 2L == 0L && data.getInt(40).toLong() == dataBytes) {
+                "O WAV normalizado está incompleto ou corrompido."
+            }
+            val sampleCount = dataBytes / 2L
+            val durationMs = sampleCount * 1_000L / 24_000L
+            require(durationMs in MIN_DURATION_MS..MAX_DURATION_MS) {
+                "A referência normalizada precisa ter entre 5 e 30 segundos."
+            }
+            wav.seek(44L)
+            var sumSquares = 0.0
+            var peak = 0
+            var clipped = 0L
+            var count = 0L
+            while (wav.filePointer + 1L < wav.length()) {
+                val raw = wav.readUnsignedByte() or (wav.readUnsignedByte() shl 8)
+                val sample = if (raw >= 32_768) raw - 65_536 else raw
+                val magnitude = kotlin.math.abs(sample)
+                peak = maxOf(peak, magnitude)
+                if (magnitude >= 32_700) clipped++
+                sumSquares += sample.toDouble() * sample.toDouble()
+                count++
+            }
+            require(count > 0L) { "A gravação não contém amostras de áudio." }
+            val rms = kotlin.math.sqrt(sumSquares / count) / 32_768.0
+            require(peak > 0 && rms >= 0.003) {
+                "A referência está silenciosa ou com volume muito baixo. Grave novamente mais perto do microfone."
+            }
+            require(clipped.toDouble() / count.toDouble() <= 0.05 && rms <= 0.5) {
+                "A referência está muito distorcida ou saturada. Reduza o volume e grave novamente."
+            }
         }
     }
 
