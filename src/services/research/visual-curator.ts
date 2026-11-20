@@ -189,7 +189,9 @@ export class VisualCurator {
         suggested_next_steps: ["Ajustar composição, iluminação ou paleta de cores", "Dar mais destaque a um componente específico", "Criar uma variação mantendo os elementos aprovados"],
         mode, ...(sourceUrl ? { source_url: sourceUrl } : {}) };
     } catch (error) {
-      if (isNewSession) await this.sessions.deleteEmptySession(session.sessionId);
+      if (isNewSession) {
+        try { await this.sessions.deleteEmptySession(session.sessionId); } catch { /* preserve original render failure */ }
+      }
       throw error;
     }
   }
