@@ -7,6 +7,7 @@ def test_search_api_parses_abstract_and_caches():
     config = ResearchConfig(request_delay_min=0, request_delay_max=0)
     session = Mock(spec=requests.Session)
     session.headers = Mock()
+    session.headers = Mock()
     response = Mock()
     response.json.return_value = {"Heading": "OAuth", "AbstractText": "Use PKCE.",
                                   "AbstractURL": "https://example.org/oauth", "RelatedTopics": []}
@@ -21,6 +22,7 @@ def test_search_api_parses_abstract_and_caches():
 def test_html_search_extracts_result_url():
     config = ResearchConfig(request_delay_min=0, request_delay_max=0)
     session = Mock(spec=requests.Session)
+    session.headers = Mock()
     response = Mock()
     response.text = '''
     <div class="result"><h2 class="result__title">
@@ -36,6 +38,7 @@ def test_captcha_page_raises_blocked_error():
     from garcia_research.exceptions import SearchBlockedError
     config = ResearchConfig(request_delay_min=0, request_delay_max=0)
     session = Mock(spec=requests.Session)
+    session.headers = Mock()
     response = Mock()
     response.text = "<html><body>captcha verification</body></html>"
     session.get.return_value = response
