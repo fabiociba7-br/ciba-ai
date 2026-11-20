@@ -126,7 +126,7 @@ export class VisualCurator {
     let previousImage: ImageBytes | null = null;
     if (input.session_id) {
       if (!feedback) throw new Error("visual_iteration_feedback_required");
-      session = await this.sessions.iterate(input.session_id, feedback);
+      session = await this.sessions.iterate(input.session_id, feedback, input.mode);
       const previousAsset = await this.sessions.getLatestAsset(session.sessionId);
       if (!previousAsset) throw new Error("visual_previous_asset_missing");
       previousPrompt = previousAsset.promptUsed;
