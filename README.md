@@ -114,3 +114,13 @@ A integração MCP HTTP da Garcia está descrita em [MCP.md](docs/MCP.md). A bib
 - Tetos rígidos: 50 requisições globais/dia, 25 por app/dia, 10 por dispositivo/dia, 512 tokens de saída, 1.500 caracteres por mensagem e 3.000 caracteres por requisição. A tela administrativa poderá reduzir, mas não elevar esses tetos.
 - O modelo efetivo é validado por allowlist no próprio Worker. Atualmente, somente `@cf/google/gemma-4-26b-a4b-it` é aceito; uma configuração de ambiente fora da allowlist não será executada.
 - As migrations `0004_minute_rate_limit.sql` e `0005_configurable_rate_limit.sql` criam o contador por minuto. A limpeza agendada remove registros antigos.
+
+
+## Pesquisa da Garcia (pacote Python opcional)
+
+O pacote `garcia_research/` oferece pesquisa técnica com DuckDuckGo, síntese
+tipada e publicação Git opcional. Ele não substitui nem duplica o backend
+Cloudflare Worker; a integração LLM é feita por injeção de um adaptador
+compatível com `LLMClient`. Consulte [docs/GARCIA_RESEARCH.md](docs/GARCIA_RESEARCH.md).
+Os testes Python são independentes da suíte Vitest e podem ser executados com
+`python -m pip install -e ".[test]" && pytest`.
