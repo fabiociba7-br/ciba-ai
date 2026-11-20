@@ -96,6 +96,16 @@ npm run check
 npx wrangler dev
 ~~~
 
+Antes de qualquer deploy remoto, crie os recursos e aplique também a migração remota:
+
+~~~bash
+npx wrangler d1 migrations apply ciba-ai-db --remote
+npx wrangler secret put ARTIFACT_URL_SECRET
+~~~
+
+
+~~~
+
 O Wrangler simula R2 e KV localmente. Os objetos locais ficam no estado local do Wrangler e não alteram o bucket de produção. Para testar com recursos remotos, configure explicitamente os bindings remotos e entenda que as gravações afetarão a conta Cloudflare.
 
 No chat, peça uma imagem e depois responda com um ajuste. A ferramenta deve reutilizar o session_id que retornou. A busca de imagens pode ser bloqueada pelo provedor; nesse caso, a Garcia informa a falha e não tenta contornar o bloqueio.
