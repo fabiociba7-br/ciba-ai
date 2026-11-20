@@ -37,9 +37,10 @@ export class CloudflareArtifactPublisher {
   }
   async putImage(key: string, bytes: Uint8Array, mimeType: string): Promise<string> {
     if (!key.startsWith(this.ownerPrefix()) || bytes.byteLength < 1 || bytes.byteLength > 8_000_000) throw new Error("artifact_image_invalid");
+    const url = await this.signedUrl(key);
     await this.env.GARCIA_ARTIFACTS.put(key, bytes, { httpMetadata: { contentType: mimeType, cacheControl: "private, max-age=300" },
       customMetadata: { ownerId: this.env.ownerId, appId: this.env.appId } });
-    return this.signedUrl(key);
+    return url;
   }
   async publishResearch(report: ResearchReport): Promise<{ json_url: string; markdown_url: string }> {
     const id = crypto.randomUUID(), prefix = this.ownerPrefix() + "research/" + id;
