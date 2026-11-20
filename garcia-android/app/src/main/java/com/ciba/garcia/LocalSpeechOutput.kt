@@ -308,7 +308,8 @@ internal class LocalSpeechOutput(
         if (cleanText.isBlank() || closed) return false
         if (isCloneMode()) {
             // A cold process has no in-memory verification stamp. Re-check both GGUFs on disk once.
-            if (!ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
+            if (ChatterboxVoiceCloneEngine.isNativeAvailable() &&
+                !ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
                 runCatching { ChatterboxModelManager.installed(appContext) }
             }
             if (!ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
