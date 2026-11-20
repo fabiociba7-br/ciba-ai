@@ -151,9 +151,17 @@ private fun readTextAttachment(context: Context, uri: Uri): GarciaAttachment {
 }
 
 private val photoMarker = Regex("\\[\\[foto:(https://[^\\]\\s]+)\\]\\]")
+private val visualMarker = Regex("\\[\\[visual:(https://[^|\\]\\s]+)\\|([0-9a-fA-F-]{36})\\|(\\d+)\\]\\]")
+
+private data class VisualChatAsset(val url: String, val sessionId: String, val iteration: Int)
 
 private fun splitPhotos(text: String): Pair<String, List<String>> =
     photoMarker.replace(text, "").trim() to photoMarker.findAll(text).map { it.groupValues[1] }.toList()
+
+private fun splitVisualAssets(text: String): Pair<String, List<VisualChatAsset>> =
+    visualMarker.replace(text, "").trim() to visualMarker.findAll(text).map {
+        VisualChatAsset(it.groupValues[1], it.groupValues[2], it.groupValues[3].toIntOrNull() ?: 0)
+    }.toList()
 
 class MainActivity : ComponentActivity() {
     private val facebookCallbackManager: CallbackManager = CallbackManager.Factory.create()
@@ -1122,7 +1130,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             ) {
                                 Text(if (user) "Você" else "Garcia", color = if (user) Color(0xFFB94F7C) else Blue, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 Spacer(Modifier.height(5.dp))
-                                val (shownText, photoUrls) = remember(item.second) { splitPhotos(item.second) }
+                                val (textWithoutPhotos, photoUrls) = remember(item.second) { splitPhotos(item.second) }
+                                val (shownText, visualAssets) = remember(textWithoutPhotos) { splitVisualAssets(textWithoutPhotos) }
                                 if (shownText.isNotBlank()) {
                                     androidx.compose.foundation.text.selection.SelectionContainer {
                                         Text(shownText, fontSize = 15.sp, lineHeight = 23.sp)
@@ -1136,6 +1145,16 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                         modifier = Modifier.fillMaxWidth().heightIn(max = 360.dp).clip(RoundedCornerShape(12.dp)),
                                         contentScale = androidx.compose.ui.layout.ContentScale.Fit
                                     )
+                                }
+                                visualAssets.forEach { asset ->
+                                    Spacer(Modifier.height(8.dp))
+                                    coil.compose.AsyncImage(
+                                        model = asset.url,
+                                        contentDescription = "Imagem do Estúdio Visual da Garcia, versão ${asset.iteration}",
+                                        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).clip(RoundedCornerShape(12.dp)),
+                                        contentScale = androidx.compose.ui.layout.ContentScale.Fit
+                                    )
+                                    Text("Estúdio Visual · versão ${asset.iteration}", color = Muted, fontSize = 11.sp)
                                 }
                                 if (!user) {
                                     TextButton(
