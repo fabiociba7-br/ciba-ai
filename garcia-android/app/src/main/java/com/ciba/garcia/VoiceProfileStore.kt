@@ -208,6 +208,7 @@ internal class VoiceProfileStore(context: Context) {
             val hashesValid = sample.isFile && wav.isFile &&
                 sampleHash.isNotBlank() && wavHash.isNotBlank() &&
                 verified(sample, sampleHash) && verified(wav, wavHash) &&
+                runCatching { validateAudio(sample) }.isSuccess &&
                 runCatching { validateNormalizedWav(wav) }.isSuccess
 
             result += GarciaVoiceProfile(
