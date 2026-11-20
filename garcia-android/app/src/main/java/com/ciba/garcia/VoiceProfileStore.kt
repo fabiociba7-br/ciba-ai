@@ -171,23 +171,26 @@ internal class VoiceProfileStore(context: Context) {
     }
 
     fun delete(profileId: String) {
+        val wasActive = activeProfileId() == profileId
+        val directory = File(root, profileId)
+        if (isInside(root, directory)) check(!directory.exists() || directory.deleteRecursively()) {
+            "Não foi possível apagar os arquivos locais do perfil."
+        }
         val json = JSONObject(prefs.getString("profiles_json", "{}").orEmpty())
         json.remove(profileId)
-        check(prefs.edit().putString("profiles_json", json.toString()).commit()) { "Não foi possível atualizar os perfis salvos." }
-        val directory = File(root, profileId)
-        if (isInside(root, directory)) check(!directory.exists() || directory.deleteRecursively()) { "Não foi possível apagar os arquivos locais do perfil." }
-        if (prefs.getString("active_profile_id", null) == profileId) prefs.edit().remove("active_profile_id").apply()
-        if (activeProfileId() == profileId) {
+        check(prefs.edit().putString("profiles_json", json.toString()).remove("active_profile_id").takeIf {
+            prefs.getString("active_profile_id", null) == profileId
+        }?.commit() ?: prefs.edit().putString("profiles_json", json.toString()).commit()) {
+            "Não foi possível atualizar os perfis salvos."
+        }
+        if (wasActive) {
             val systemVoice = voicePrefs.getString("system_voice_id", null)
-            voicePrefs.edit()
+            val editor = voicePrefs.edit()
                 .putString("voice_mode", "system")
                 .remove("cloned_voice_id")
                 .remove("system_voice_id")
-                .apply {
-                    if (systemVoice.isNullOrBlank()) remove("voice_id") else putString("voice_id", systemVoice)
-                }
-                .commit()
-            prefs.edit().remove("active_profile_id").apply()
+            if (systemVoice.isNullOrBlank()) editor.remove("voice_id") else editor.putString("voice_id", systemVoice)
+            check(editor.commit()) { "Não foi possível restaurar a voz do sistema." }
         }
     }
 
