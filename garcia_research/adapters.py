@@ -28,6 +28,35 @@ class LocalPromptAdapter:
         for offset in range(0, len(output), 32):
             yield output[offset:offset + 32]
 
+    def generate_messages(self, messages: list[dict[str, str]]) -> str:
+        """Return an explicit low-confidence result; local heuristics are not an LLM."""
+        user_content = next(
+            (message.get("content", "") for message in messages if message.get("role") == "user"),
+            "",
+        )
+        titles = re.findall(r'"title"\\s*:\\s*"([^"]+)"', user_content)
+        return json.dumps({
+            "raciocinio": (
+                "O adaptador local não executa inferência semântica; por isso, "
+                "não é possível validar tecnicamente a conclusão apenas com heurísticas."
+            ),
+            "resposta": (
+                "Configure um provedor LLM compatível para obter uma síntese técnica "
+                "validada sobre as evidências recuperadas."
+            ),
+            "fontes": titles[:10],
+            "confianca": 0.0,
+            "lacunas": [
+                "Síntese semântica por um provedor LLM confiável.",
+                "Validação técnica das evidências e recomendações.",
+            ],
+        }, ensure_ascii=False)
+
+    def generate_stream_messages(self, messages: list[dict[str, str]]) -> Iterator[str]:
+        output = self.generate_messages(messages)
+        for offset in range(0, len(output), 32):
+            yield output[offset:offset + 32]
+
     @staticmethod
     def _plan_queries(prompt: str) -> str:
         match = re.search(r"topic:\s*['\"](.+?)['\"]", prompt, re.IGNORECASE)
