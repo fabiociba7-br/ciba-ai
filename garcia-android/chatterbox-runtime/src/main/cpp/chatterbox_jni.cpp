@@ -101,7 +101,7 @@ Java_com_ciba_garcia_chatterbox_ChatterboxNative_nativeSynthesize(
         env->SetFloatArrayRegion(output, 0, (jsize)result.pcm.size(), result.pcm.data());
         return output;
     } catch (const std::exception & error) {
-        throwState(env, error.what());
+        throwState(env, "Falha durante a síntese local de voz.");
         return nullptr;
     }
 }
