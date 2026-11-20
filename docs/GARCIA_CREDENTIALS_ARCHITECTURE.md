@@ -179,3 +179,195 @@ Não afirmar que a Garcia aprendeu ou treinou apenas porque recebeu um arquivo. 
 - Testar em sandbox e ativar para inferência somente após validação e confirmação.
 - Iniciar treinamento/ajuste fino apenas como ação separada, com parâmetros e confirmação explícitos.
 - Confirmar que arquivos não validados não são executados nem disponibilizados automaticamente.
+
+
+## Central de capacidades configuráveis — reduzir dependência de alterações no código
+
+Além de conexões e modelos, a Garcia deve concentrar no aplicativo a configuração de todos os recursos que possam ser representados com capacidades, adaptadores e políticas já implementados. A meta é permitir que o proprietário acrescente fontes, destinos, ferramentas, rotinas e comportamentos operacionais por configuração, sem editar código para cada novo uso.
+
+**Limite explícito:** configuração não cria uma capacidade técnica inexistente. Um novo protocolo, integração proprietária, tipo de execução ou componente nativo exige implementação e auditoria do adaptador uma vez. Depois de existir um adaptador seguro e genérico, novas instâncias e provedores compatíveis devem ser cadastráveis pela interface. Nunca resolver essa limitação permitindo execução arbitrária de scripts ou código remoto.
+
+### 1. Catálogo de ferramentas, conectores e extensões declarativas
+
+Criar uma área **Ferramentas e integrações** para:
+- ativar/desativar ferramentas que já estejam instaladas e aprovadas;
+- cadastrar instâncias, endpoints, parâmetros e credenciais de ferramentas suportadas;
+- importar manifestos declarativos assinados ou validados, com nome, versão, fornecedor, permissões, capacidades, configuração e documentação;
+- definir quais agentes podem utilizar cada ferramenta e em quais contextos;
+- definir limites, timeout, quotas, rate limits, orçamento e necessidade de confirmação;
+- visualizar versão, origem, permissões concedidas, última validação e histórico de alterações.
+
+Manifestos não podem conter código executável arbitrário. Ferramentas executáveis ou plugins com código precisam ser distribuídos por canal confiável, passar por revisão de assinatura, permissões, dependências e sandbox, e exigir aprovação explícita antes de serem habilitados. O catálogo deve distinguir integração declarativa de extensão executável.
+
+### 2. Agentes, funções e roteamento de modelos
+
+Permitir configurar, sem editar código quando os recursos já existirem:
+- perfis de agentes especializados (por exemplo, pesquisa, programação, voz, documentos, infraestrutura e análise);
+- instruções de sistema e objetivos por agente, com histórico de versões;
+- modelo principal, reserva e critérios de roteamento por tarefa;
+- provedor, temperatura e parâmetros suportados pelo modelo;
+- ferramentas autorizadas, fontes de conhecimento e limites de uso por agente;
+- regras de delegação entre agentes, níveis de autonomia e condições para pedir aprovação;
+- fallback por indisponibilidade, custo, latência, modalidade ou limite de contexto.
+
+Alterações em instruções, modelos e permissões devem ter pré-visualização, validação e opção de reverter. Nenhum agente recebe privilégios administrativos apenas por uma instrução ou por importar um perfil.
+
+### 3. Conhecimento, documentos e memória consultável
+
+Criar **Conhecimento e fontes de dados** para:
+- importar documentos e pastas por seletor Android, arquivos do servidor e armazenamento conectado;
+- conectar fontes compatíveis, como repositórios Git, bases documentais, páginas e APIs autorizadas;
+- escolher o que será indexado, atualizado, excluído ou mantido fora da busca;
+- configurar sincronização manual ou periódica, quando suportada;
+- acompanhar fila, progresso, erros, origem, data de atualização e versão do índice;
+- definir coleções, etiquetas, permissões e quais agentes podem consultar cada coleção;
+- habilitar busca semântica/RAG somente quando o pipeline e o armazenamento vetorial estiverem configurados;
+- remover uma fonte e propagar a remoção/reindexação dos conteúdos derivados conforme a política de retenção.
+
+Diferenciar claramente memória conversacional, preferências do proprietário, base documental/RAG e dados de treinamento. Adicionar um documento à base de conhecimento não significa treinar os pesos do modelo. Toda fonte deve preservar origem e referência para que respostas possam apontar de onde veio a informação.
+
+### 4. Pipelines de treinamento e avaliação
+
+A área **Treinamento e avaliação** poderá configurar jobs com componentes já implementados:
+- escolher modelo base, método (por exemplo, fine-tuning/LoRA quando suportado), dataset, ambiente de execução e destino dos artefatos;
+- configurar parâmetros, limites de tempo/custo e recursos de hardware disponíveis;
+- validar formato, licença, consentimento e qualidade dos dados;
+- separar treino, validação e teste, evitando vazamento entre conjuntos;
+- acompanhar logs sanitizados, métricas, checkpoints, falhas e artefatos;
+- comparar versões com um conjunto de avaliação e critérios definidos;
+- exigir aprovação antes de promover um checkpoint a modelo ativo;
+- manter versão anterior para rollback.
+
+Treino nunca começa implicitamente após importação de modelo ou documento. Jobs com custo, dados privados ou publicação externa exigem confirmação clara.
+
+### 5. Workflows, rotinas e automações
+
+Criar um construtor visual de fluxos com blocos de capacidades já disponíveis:
+- gatilhos manuais, horários, eventos, webhook e conclusão de outro job;
+- etapas de pesquisa, chamada de modelo, transformação, importação/exportação, execução remota e notificação;
+- condições, filtros, ramificações, repetição limitada, espera por aprovação e tratamento de erros;
+- seleção de agente, conexão, modelo, destino e política de execução por etapa;
+- execução sob demanda, agendada ou recorrente, com pausa, cancelamento e histórico;
+- limites de frequência, orçamento, concorrência e janela de execução.
+
+Rotinas com efeitos externos, publicação, exclusão, cobrança ou produção devem pausar para confirmação quando a política exigir. Não executar fluxos infinitos nem permitir que uma saída de modelo altere as próprias permissões.
+
+### 6. Fontes, APIs, webhooks e integrações personalizadas
+
+Permitir cadastrar endpoints e APIs documentadas por formulário:
+- método HTTP, URL/base URL, parâmetros, cabeçalhos não secretos, esquema de entrada/saída e autenticação referenciada ao cofre;
+- limites de domínio/host, timeout, tamanho máximo, rate limit e política de retentativa;
+- webhook de entrada com segredo de validação, assinatura, rotação e proteção contra replay;
+- webhook de saída com eventos permitidos, destino aprovado e política de retries;
+- mapeamento declarativo de campos e transformações simples já suportadas.
+
+Aplicar allowlist de hosts, proteção contra SSRF, bloqueio de endereços internos/metadata endpoints por padrão, validação TLS e limites de resposta. Nunca aceitar URL, webhook ou redirecionamento remoto como autorização para acessar redes internas ou segredos.
+
+### 7. Armazenamento, sincronização, backup e recuperação
+
+Além de escolher provedores, permitir configurar:
+- destinos primário e secundário, pastas/buckets e classes de armazenamento;
+- políticas de sincronização, retenção, versionamento, deduplicação e expurgo;
+- cópias de segurança de configurações não secretas, catálogos, documentos e artefatos;
+- criptografia, chaves e permissões de restauração;
+- verificação periódica de integridade e testes de restauração;
+- migração entre provedores compatíveis e exportação em formatos documentados;
+- exclusão de dados por categoria, com confirmação e registro de auditoria.
+
+Credenciais e segredos não devem ser exportados em backups comuns. A recuperação de credenciais deve usar novo cadastro, OAuth ou mecanismo de recuperação seguro, nunca arquivo de backup em texto claro.
+
+### 8. Notificações e canais de comunicação
+
+Permitir configurar canais compatíveis (notificações Android, e-mail, webhook e mensageria quando houver adaptador aprovado), eventos, destinatários, horários silenciosos e nível de severidade. Segredos, conteúdo privado e dados sensíveis não devem ser enviados por notificações sem escolha explícita. Exibir teste de canal e histórico sanitizado de entrega.
+
+### 9. Interface e comportamento configuráveis
+
+Permitir configurar, sem recompilar:
+- idioma, tema, densidade e preferências de acessibilidade suportadas;
+- tela inicial, atalhos, ordem de módulos e painéis;
+- notificações, confirmações, níveis de detalhe e preferências de voz;
+- perfis de uso e limites de autonomia;
+- feature flags remotas para habilitar recursos já presentes no aplicativo, com versão mínima, compatibilidade, expiração e rollback.
+
+Feature flags não podem instalar código, desativar controles de segurança, conceder privilégios ou habilitar funcionalidades incompatíveis. Atualizações de configuração devem ser assinadas/autenticadas, versionadas e reversíveis.
+
+### 10. Ambientes, recursos e políticas operacionais
+
+Criar painel de recursos com configuração de:
+- aparelho local, servidor próprio, VPS, Kaggle, Colab e demais runtimes conectados;
+- capacidade de CPU/GPU/RAM/armazenamento informada pelo provedor;
+- filas, concorrência, prioridades, timeout, limites de custo e regras de fallback;
+- separação de ambientes de laboratório, teste e produção;
+- permissões por ambiente e confirmação adicional para produção;
+- estado de saúde, quotas, disponibilidade e última verificação.
+
+A Garcia não deve inferir que um recurso está disponível só porque a conexão existe. A capacidade precisa ser consultada/validada no provedor e mostrada com horário da última atualização.
+
+### 11. Auditoria, diagnóstico e observabilidade
+
+Disponibilizar no aplicativo:
+- histórico de conexões, alterações de configuração, importações, jobs e aprovações;
+- logs técnicos sanitizados, códigos de erro, correlação de execução e exportação de diagnóstico sem segredos;
+- estado dos serviços, latência, consumo, quotas e falhas recentes;
+- retenção configurável e controles de privacidade;
+- trilha de auditoria protegida para ações administrativas e alterações de permissões.
+
+O proprietário pode consultar o que foi executado, por qual agente, usando qual conexão/modelo, com quais permissões e qual resultado. Logs não devem guardar prompts privados por padrão quando isso não for necessário, nem tokens, chaves, cookies, cabeçalhos de autorização ou URLs assinadas.
+
+### 12. Perfis, permissões e aprovações
+
+Criar um centro de políticas para definir:
+- ações permitidas sem confirmação, ações que sempre exigem confirmação e ações proibidas;
+- escopo de cada agente, ferramenta, conexão, coleção de conhecimento e ambiente;
+- permissões de leitura, escrita, execução, publicação, compartilhamento e exclusão;
+- limites de gasto, volume, frequência e tamanho;
+- modo somente leitura, modo assistido e modo autônomo limitado;
+- expiração e revogação de concessões.
+
+A confirmação deve apresentar ação, alvo, dados envolvidos, ambiente, custo estimado e consequência. Respostas de modelos, documentos importados, páginas web e serviços externos são dados não confiáveis e jamais podem sobrepor a política do proprietário.
+
+### 13. Catálogo de formatos e compatibilidade
+
+Manter uma matriz configurável/consultável de formatos e tarefas já suportados:
+- texto/LLM, embeddings, reranking, ASR, TTS, clonagem autorizada, áudio, imagem e documentos;
+- formatos de pesos e quantizações reconhecidos pelos runtimes instalados;
+- conversões que já tenham adaptadores validados;
+- idioma, arquitetura, tamanho, memória estimada, backend e dependências;
+- licenças, atribuições e restrições de redistribuição.
+
+A interface pode registrar modelos incompatíveis como arquivados/indisponíveis, mas não deve tentar executá-los nem converter formatos sem adaptador validado.
+
+### 14. Importar/exportar configurações e migrar a Garcia
+
+Oferecer exportação/importação de **pacotes de configuração não secretos**, contendo provedores, perfis, workflows, políticas, agentes, coleções (metadados) e preferências. O pacote deve:
+- ter esquema versionado, assinatura ou hash de integridade e validação antes da aplicação;
+- mostrar diferenças e permissões que serão adicionadas/alteradas;
+- permitir pré-visualizar, selecionar categorias e reverter;
+- excluir tokens, chaves privadas, cookies e segredos por padrão;
+- substituir referências secretas por etapas de reconexão OAuth/cadastro no cofre;
+- recusar campos desconhecidos perigosos, comandos e código executável.
+
+Isso permite migrar ou restaurar a configuração em outro aparelho/servidor sem transportar segredos indevidamente.
+
+### 15. Princípios de implementação para evitar retrabalho
+
+- Usar um registro central de capacidades e adaptadores versionados; evitar integrações duplicadas e configurações específicas espalhadas por telas.
+- Preferir esquemas declarativos validados para formulários, catálogos, perfis, workflows e endpoints.
+- Separar configuração, estado operacional, credenciais e artefatos.
+- Manter APIs internas estáveis e versionadas entre app, backend, agentes e workers.
+- Configurações devem ter validação, migração de esquema, backup não secreto, histórico e rollback.
+- Novos adaptadores precisam de testes automatizados, revisão de segurança, documentação, limites e política de desativação.
+- Não permitir que configuração remota altere código nativo, permissões Android, política de segurança ou confiança de certificados.
+- Recursos indisponíveis devem aparecer como planejados/não suportados, nunca como funcionais.
+- Toda operação deve informar se é configurável agora, depende de adaptador existente ou exige desenvolvimento.
+
+### Critérios gerais de aceite da central configurável
+
+- O proprietário consegue cadastrar múltiplas contas/instâncias por provedor e alterar seus parâmetros pela Garcia.
+- Consegue habilitar/desabilitar agentes, modelos, ferramentas, fontes, destinos, rotinas e notificações que já tenham adaptadores aprovados.
+- Consegue importar/exportar pacote de configuração sem segredos, visualizar diferenças e reverter.
+- Consegue acompanhar jobs e transferências, cancelar quando suportado e consultar logs sanitizados.
+- Consegue configurar permissões, limites e confirmações sem alterar código.
+- Configurações inválidas, não assinadas quando exigido, incompatíveis ou com capacidades desconhecidas falham de forma segura.
+- Não há execução arbitrária de código, elevação de privilégio por prompt/configuração ou exposição de segredos.
+- A interface diferencia claramente **configurável sem código**, **requer adaptador novo** e **não suportado**.
