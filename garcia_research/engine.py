@@ -250,6 +250,11 @@ class GarciaEngine:
             )
         except Exception as exc:
             logger.exception("Garcia Loop failed.")
+            if self.llm.breaker.is_open:
+                return self._error_response(
+                    "O provedor de linguagem falhou repetidamente e foi temporariamente isolado.",
+                    "Aguardar o circuit breaker liberar uma nova tentativa.",
+                )
             return self._error_response(
                 "A execução foi interrompida por uma falha controlada na recuperação ou geração.",
                 f"Falha operacional: {type(exc).__name__}.",
