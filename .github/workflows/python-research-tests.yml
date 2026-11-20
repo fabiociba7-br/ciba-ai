@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feat/garcia-research-package
+      - feat/garcia-cognitive-engine
     paths:
       - "garcia_research/**"
       - "tests/python/**"
