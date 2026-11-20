@@ -177,7 +177,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
     Column(Modifier.fillMaxWidth().heightIn(max = 540.dp).verticalScroll(rememberScrollState())) {
         Text("Crie um perfil com sua própria voz", style = MaterialTheme.typography.titleSmall)
         if (busy) { Spacer(Modifier.height(6.dp)); Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp); Text(status, fontSize = 12.sp) } }
-        Text("Importe uma gravação ou grave diretamente pelo microfone. A amostra fica armazenada na área privada da Garcia.", fontSize = 12.sp)
+        Text("Importe uma gravação ou grave diretamente pelo microfone. Prefira 10–15 segundos falando sozinho, perto do aparelho, em ambiente silencioso e sem música. A amostra fica na área privada da Garcia.", fontSize = 12.sp)
         Spacer(Modifier.height(10.dp))
         Text(if (modelsReady) "Modelos locais Chatterbox instalados e verificados por SHA-256." else "Para clonar a voz, instale aproximadamente 1,1 GB de modelos locais. O download é feito uma vez e fica no armazenamento privado.", fontSize = 12.sp)
         Text("A síntese roda em CPU (até quatro threads). A primeira carga e cada frase podem demorar conforme o aparelho; latência e consumo ainda precisam ser medidos no seu Android. O modelo é multilingual com português, não o fine-tune dedicado pt-BR.", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
