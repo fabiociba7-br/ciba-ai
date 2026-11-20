@@ -47,7 +47,9 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
     var modelsReady by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableStateOf<ChatterboxModelManager.DownloadProgress?>(null) }
-    var pendingModelUris by remember { mutableStateOf(emptyList<Uri>()) }
+    var pendingT3Uri by remember { mutableStateOf<Uri?>(null) }
+    var pendingS3Uri by remember { mutableStateOf<Uri?>(null) }
+    var modelPickerTarget by remember { mutableStateOf("T3") }
     val nativeAvailable = ChatterboxNative.isLibraryLoaded()
     var selectedFile by remember { mutableStateOf<File?>(null) }
     var profileName by remember { mutableStateOf("") }
@@ -74,24 +76,26 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
         status = if (initial.third != null) "Perfil local encontrado e validado." else "Nenhum perfil clonado está ativo."
     }
 
-    // Use two single-file picker passes instead of relying on providers that
-    // do not implement multi-select correctly. Model identity is determined by
-    // SHA-256, so users may choose T3 and S3Gen in either order.
-    val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            val selected = pendingModelUris + uri
-            if (selected.size < 2) {
-                pendingModelUris = selected
-                status = "Primeiro arquivo selecionado. Agora toque novamente em Importar modelos GGUF e escolha o segundo arquivo (T3 ou S3Gen)."
-            } else {
-                pendingModelUris = emptyList()
+    // Use the Android GetContent picker for broad compatibility with device
+    // document providers. The two files are selected in separate, explicit
+    // actions; their SHA-256 values, not their display names or selection order,
+    // determine whether they are the official T3 and S3Gen models.
+    val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) {
+            status = "Nenhum arquivo selecionado. Os modelos atuais foram preservados."
+        } else {
+            val selectedT3 = if (modelPickerTarget == "T3") uri else pendingT3Uri
+            val selectedS3 = if (modelPickerTarget == "S3Gen") uri else pendingS3Uri
+            pendingT3Uri = selectedT3
+            pendingS3Uri = selectedS3
+            val selected = listOfNotNull(selectedT3, selectedS3)
+            if (selected.size == 2) {
+                pendingT3Uri = null
+                pendingS3Uri = null
                 scope.launch {
                     busy = true
                     downloadProgress = null
-                    status = "Importando os dois modelos. A Garcia identifica T3 e S3Gen pelo SHA-256, independentemente da ordem..."
+                    status = "Importando T3 e S3Gen. Validando os dois arquivos pelos SHA-256 oficiais..."
                     try {
                         ChatterboxModelManager.importModels(context, selected) { progress -> downloadProgress = progress }
                         modelsReady = true
@@ -99,14 +103,18 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                         status = if (nativeAvailable) "T3 e S3Gen importados e verificados. Biblioteca nativa disponível; ouça a prévia para testar a inicialização e a síntese." else "Modelos verificados, mas a biblioteca nativa não está disponível para esta arquitetura."
                     } catch (error: Throwable) {
                         downloadProgress = null
-                        status = error.message ?: "Falha ao importar os modelos. Confira os arquivos e o espaço livre."
+                        status = error.message ?: "Falha ao importar os modelos. Os modelos anteriores foram preservados."
                     } finally {
                         busy = false
                     }
                 }
+            } else {
+                status = if (modelPickerTarget == "T3") {
+                    "Arquivo selecionado para T3. Agora toque em Selecionar S3Gen para escolher o segundo arquivo obrigatório."
+                } else {
+                    "Arquivo selecionado para S3Gen. Agora toque em Selecionar T3 para escolher o segundo arquivo obrigatório."
+                }
             }
-        } else if (pendingModelUris.isNotEmpty()) {
-            status = "Seleção pausada: o primeiro arquivo foi mantido. Selecione o segundo para concluir ou reinicie a seleção."
         }
     }
 
@@ -244,20 +252,34 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
             if (busy && downloadProgress != null) { val p = downloadProgress!!; val ratio = if (p.totalBytes > 0L) (p.downloadedBytes.toFloat() / p.totalBytes).coerceIn(0f, 1f) else 0f; Text("Importando ${p.fileName}", fontSize = 12.sp, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold); if (p.totalBytes > 0L) { LinearProgressIndicator(progress = { ratio }, modifier = Modifier.fillMaxWidth()); Text("${(ratio * 100).toInt()}% · ${p.downloadedBytes / (1024 * 1024)} MB de ${p.totalBytes / (1024 * 1024)} MB · faltam ${(p.totalBytes - p.downloadedBytes).coerceAtLeast(0) / (1024 * 1024)} MB", fontSize = 11.sp) } else { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()); Text("${p.downloadedBytes / (1024 * 1024)} MB importados", fontSize = 11.sp) } }
         }
         Text("Gerenciar modelos Chatterbox", style = MaterialTheme.typography.titleSmall)
-        OutlinedButton(
-            onClick = {
-                pendingModelUris = emptyList()
-                status = "Selecione o primeiro arquivo GGUF (T3 ou S3Gen). A importação pode ser refeita mesmo quando já existe um SHA-256 salvo."
-                modelPicker.launch(arrayOf("application/octet-stream", "application/x-gguf", "*/*"))
-            },
-            enabled = !busy,
-            modifier = Modifier.fillMaxWidth()
-        ) { Text(if (modelsReady) "Importar novamente / substituir modelos GGUF" else "Importar modelos GGUF do aparelho") }
         Text(
-            if (pendingModelUris.isEmpty()) {
-                if (modelsReady) "Os modelos atuais serão mantidos até os dois novos arquivos serem selecionados e validados. Escolha um GGUF por vez; a ordem não importa."
-                else "Selecione um arquivo GGUF por vez e depois o segundo. A Garcia confere os SHA-256 oficiais."
-            } else "1 de 2 arquivos selecionado. Toque novamente para escolher o segundo GGUF.",
+            if (modelsReady) "Os modelos atuais permanecem instalados até T3 e S3Gen serem selecionados e os dois SHA-256 oficiais serem validados."
+            else "São obrigatórios dois arquivos GGUF: T3 e S3Gen. Selecione cada um pelo botão correspondente; a ordem não altera a validação.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.secondary
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = {
+                    modelPickerTarget = "T3"
+                    status = "Abrindo o seletor de arquivos Android. Escolha o GGUF T3."
+                    modelPicker.launch("*/*")
+                },
+                enabled = !busy,
+                modifier = Modifier.weight(1f)
+            ) { Text(if (pendingT3Uri != null) "Trocar T3" else "Selecionar T3") }
+            OutlinedButton(
+                onClick = {
+                    modelPickerTarget = "S3Gen"
+                    status = "Abrindo o seletor de arquivos Android. Escolha o GGUF S3Gen."
+                    modelPicker.launch("*/*")
+                },
+                enabled = !busy,
+                modifier = Modifier.weight(1f)
+            ) { Text(if (pendingS3Uri != null) "Trocar S3Gen" else "Selecionar S3Gen") }
+        }
+        Text(
+            "T3: ${if (pendingT3Uri != null) "selecionado" else "pendente"} · S3Gen: ${if (pendingS3Uri != null) "selecionado" else "pendente"}",
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.secondary
         )
