@@ -284,6 +284,7 @@ class GarciaEngine:
                 except ValueError as exc:
                     candidate = {"raciocinio": "JSON inválido.", "resposta": "", "fontes": [],
                                  "confianca": 0.0, "lacunas": [str(exc)]}
+                candidate = self._ground_sources(candidate, context)
                 if self._validate_response(candidate, min_confidence=self.config.min_confidence,
                                            max_gaps=self.config.max_gaps):
                     yield StreamEvent("final", self._normalize(candidate))
