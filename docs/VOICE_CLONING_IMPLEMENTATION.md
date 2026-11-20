@@ -21,7 +21,7 @@ Status: implementação candidata na branch `feature/garcia-voice-cloning-mainli
 - Código upstream e modelo ResembleAI estão publicados sob MIT; o runtime ggml também é MIT.
 - Android module: `:chatterbox-runtime`, CMake/NDK, JNI, ABI `arm64-v8a` e `x86_64`.
 - Saída: PCM mono 24 kHz reproduzido por `AudioTrack`.
-- CPU-only, até quatro threads. Não há aceleração GPU ativada.
+- CPU-only, até quatro threads, com CFM multilingual ajustado para 7 passos. Não há aceleração GPU ativada; a latência ainda precisa ser medida em aparelho.
 
 ### Modelos
 
