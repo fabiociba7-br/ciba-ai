@@ -436,7 +436,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 GarciaLog.recordEvent(
                     context,
                     "Desempenho de voz",
-                    "Whisper: áudio ${audioDurationMs}ms · transcrição ${inferenceMs}ms · fator ${"%.2f".format(java.util.Locale.US, realtimeFactor)}x"
+                    "${if (parakeetEngine.isReady) "Parakeet PT-BR" else "Whisper"}: áudio ${audioDurationMs}ms · transcrição ${inferenceMs}ms · fator ${"%.2f".format(java.util.Locale.US, realtimeFactor)}x"
                 )
                 check(transcript.isNotBlank()) { "Não foi possível reconhecer fala nessa gravação." }
                 if (continuousVoice) {
@@ -454,20 +454,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             } catch (e: Exception) {
                 whisperStatus = e.message ?: "Falha na transcrição local"
                 GarciaLog.record(context, "Whisper transcrição", e)
-                if (continuousVoice && voiceReplies && streamingSpeech.isAvailable && !streamingUnavailable) {
-                    // Recover the current voice turn with Android's strictly on-device recognizer.
-                    streamingTranscript = ""
-                    streamingListening = streamingSpeech.start()
-                    if (streamingListening) {
-                        whisperStatus = "Whisper falhou nesta captura; fallback Android on-device ativo."
-                        GarciaLog.recordEvent(context, "Voz", "Fallback para reconhecimento Android on-device após falha do Whisper.")
-                    } else {
-                        continuousVoice = false
-                        context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
-                            .edit().putBoolean("continuous", false).apply()
-                        whisperStatus = "Whisper falhou e o fallback Android não iniciou. Verifique os logs de diagnóstico."
-                    }
-                } else if (continuousVoice) {
+                if (continuousVoice) {
                     continuousVoice = false
                     context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
                         .edit().putBoolean("continuous", false).apply()
@@ -481,14 +468,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         if (granted) {
             if (input.isNotBlank() || attachment != null || busy || whisperBusy) {
                 error = "Envie ou limpe o texto pendente antes de iniciar outra captura."
-            } else if (continuousVoice && whisperModelInfo == null && streamingSpeech.isAvailable && !streamingUnavailable) {
-                // Whisper is always the primary engine. Android on-device is fallback only.
-                streamingTranscript = ""
-                error = ""
-                streamingListening = streamingSpeech.start()
-                whisperStatus = if (streamingListening) "Fallback Android on-device ativo" else "Não foi possível iniciar o reconhecimento de voz."
-            } else if (whisperModelInfo == null) {
-                error = "Instale um modelo Whisper em Configurações antes de gravar."
+            } else if (!parakeetEngine.isReady && whisperModelInfo == null) {
+                error = "Instale um modelo em Configurações > Modelos e downloads antes de iniciar a conversa por voz."
             } else scope.launch {
                 try {
                     withContext(Dispatchers.IO) { whisperRecorder.start() }
@@ -516,18 +497,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             withContext(Dispatchers.IO) { whisperRecorder.cancel() }
                             whisperStatus = captureError.message ?: "A captura de voz foi interrompida."
                             GarciaLog.record(context, "Whisper captura", captureError)
-                            if (continuousVoice && voiceReplies && streamingSpeech.isAvailable && !streamingUnavailable) {
-                                streamingTranscript = ""
-                                streamingListening = streamingSpeech.start()
-                                if (streamingListening) {
-                                    whisperStatus = "Falha na captura Whisper; fallback Android on-device ativo."
-                                    GarciaLog.recordEvent(context, "Voz", "Fallback Android on-device após erro de captura Whisper.")
-                                } else {
-                                    continuousVoice = false
-                                    context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
-                                        .edit().putBoolean("continuous", false).apply()
-                                }
-                            } else if (continuousVoice) {
+                            if (continuousVoice) {
                                 continuousVoice = false
                                 context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
                                     .edit().putBoolean("continuous", false).apply()
@@ -569,6 +539,17 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 whisperModelInfo = info
                 whisperStatus = if (info != null) "Whisper pronto · SHA-256 ${info.sha256.take(12)}…" else "Modelo de voz não instalado"
             }.onFailure { whisperStatus = it.message ?: "Modelo salvo inválido"; GarciaLog.record(context, "Whisper inicialização", it) }
+            runCatching {
+                val saved = parakeetModelStore.status()
+                if (saved.installed) parakeetEngine.load(parakeetModelStore.modelDirectory())
+                saved
+            }.onSuccess { saved ->
+                parakeetModelStatus = saved
+                if (saved.installed) whisperStatus = "Parakeet PT-BR pronto · reconhecimento local ativo"
+            }.onFailure { failure ->
+                modelCatalogStatus = failure.message ?: "Falha ao carregar Parakeet PT-BR"
+                GarciaLog.record(context, "Parakeet inicialização", failure)
+            }
         }
     }
     var activation by remember { mutableStateOf("") }
@@ -1446,7 +1427,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         val voiceOptions = voiceOutput.availableVoices()
         val sectionTitle = when (settingsSection) {
             "voice" -> "Voz e conversação"
-            "speech" -> "Transcrição de voz"
+            "speech" -> "Modelos e downloads"
             "accounts" -> "Contas e integrações"
             "diagnostics" -> "Uso e diagnóstico"
             "privacy" -> "Privacidade e segurança"
@@ -1464,7 +1445,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         Spacer(Modifier.height(8.dp))
                         listOf(
                             "voice" to ("Voz e conversação" to "Escolha uma voz do Android e configure a conversa por voz"),
-                            "speech" to ("Transcrição de voz" to "Instalar, reparar ou remover o modelo Whisper"),
+                            "speech" to ("Modelos e downloads" to "Gerenciar reconhecimento de voz, modelos locais e atualizações"),
                             "accounts" to ("Contas e integrações" to "Facebook e serviços conectados"),
                             "composio" to ("Composio" to "Conectar Gmail e outros serviços com permissões controladas"),
                             "diagnostics" to ("Uso e diagnóstico" to "Consumo, logs e estado da conexão"),
@@ -1486,10 +1467,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     } else if (settingsSection == "voice") {
                         Text("Diagnóstico de áudio", fontWeight = FontWeight.Bold)
                         val inputStatus = when {
-                            whisperModelInfo != null && streamingSpeech.isAvailable && !streamingUnavailable -> "Whisper primário OK · Android on-device reserva disponível"
-                            whisperModelInfo != null -> "Whisper primário OK" + if (streamingUnavailable) " · reserva Android indisponível" else ""
-                            streamingSpeech.isAvailable && !streamingUnavailable -> "Android on-device (fallback; Whisper não instalado)"
-                            else -> "nenhum mecanismo local disponível"
+                            parakeetEngine.isReady -> "Parakeet PT-BR ativo"
+                            whisperModelInfo != null -> "Whisper local ativo"
+                            else -> "Nenhum modelo local instalado"
                         }
                         Text("Entrada: $inputStatus", color = Muted, fontSize = 12.sp)
                         Text("Saída: " + voiceOutput.diagnosticStatus(voiceAvailable, voiceStatus), color = Muted, fontSize = 12.sp)
