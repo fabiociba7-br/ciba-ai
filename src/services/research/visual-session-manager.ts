@@ -24,6 +24,10 @@ export class VisualSessionManager {
       .bind(sessionId, this.env.ownerId, this.env.appId, this.env.deviceId, topic, mode, now, now).run();
     return { sessionId, topic, mode, currentIteration: 1, latestImageR2Key: null, promptHistory: [] };
   }
+  async deleteEmptySession(sessionId: string): Promise<void> {
+    await this.env.DB.prepare("DELETE FROM visual_sessions WHERE session_id = ? AND owner_id = ? AND app_id = ? AND device_id = ? AND NOT EXISTS (SELECT 1 FROM visual_assets WHERE session_id = ?)")
+      .bind(sessionId, this.env.ownerId, this.env.appId, this.env.deviceId, sessionId).run();
+  }
   async getSession(sessionId: string): Promise<VisualSession> {
     const row = await this.env.DB.prepare("SELECT session_id, topic, mode, current_iteration, latest_image_r2_key, prompt_history FROM visual_sessions WHERE session_id = ? AND owner_id = ? AND app_id = ? AND device_id = ?")
       .bind(sessionId, this.env.ownerId, this.env.appId, this.env.deviceId).first<SessionRow>();
