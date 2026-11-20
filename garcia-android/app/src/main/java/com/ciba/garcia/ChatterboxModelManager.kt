@@ -180,6 +180,7 @@ internal object ChatterboxModelManager {
                 throw error
             }
             verifiedFiles[target.absolutePath] = FileStamp(target.length(), target.lastModified())
+            writeMarker(target, expectedSha256)
         } catch (error: Throwable) {
             temp.delete()
             throw error
@@ -209,8 +210,8 @@ internal object ChatterboxModelManager {
             newT3Installed = true
             check(stagedS3.renameTo(targetS3)) { "Não foi possível instalar o modelo S3Gen." }
             newS3Installed = true
-            File(targetT3.parentFile, T3 + ".sha256").writeText(T3_SHA256)
-            File(targetS3.parentFile, S3 + ".sha256").writeText(S3_SHA256)
+            writeMarker(targetT3, T3_SHA256)
+            writeMarker(targetS3, S3_SHA256)
             verifiedFiles[targetT3.absolutePath] = FileStamp(targetT3.length(), targetT3.lastModified())
             verifiedFiles[targetS3.absolutePath] = FileStamp(targetS3.length(), targetS3.lastModified())
         } catch (error: Throwable) {
@@ -232,14 +233,25 @@ internal object ChatterboxModelManager {
         if (!valid(file)) return false
         val stamp = FileStamp(file.length(), file.lastModified())
         if (verifiedFiles[file.absolutePath] == stamp) return true
+        val marker = File(file.parentFile, file.name + ".sha256")
+        val expectedMarker = "$expectedSha256:${stamp.length}:${stamp.modified}"
+        if (runCatching { marker.readText().trim() == expectedMarker }.getOrDefault(false)) {
+            verifiedFiles[file.absolutePath] = stamp
+            return true
+        }
         val matches = runCatching { sha256(file) == expectedSha256 }.getOrDefault(false)
         if (matches) {
             verifiedFiles[file.absolutePath] = stamp
-            File(file.parentFile, file.name + ".sha256").writeText(expectedSha256)
+            writeMarker(file, expectedSha256)
         } else {
             verifiedFiles.remove(file.absolutePath)
+            marker.delete()
         }
         return matches
+    }
+
+    private fun writeMarker(file: File, expectedSha256: String) {
+        File(file.parentFile, file.name + ".sha256").writeText("$expectedSha256:${file.length()}:${file.lastModified()}")
     }
 
     private fun sha256(file: File): String {
