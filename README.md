@@ -23,7 +23,7 @@ A franquia gratuita documentada pela Cloudflare é de 10.000 Neurons por dia. No
 
 ## Estado do projeto
 
-A assistente se chama **Garcia**. **Ciba AI** é somente o nome deste repositório e da infraestrutura de servidor Cloudflare que fornece a API. A Garcia é o produto de IA com identidade e aplicativo próprios. O Worker Ciba AI está publicado em `https://ciba-ai.fabiociba7.workers.dev`, com D1 conectado, migrations aplicadas, autenticação por dispositivo e limites de uso. O endpoint `/v1/status` confirmou o serviço pronto e a IA habilitada; uma inferência real ainda deverá ser validada na rodada final com o aplicativo. O projeto Android independente da Garcia está em [garcia-android/](garcia-android/), com interface nativa, conversa, histórico local criptografado e conexão com a API. A rota de pareamento do cliente corresponde a `POST /v1/owner/pair`. Após publicar a configuração que permite `com.ciba.garcia`, execute uma única vez o workflow `Provision Garcia Device`, confirmando a operação, para criar o proprietário privado e emitir os códigos únicos de ativação. O workflow `Ciba AI Deploy` publica automaticamente mudanças de backend na branch `main`, aplica migrations e verifica a saúde do Worker. Mudanças exclusivas no app Android ou na documentação não disparam deploy do servidor. O registro de ferramentas permanece opt-in e ainda não está conectado ao orquestrador ou à chamada do modelo.
+A assistente se chama **Garcia**. **Ciba AI** é somente o nome deste repositório e da infraestrutura de servidor Cloudflare que fornece a API. A Garcia é o produto de IA com identidade e aplicativo próprios. O Worker Ciba AI está publicado em `https://ciba-ai.fabiociba7.workers.dev`, com D1 conectado, migrations aplicadas, autenticação por dispositivo e limites de uso. O endpoint `/v1/status` confirmou o serviço pronto e a IA habilitada; uma inferência real ainda deverá ser validada na rodada final com o aplicativo. O projeto Android independente da Garcia está em [garcia-android/](garcia-android/), com interface nativa, conversa, histórico local criptografado e conexão com a API. A rota de pareamento do cliente corresponde a `POST /v1/owner/pair`. Após publicar a configuração que permite `com.ciba.garcia`, execute uma única vez o workflow `Provision Garcia Device`, confirmando a operação, para criar o proprietário privado e emitir os códigos únicos de ativação. O workflow `Ciba AI Deploy` publica automaticamente mudanças de backend na branch `main`, aplica migrations e verifica a saúde do Worker. Mudanças exclusivas no app Android ou na documentação não disparam deploy do servidor. O registro de ferramentas externas está conectado ao orquestrador com validação, autorização e aprovação durável; integrações externas continuam opt-in.
 
 ## Infraestrutura e expansão
 
@@ -116,11 +116,10 @@ A integração MCP HTTP da Garcia está descrita em [MCP.md](docs/MCP.md). A bib
 - As migrations `0004_minute_rate_limit.sql` e `0005_configurable_rate_limit.sql` criam o contador por minuto. A limpeza agendada remove registros antigos.
 
 
-## Pesquisa da Garcia (pacote Python opcional)
+## Pesquisa e Estúdio Visual da Garcia
 
-O pacote `garcia_research/` oferece pesquisa técnica com DuckDuckGo, síntese
-tipada e publicação Git opcional. Ele não substitui nem duplica o backend
-Cloudflare Worker; a integração LLM é feita por injeção de um adaptador
-compatível com `LLMClient`. Consulte [docs/GARCIA_RESEARCH.md](docs/GARCIA_RESEARCH.md).
-Os testes Python são independentes da suíte Vitest e podem ser executados com
-`python -m pip install -e ".[test]" && pytest`.
+A ferramenta `garcia.research` é executada nativamente pelo Cloudflare Worker em TypeScript. Pesquisa textual e Estúdio Visual usam Workers AI e DuckDuckGo; relatórios, imagens e versões ficam no R2, sessões e metadados no D1 e cache de prompts no KV. O GitHub é usado somente para o código-fonte. Não há GitHub Actions para executar pesquisas nem publicação de artefatos no repositório.
+
+O Estúdio Visual mantém sessões iterativas: a Garcia reaproveita o `session_id`, refina o prompt com o feedback e salva cada versão no R2. O cliente Android exibe as imagens diretamente no histórico da conversa.
+
+O pacote `garcia_research/` permanece como ferramenta Python local e opcional para testes/desenvolvimento; não é executado pelo Worker e não publica artefatos. Consulte [docs/RESEARCH_WORKER_GUIDE.md](docs/RESEARCH_WORKER_GUIDE.md) para configurar R2, D1, KV, modelos e executar `wrangler dev`. Consulte [docs/GARCIA_RESEARCH.md](docs/GARCIA_RESEARCH.md) para o pacote local.
