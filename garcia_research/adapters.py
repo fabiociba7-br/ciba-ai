@@ -84,6 +84,35 @@ class LocalPromptAdapter:
         }, ensure_ascii=False)
 
 
+class OpenAIAdapter:
+    """OpenAI Chat Completions adapter using an explicit API key."""
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "gpt-4o-mini",
+        timeout_seconds: float = 45.0,
+    ) -> None:
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        if not self.api_key:
+            raise ValueError("OPENAI_API_KEY is required for OpenAIAdapter.")
+        self.model = model
+        self.timeout_seconds = timeout_seconds
+        self.session = requests.Session()
+
+    def generate(self, prompt: str) -> str:
+        response = self.session.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {self.api_key}",
+                     "Content-Type": "application/json"},
+            json={"model": self.model, "temperature": 0.2,
+                  "messages": [{"role": "user", "content": prompt}]},
+            timeout=self.timeout_seconds,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload["choices"][0]["message"]["content"]
+
     def generate_stream(self, prompt: str) -> Iterator[str]:
         """Yield content deltas from the OpenAI-compatible SSE stream."""
         response = self.session.post(
@@ -116,36 +145,6 @@ class LocalPromptAdapter:
                     continue
         finally:
             response.close()
-
-
-class OpenAIAdapter:
-    """OpenAI Chat Completions adapter using an explicit API key."""
-
-    def __init__(
-        self,
-        api_key: str | None = None,
-        model: str = "gpt-4o-mini",
-        timeout_seconds: float = 45.0,
-    ) -> None:
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        if not self.api_key:
-            raise ValueError("OPENAI_API_KEY is required for OpenAIAdapter.")
-        self.model = model
-        self.timeout_seconds = timeout_seconds
-        self.session = requests.Session()
-
-    def generate(self, prompt: str) -> str:
-        response = self.session.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {self.api_key}",
-                     "Content-Type": "application/json"},
-            json={"model": self.model, "temperature": 0.2,
-                  "messages": [{"role": "user", "content": prompt}]},
-            timeout=self.timeout_seconds,
-        )
-        response.raise_for_status()
-        payload = response.json()
-        return payload["choices"][0]["message"]["content"]
 
 
 class GarciaLLMAdapter:
