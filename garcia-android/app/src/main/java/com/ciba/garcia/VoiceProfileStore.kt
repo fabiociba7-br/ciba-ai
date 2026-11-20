@@ -137,7 +137,7 @@ internal class VoiceProfileStore(context: Context) {
     fun currentName(): String = currentProfile()?.name.orEmpty()
 
     fun select(profile: GarciaVoiceProfile) {
-        val verified = profiles().firstOrNull { it.id == profile.id } ?: error("O perfil de voz não passou na validação local.")
+        require(isInside(root, profile.sample) && isInside(root, profile.wav) && profile.sample.isFile && profile.wav.isFile) { "O perfil de voz não está no armazenamento privado da Garcia." }
         val currentVoice = voicePrefs.getString("voice_id", null)
         val editor = voicePrefs.edit()
             .putString("voice_mode", "cloned")
