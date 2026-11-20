@@ -324,12 +324,14 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
         selectedFile?.let { file ->
             Text("Amostra: ${file.name} · ${(file.length() / 1024)} KB", fontSize = 12.sp)
             OutlinedTextField(value = profileName, onValueChange = { profileName = it }, label = { Text("Nome do perfil") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            store.activeProfileId()?.let { activeId ->
+            profiles.firstOrNull { it.sample == file }?.let { selectedProfile ->
                 TextButton(onClick = {
                     runCatching {
-                        store.rename(activeId, profileName)
-                        profiles = store.profiles()
-                        status = "Perfil renomeado."
+                        store.rename(selectedProfile.id, profileName)
+                        scope.launch {
+                            profiles = withContext(Dispatchers.IO) { store.profiles() }
+                            status = "Perfil renomeado."
+                        }
                     }.onFailure { status = it.message ?: "Não foi possível renomear o perfil." }
                 }, enabled = profileName.isNotBlank() && !busy) { Text("Renomear perfil") }
             }
