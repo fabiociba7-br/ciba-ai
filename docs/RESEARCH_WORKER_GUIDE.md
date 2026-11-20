@@ -47,7 +47,7 @@ Para executar sem publicar, configure GITHUB_RESEARCH_PUBLISH=false no ambiente 
 - Os resultados externos são dados não confiáveis para o prompt de síntese.
 - A publicação usa GitHub Contents API, lê o SHA atual quando o arquivo existe e envia sha no update. Não há force push. HTTP 409/422 e proteção de branch resultam em erro explícito.
 - O limite da ferramenta no registry é de 45 segundos. Pesquisas profundas podem exceder limites operacionais; reduza depth ou separe a execução se a latência do provider crescer.
-- O GITHUB_TOKEN ausente desabilita a publicação; a pesquisa ainda pode retornar relatório sem commit. Se a publicação estiver habilitada e o token estiver presente, erros de GitHub não são silenciosamente ignorados.
+- Com GITHUB_RESEARCH_PUBLISH=false, a pesquisa não publica. Quando GITHUB_RESEARCH_PUBLISH=true, GITHUB_TOKEN e GITHUB_REPOSITORY são obrigatórios; a ausência deles falha explicitamente. Se a publicação estiver habilitada, erros do GitHub não são silenciosamente ignorados.
 
 ## Teste local
 
