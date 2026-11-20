@@ -1444,6 +1444,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             "privacy" -> "Privacidade e segurança"
             "agents" -> "Agentes e tarefas"
             "composio" -> "Integrações Composio"
+            "connections" -> "Conexões e capacidades"
             else -> "Configurações da Garcia"
         }
         AlertDialog(
@@ -1459,6 +1460,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             "speech" to ("Transcrição de voz" to "Instalar, reparar ou remover o modelo Whisper"),
                             "accounts" to ("Contas e integrações" to "Facebook e serviços conectados"),
                             "composio" to ("Composio" to "Conectar Gmail e outros serviços com permissões controladas"),
+                            "connections" to ("Conexões e capacidades" to "Cadastrar provedores, contas, servidores e destinos"),
                             "diagnostics" to ("Uso e diagnóstico" to "Consumo, logs e estado da conexão"),
                             "privacy" to ("Privacidade e segurança" to "Como credenciais, histórico e navegação são tratados"),
                             "agents" to ("Agentes e tarefas" to "Enviar tarefas para agentes especializados e acompanhar a execução")
@@ -1597,6 +1599,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         if (usage.isNotBlank()) { Text("Uso diário", fontWeight = FontWeight.Bold); Text(usage, color = Muted, fontSize = 13.sp) }
                         if (usageError.isNotBlank()) Text(usageError, color = Color(0xFFB94F7C), fontSize = 13.sp)
                         OutlinedButton(onClick = { logs = GarciaLog.read(context); showSettings = false; showLogs = true }, modifier = Modifier.fillMaxWidth()) { Text("Ver logs de diagnóstico") }
+                    } else if (settingsSection == "connections") {
+                        ConnectionsSettingsScreen(store)
                     } else if (settingsSection == "agents") {
                         Text("Execute uma tarefa em segundo plano usando um agente isolado da Garcia.", color = Muted, fontSize = 12.sp)
                         Spacer(Modifier.height(8.dp))
