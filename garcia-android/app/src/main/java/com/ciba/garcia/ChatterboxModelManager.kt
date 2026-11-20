@@ -24,7 +24,6 @@ internal object ChatterboxModelManager {
 
     data class Models(val t3: File, val s3: File)
     data class DownloadProgress(val fileName: String, val downloadedBytes: Long, val totalBytes: Long)
-    private data class FileStamp(val length: Long, val modified: Long)
 
     fun installed(context: Context): Models? {
         val dir = File(context.filesDir, "chatterbox-models")
