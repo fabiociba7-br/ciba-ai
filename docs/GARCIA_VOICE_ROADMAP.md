@@ -96,7 +96,7 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - `VoiceProfileStore` mantém gravação, WAV normalizado, metadados e SHA-256 no storage privado do app.
 - `VoiceCloneEngine` define contrato local; `ChatterboxVoiceCloneEngine` implementa o adaptador nativo. A prévia não altera a seleção ativa.
 - `LocalSpeechOutput` separa os modos `SYSTEM` e `CLONED`. Falha do clone não faz fallback silencioso para TTS do sistema.
-- Referência de 5–30 s; recomendação de 10–15 s de fala clara. Normalização para WAV PCM mono, 24 kHz, 16 bits.
+- Referência de 5–30 s; recomendação de 10–15 s de fala clara. Normalização para WAV PCM mono, 24 kHz, 16 bits; validação básica rejeita silêncio/volume muito baixo, WAV truncado e clipping extremo.
 - Modelos GGUF Q4_0 (aprox. 1,1 GB no total) ficam fora do Git e são verificados por SHA-256 antes do uso.
 - O código e os modelos são locais; áudio de referência, condicionamento e PCM sintetizado não são enviados ao Worker.
 - A compilação Kotlin isolada não valida inferência. CI CMake/NDK e teste auditivo/performance em aparelho real continuam obrigatórios.
