@@ -39,10 +39,11 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - Gate: testes com frases curtas/longas em pt-BR, números, pontuação, ruído e interrupção; confirmar que áudio não sai do aparelho.
 
 ### Etapa 4 — selecionar e validar o novo motor de síntese e clonagem
-**Estado em 20/11/2026: Pocket TTS selecionado para a primeira prova de integração Android via mecanismo TTS complementar. A Garcia já possui a entrada Configurações → Clonagem de voz e abre/encaminha ao Pocket TTS Android Engine; runtime e modelo ainda não são considerados prontos. NeuTTS continua aguardando auditoria separada.**
+**Estado em 20/11/2026: decisão alterada por preferência explícita do proprietário. Pocket TTS deverá ser integrado como runtime nativo dentro da Garcia (Kotlin/JNI/C++); não usar aplicativo complementar nem depender do mecanismo TTS externo do Android. A PR anterior com launcher do companion é apenas base transitória e não deve ser mesclada como solução final. Runtime/modelo ainda não estão prontos. NeuTTS continua aguardando auditoria separada.**
 - Comparar os modelos indicados pelo proprietário, sem presumir compatibilidade ou disponibilidade.
 - Verificar separadamente licença do código e dos pesos, suporte real a português brasileiro, requisitos de memória, GPU, latência e limites do provedor.
 - Testar primeiro em ambiente isolado, sem alterar o aplicativo Android.
+- Integrar PocketTTS.cpp/ONNX Runtime por JNI dentro da Garcia, com gerenciamento privado de modelos e perfis WAV; não depender de outro aplicativo.
 - Definir uma interface independente do modelo para permitir substituição sem reescrever a camada de áudio.
 - Gate: testes de qualidade, desempenho, privacidade e licença aprovados antes da integração.
  
