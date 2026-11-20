@@ -10,6 +10,12 @@ on:
     paths:
       - "garcia-android/**"
       - ".github/workflows/garcia-android-compile-check.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "garcia-android/**"
+      - ".github/workflows/garcia-android-compile-check.yml"
 
 permissions:
   contents: read
