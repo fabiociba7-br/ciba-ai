@@ -5,7 +5,7 @@ import type { ResearchEnv, ResearchToolInput } from "./types";
 
 type ImageMime = "image/png" | "image/jpeg" | "image/webp";
 interface ImageBytes { bytes: Uint8Array; mimeType: ImageMime; }
-interface VisionResult { score: number; analysis: string; }
+interface VisionResult { score: number; analysis: string; available: boolean; }
 function textFromAI(value: unknown): string {
   if (!value || typeof value !== "object" || Array.isArray(value)) return "";
   const x = value as { response?: unknown; result?: unknown; choices?: unknown };
@@ -100,7 +100,7 @@ async function analyzeImage(env: ResearchEnv, image: ImageBytes, prompt: string,
     return { score: Math.min(100, Math.max(0, Number(parsed?.score) || 50)),
       analysis: typeof parsed?.analysis === "string" ? parsed.analysis.slice(0, 1800) : "Imagem analisada; valide visualmente a aderência ao pedido." };
   } catch {
-    return { score: 50, analysis: "A imagem foi armazenada. A análise automática de visão não ficou disponível nesta execução." };
+    return { score: 0, available: false, analysis: "A análise automática de visão não ficou disponível nesta execução." };
   }
 }
 export interface VisualStudioResult {
@@ -143,9 +143,9 @@ export class VisualCurator {
         const downloaded = await this.imageSearch.download(candidate);
         if (!downloaded) continue;
         const candidateAnalysis = await analyzeImage(this.env, downloaded, prompt, feedback);
-        if (!best || candidateAnalysis.score > best.analysis.score) best = { image: downloaded, analysis: candidateAnalysis, candidate };
+        if (candidateAnalysis.available && (!best || candidateAnalysis.score > best.analysis.score)) best = { image: downloaded, analysis: candidateAnalysis, candidate };
       }
-      if (!best) throw new Error("visual_search_no_usable_images");
+      if (!best) throw new Error("visual_search_no_vision_curated_images");
       image = best.image; analysis = best.analysis; sourceUrl = best.candidate.pageUrl;
     } else {
       const imageInput: Record<string, unknown> = { prompt, quality: "medium", size: "1024x1024" };
