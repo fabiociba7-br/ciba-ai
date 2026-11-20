@@ -295,6 +295,13 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var input by remember { mutableStateOf("") }
     var attachment by remember { mutableStateOf<GarciaAttachment?>(null) }
     val whisperModelStore = remember { WhisperModelStore(context) }
+    val parakeetModelStore = remember { ParakeetModelStore(context) }
+    val parakeetEngine = remember { ParakeetAsrEngine() }
+    var parakeetModelStatus by remember { mutableStateOf(parakeetModelStore.status()) }
+    var parakeetBusy by remember { mutableStateOf(false) }
+    var parakeetProgress by remember { mutableIntStateOf(0) }
+    var modelCatalogStatus by remember { mutableStateOf("Catálogo ainda não consultado") }
+    var modelUpdateAvailable by remember { mutableStateOf(false) }
     val whisperRecorder = remember { WhisperAudioRecorder() }
     var whisperModelInfo by remember { mutableStateOf<WhisperModelStore.ModelInfo?>(null) }
     var whisperStatus by remember { mutableStateOf("Modelo de voz não instalado") }
@@ -356,7 +363,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             { voiceSpeaking = true }
         )
     }
-    DisposableEffect(voiceOutput) { onDispose { voiceOutput.shutdown(); whisperRecorder.cancel() } }
+    DisposableEffect(voiceOutput) { onDispose { voiceOutput.shutdown(); whisperRecorder.cancel(); parakeetEngine.release() } }
     var showAttachmentOptions by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Verificando conexão…") }
@@ -416,13 +423,14 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 val transcriptionStartedAt = SystemClock.elapsedRealtime()
                 val transcript = try {
                     check(samples.size >= 1600) { "Gravação muito curta. Fale por pelo menos um segundo." }
-                    val result = withContext(Dispatchers.Default) {
-                        JSONObject(WhisperNative.nativeTranscribe(samples, "pt", Runtime.getRuntime().availableProcessors().coerceIn(2, 4)))
+                    withContext(Dispatchers.Default) {
+                        if (parakeetEngine.isReady) parakeetEngine.transcribe(samples)
+                        else {
+                            check(whisperModelInfo != null) { "Instale o modelo Parakeet PT-BR ou Whisper em Configurações > Modelos e downloads." }
+                            JSONObject(WhisperNative.nativeTranscribe(samples, "pt", Runtime.getRuntime().availableProcessors().coerceIn(2, 4))).optString("text").trim()
+                        }
                     }
-                    result.optString("text").trim()
-                } finally {
-                    samples.fill(0f)
-                }
+                } finally { samples.fill(0f) }
                 val inferenceMs = SystemClock.elapsedRealtime() - transcriptionStartedAt
                 val realtimeFactor = if (audioDurationMs > 0) inferenceMs.toDouble() / audioDurationMs else 0.0
                 GarciaLog.recordEvent(
