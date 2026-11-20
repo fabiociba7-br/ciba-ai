@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: garcia-android-release-${{ github.ref }}
@@ -109,7 +109,7 @@ jobs:
           sha256sum "$APK" | tee "$RUNNER_TEMP/garcia-apk-sha256.txt"
           echo "Verified package=$PACKAGE versionCode=$APK_VERSION_CODE versionName=$APK_VERSION_NAME"
 
-      - name: Upload signed APK
+      - name: Upload signed APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: Garcia-${{ steps.resolve-version.outputs.version_name }}-run-${{ github.run_number }}
@@ -118,3 +118,22 @@ jobs:
             ${{ runner.temp }}/garcia-apk-sha256.txt
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish direct APK on GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION_NAME }}
+          name: Garcia ${{ env.VERSION_NAME }}
+          body: |
+            Signed Android APK for Garcia ${{ env.VERSION_NAME }}.
+
+            Package: com.ciba.garcia
+            Version code: ${{ env.VERSION_CODE }}
+
+            The APK and SHA-256 checksum are attached directly to this GitHub Release.
+          files: |
+            garcia-android/app/build/outputs/apk/release/*.apk
+            ${{ runner.temp }}/garcia-apk-sha256.txt
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false
