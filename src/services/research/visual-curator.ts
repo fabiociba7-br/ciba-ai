@@ -153,8 +153,8 @@ export class VisualCurator {
     } else {
       const form = new FormData();
       form.set("prompt", prompt);
-      form.set("width", "512");
-      form.set("height", "512");
+      form.set("width", "480");
+      form.set("height", "480");
       form.set("guidance", "3.5");
       if (previousImage) {
         form.set("input_image_0", new Blob([previousImage.bytes], { type: previousImage.mimeType }), "previous-iteration." +
