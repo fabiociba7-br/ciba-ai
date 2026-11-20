@@ -160,7 +160,9 @@ export class VisualCurator {
         form.set("height", "480");
         form.set("guidance", "3.5");
         if (previousImage) {
-          form.set("input_image_0", new Blob([previousImage.bytes], { type: previousImage.mimeType }), "previous-iteration." +
+          const inputBytes = previousImage.bytes.buffer.slice(previousImage.bytes.byteOffset,
+            previousImage.bytes.byteOffset + previousImage.bytes.byteLength) as ArrayBuffer;
+          form.set("input_image_0", new Blob([inputBytes], { type: previousImage.mimeType }), "previous-iteration." +
             (previousImage.mimeType === "image/jpeg" ? "jpg" : previousImage.mimeType === "image/webp" ? "webp" : "png"));
         }
         const serialized = new Response(form);
