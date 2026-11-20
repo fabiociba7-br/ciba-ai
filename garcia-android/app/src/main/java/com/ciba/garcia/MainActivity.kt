@@ -1384,6 +1384,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         val voiceOptions = voiceOutput.availableVoices()
         val sectionTitle = when (settingsSection) {
             "voice" -> "Voz e conversação"
+            "voiceClone" -> "Clonar minha voz"
             "speech" -> "Transcrição de voz"
             "accounts" -> "Contas e integrações"
             "diagnostics" -> "Uso e diagnóstico"
@@ -1401,7 +1402,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         Text("Escolha uma área para configurar.", color = Muted, fontSize = 13.sp)
                         Spacer(Modifier.height(8.dp))
                         listOf(
-                            "voice" to ("Voz e conversação" to "Escolha uma voz, ouça amostras e configure a conversa por voz"),
+                            "voice" to ("Voz e conversação" to "Escolha uma voz do Android e configure a conversa por voz"),
+                            "voiceClone" to ("Clonar minha voz" to "Gravar ou importar uma referência, testar e ativar um perfil local"),
                             "speech" to ("Transcrição de voz" to "Instalar, reparar ou remover o modelo Whisper"),
                             "accounts" to ("Contas e integrações" to "Facebook e serviços conectados"),
                             "composio" to ("Composio" to "Conectar Gmail e outros serviços com permissões controladas"),
@@ -1437,10 +1439,10 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     }
                                     TextButton(onClick = {
                                         if (!voiceOutput.previewVoice(voice.id)) error = "Não foi possível reproduzir a amostra desta voz."
-                                    }, enabled = voiceAvailable) { Text("Ouvir") }
+                                    }, enabled = voiceOutput.isSystemReady()) { Text("Ouvir") }
                                     TextButton(onClick = {
                                         if (!voiceOutput.selectVoice(voice.id)) error = "Não foi possível selecionar esta voz."
-                                    }, enabled = voiceAvailable && !selected) { Text(if (selected) "Atual" else "Usar") }
+                                    }, enabled = voiceOutput.isSystemReady() && !selected) { Text(if (selected) "Atual" else "Usar") }
                                 }
                                 HorizontalDivider()
                             }
@@ -1477,6 +1479,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             }, enabled = voiceAvailable && voiceReplies && (whisperModelInfo != null || streamingSpeech.isAvailable) && !busy && !whisperRecording && !streamingListening)
                         }
                         Text(if (streamingSpeech.isAvailable) "No modo de conversa por voz, a Garcia responde falando. Fora desse modo, as respostas aparecem somente em texto. O reconhecimento de fala é offline e o áudio não é enviado ao servidor." else "No modo de conversa por voz, a Garcia responde falando. Fora desse modo, as respostas aparecem somente em texto. A fala é transcrita localmente pelo Whisper; o áudio bruto não é enviado ao servidor.", color = Muted, fontSize = 11.sp)
+                    } else if (settingsSection == "voiceClone") {
+                        VoiceCloningSection(voiceOutput)
                     } else if (settingsSection == "speech") {
                         Text("Modelo de transcrição local", fontWeight = FontWeight.Bold)
                         Text(whisperStatus, color = Muted, fontSize = 12.sp)
