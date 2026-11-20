@@ -1,0 +1,31 @@
+{
+  "type": "function",
+  "function": {
+    "name": "garcia_research",
+    "description": "Research a security or technology topic using the Garcia Research Pipeline. Returns an evidence-based report with source URLs, insights, and publication status. Use for questions requiring current external technical research; do not use for ordinary explanations.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "type": "string",
+          "description": "Technical or security topic to investigate.",
+          "minLength": 3,
+          "maxLength": 300
+        },
+        "depth": {
+          "type": "string",
+          "enum": ["quick", "standard", "deep"],
+          "description": "Research breadth: quick (2 queries), standard (5), deep (up to 8)."
+        },
+        "focus": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 80},
+          "maxItems": 8,
+          "description": "Optional keywords or aspects to emphasize."
+        }
+      },
+      "required": ["topic"],
+      "additionalProperties": false
+    }
+  }
+}
