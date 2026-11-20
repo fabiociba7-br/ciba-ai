@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - refactor/backend-modularization
+      - feat/garcia-research-package
     paths:
       - "src/**"
       - "tests/**"
@@ -12,6 +13,7 @@ on:
       - "tsconfig.json"
       - "vitest.config.ts"
       - "wrangler.test.toml"
+      - "wrangler.toml"
       - ".github/workflows/backend-refactor-ci.yml"
   pull_request:
     branches:
