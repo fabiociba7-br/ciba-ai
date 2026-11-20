@@ -1,13 +1,10 @@
-name: Garcia Android Compile Check
+name: Garcia Android CI + Signed Release
 
-# Android source changes are compiled automatically; no APK is assembled.
 on:
   workflow_dispatch:
   push:
     branches:
       - main
-      - feat/garcia-research-package
-      - feature/garcia-voice-cloning-mainline
     paths:
       - "garcia-android/**"
       - ".github/workflows/garcia-android-compile-check.yml"
@@ -19,25 +16,58 @@ on:
       - ".github/workflows/garcia-android-compile-check.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: garcia-android-compile-check
-  cancel-in-progress: true
+  group: garcia-android-pipeline-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  compile:
-    name: Compile Android sources without producing an APK
+  validate-and-release:
+    name: Validate, build and publish Garcia
     runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      FACEBOOK_CLIENT_TOKEN: ${{ secrets.FACEBOOK_CLIENT_TOKEN }}
     defaults:
       run:
         working-directory: garcia-android
     steps:
-      - name: Checkout selected branch
+      - name: Checkout source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref }}
           fetch-depth: 1
+
+      - name: Resolve release version from gradle.properties
+        id: resolve-version
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION_NAME="$(sed -n 's/^VERSION_NAME=//p' gradle.properties | head -n 1)"
+          VERSION_CODE="$(sed -n 's/^VERSION_CODE=//p' gradle.properties | head -n 1)"
+          [[ "$VERSION_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$ ]] || { echo "::error::Invalid or missing VERSION_NAME in gradle.properties"; exit 1; }
+          [[ "$VERSION_CODE" =~ ^[0-9]+$ ]] || { echo "::error::Invalid or missing VERSION_CODE in gradle.properties"; exit 1; }
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "Release source of truth: versionName=$VERSION_NAME versionCode=$VERSION_CODE"
+
+      - name: Validate signing and Facebook secrets
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64" || { echo "::error::Missing ANDROID_KEYSTORE_BASE64"; exit 1; }
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo "::error::Missing ANDROID_KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$ANDROID_KEY_ALIAS" || { echo "::error::Missing ANDROID_KEY_ALIAS"; exit 1; }
+          test -n "$ANDROID_KEY_PASSWORD" || { echo "::error::Missing ANDROID_KEY_PASSWORD"; exit 1; }
+          test -n "$FACEBOOK_CLIENT_TOKEN" || { echo "::error::Missing FACEBOOK_CLIENT_TOKEN"; exit 1; }
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -55,5 +85,78 @@ jobs:
         with:
           gradle-version: "8.13"
 
-      - name: Run unit tests and compile Android sources only
+      - name: Restore private signing key
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/garcia-release.jks"
+          chmod 600 "$RUNNER_TEMP/garcia-release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/garcia-release.jks" >> "$GITHUB_ENV"
+
+      - name: Run tests and compile pull-request sources
+        if: github.event_name == 'pull_request'
         run: gradle --no-daemon :app:testDebugUnitTest :app:compileDebugKotlin :app:externalNativeBuildDebug :chatterbox-runtime:externalNativeBuildDebug
+
+      - name: Run tests and build signed release APK
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Testing and building applicationId=com.ciba.garcia versionCode=$VERSION_CODE versionName=$VERSION_NAME"
+          gradle --no-daemon :app:testDebugUnitTest :app:assembleRelease \
+            "-PVERSION_CODE=$VERSION_CODE" \
+            "-PVERSION_NAME=$VERSION_NAME"
+
+      - name: Verify package, version and APK signature
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -maxdepth 1 -name '*.apk' -print -quit)"
+          test -n "$APK" || { echo "::error::Release APK was not generated"; exit 1; }
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          BADGING="$("$AAPT" dump badging "$APK")"
+          PACKAGE="$(sed -n "s/^package: name='\\([^']*\\)'.*/\\1/p" <<< "$BADGING")"
+          APK_VERSION_CODE="$(sed -n "s/^package:.*versionCode='\\([^']*\\)'.*/\\1/p" <<< "$BADGING")"
+          APK_VERSION_NAME="$(sed -n "s/^package:.*versionName='\\([^']*\\)'.*/\\1/p" <<< "$BADGING")"
+          test "$PACKAGE" = "com.ciba.garcia" || { echo "::error::Wrong package: $PACKAGE"; exit 1; }
+          test "$APK_VERSION_CODE" = "$VERSION_CODE" || { echo "::error::Wrong version code: expected $VERSION_CODE, got $APK_VERSION_CODE"; exit 1; }
+          test "$APK_VERSION_NAME" = "$VERSION_NAME" || { echo "::error::Wrong version name: expected $VERSION_NAME, got $APK_VERSION_NAME"; exit 1; }
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK"
+          sha256sum "$APK" | tee "$RUNNER_TEMP/garcia-apk-sha256.txt"
+          echo "Verified package=$PACKAGE versionCode=$APK_VERSION_CODE versionName=$APK_VERSION_NAME"
+
+      - name: Upload signed APK artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Garcia-${{ steps.resolve-version.outputs.version_name }}-run-${{ github.run_number }}
+          path: |
+            garcia-android/app/build/outputs/apk/release/*.apk
+            ${{ runner.temp }}/garcia-apk-sha256.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish direct APK on GitHub Release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION_NAME }}
+          name: Garcia ${{ env.VERSION_NAME }}
+          body: |
+            Signed Android APK for Garcia ${{ env.VERSION_NAME }}.
+
+            Package: com.ciba.garcia
+            Version code: ${{ env.VERSION_CODE }}
+
+            The APK and SHA-256 checksum are attached directly to this GitHub Release.
+          files: |
+            garcia-android/app/build/outputs/apk/release/*.apk
+            ${{ runner.temp }}/garcia-apk-sha256.txt
+          fail_on_unmatched_files: true
+          overwrite_files: true
+          draft: false
+          prerelease: false
