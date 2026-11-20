@@ -58,6 +58,7 @@ import { isAppAllowed } from "./core/apps/access";
 import { readRuntimeSettings, CONFIG_KEYS, publicConfig } from "./core/runtime-settings";
 import { requireCibaGenioAccess } from "./core/cibagenio-access";
 import { createRuntimeProviderRegistry } from "./core/runtime-provider-registry";
+import { facebookCapabilities } from "./core/facebook/capabilities";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
@@ -283,14 +284,7 @@ const handlePairOwner = async (request: Request, env: Env) => {
 };
 
 
-const facebookCapabilities = (permissions: string[]) => ({
-  profile: permissions.includes("public_profile"),
-  personal_posts: permissions.includes("user_posts"),
-  personal_photos: permissions.includes("user_photos") || permissions.includes("user_posts"),
-  personal_videos: permissions.includes("user_videos"),
-  page_features: false,
-  personal_messenger_inbox: false,
-});
+
 
 const handleOwnerComposioSession = async (request: Request, env: Env) => {
   const device = await authenticateDevice(request, env);
