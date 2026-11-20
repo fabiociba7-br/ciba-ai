@@ -18,7 +18,7 @@ export function renderResearchMarkdown(report: ResearchReport): string {
 export async function verifySignedArtifactUrl(secret: string, key: string, expires: number, signature: string): Promise<boolean> {
   const now = Math.floor(Date.now() / 1000);
   if (!key.startsWith("owners/") || key.includes("..") || !Number.isInteger(expires) || expires < now || expires > now + 86400) return false;
-  const expected = await hmac(secret, key + "\\n" + expires);
+  const expected = await hmac(secret, key + "\n" + expires);
   if (expected.length !== signature.length) return false;
   let diff = 0; for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
   return diff === 0;
