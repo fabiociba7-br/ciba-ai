@@ -53,7 +53,7 @@ Nenhum pacote Python, peso de modelo, checkpoint, binário nativo ou arquivo de 
 
 ## Runtime Android incorporado — separado do bridge desktop
 
-A branch candidata `feature/garcia-voice-cloning-mainline` adiciona um runtime Android independente:
+A branch candidata `feature/garcia-voice-cloning-mainline` (PR #36, em rascunho) adiciona um runtime Android independente:
 
 - `android_embedded`: módulo C++/GGML via JNI, sem Python/PyTorch, sem Worker e sem serviço TTS externo.
 - Engine escolhida para validação: `gianni-cor/chatterbox.cpp`, commit `ddca05fb69c2910b0d7b5eae420d360ed98c067b`, com patch local para o caminho multilingual.
