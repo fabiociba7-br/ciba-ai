@@ -17,7 +17,7 @@ export function renderResearchMarkdown(report: ResearchReport): string {
 }
 export async function verifySignedArtifactUrl(secret: string, key: string, expires: number, signature: string): Promise<boolean> {
   const now = Math.floor(Date.now() / 1000);
-  if (!key.startsWith("owners/") || key.includes("..") || !Number.isInteger(expires) || expires < now || expires > now + 86400) return false;
+  if (!key.startsWith("owners/") || key.includes("..") || !Number.isInteger(expires) || expires < now || expires > now + 2592000) return false;
   const expected = await hmac(secret, key + "\n" + expires);
   if (expected.length !== signature.length) return false;
   let diff = 0; for (let i = 0; i < expected.length; i++) diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
@@ -29,7 +29,7 @@ export class CloudflareArtifactPublisher {
   async signedUrl(key: string): Promise<string> {
     if (!key.startsWith(this.ownerPrefix())) throw new Error("artifact_owner_scope_violation");
     if (!this.env.ARTIFACT_URL_SECRET) throw new Error("artifact_url_secret_not_configured");
-    const ttl = Math.min(Math.max(Number(this.env.ARTIFACT_URL_TTL_SECONDS || 3600), 300), 86400);
+    const ttl = Math.min(Math.max(Number(this.env.ARTIFACT_URL_TTL_SECONDS || 2592000), 300), 2592000);
     const expires = Math.floor(Date.now() / 1000) + ttl;
     const signature = await hmac(this.env.ARTIFACT_URL_SECRET, key + "\n" + expires);
     const base = (this.env.PUBLIC_API_BASE_URL || "").replace(/\/+$/, "");
