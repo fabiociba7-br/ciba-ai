@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Any
+from typing import Any, Iterator
 
 import requests
 
@@ -21,6 +21,12 @@ class LocalPromptAdapter:
         if "evidence:" in lowered and "executive_summary" in lowered:
             return self._synthesize(prompt)
         return self._plan_queries(prompt)
+
+    def generate_stream(self, prompt: str):
+        """Provide a deterministic chunked stream for local/offline use."""
+        output = self.generate(prompt)
+        for offset in range(0, len(output), 32):
+            yield output[offset:offset + 32]
 
     @staticmethod
     def _plan_queries(prompt: str) -> str:
@@ -76,6 +82,40 @@ class LocalPromptAdapter:
             ] if evidence else [],
             "risks": ["Search snippets may be incomplete, outdated, or lack sufficient context."]
         }, ensure_ascii=False)
+
+
+    def generate_stream(self, prompt: str) -> Iterator[str]:
+        """Yield content deltas from the OpenAI-compatible SSE stream."""
+        response = self.session.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {self.api_key}",
+                     "Content-Type": "application/json"},
+            json={"model": self.model, "temperature": 0.2, "stream": True,
+                  "messages": [{"role": "user", "content": prompt}]},
+            timeout=self.timeout_seconds,
+            stream=True,
+        )
+        try:
+            response.raise_for_status()
+            for raw_line in response.iter_lines(decode_unicode=True):
+                if not raw_line:
+                    continue
+                line = raw_line.decode("utf-8") if isinstance(raw_line, bytes) else raw_line
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                try:
+                    payload = json.loads(data)
+                    delta = payload["choices"][0].get("delta", {})
+                    content = delta.get("content")
+                    if isinstance(content, str) and content:
+                        yield content
+                except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+                    continue
+        finally:
+            response.close()
 
 
 class OpenAIAdapter:
