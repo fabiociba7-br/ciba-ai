@@ -80,3 +80,25 @@ for event in engine.generate_stream("OAuth2 security"):
 A proteção é em camadas, não uma promessa de imunidade absoluta. XML escaping evita que conteúdo recuperado feche os delimitadores; padrões comuns de prompt injection são neutralizados; o prompt classifica todo o contexto como dado não confiável; fontes são verificadas contra a recuperação; e saídas passam por validação de tipos e limites. Ataques semânticos novos ainda podem influenciar modelos. Para ferramentas com efeitos colaterais, mantenha autorização e aprovação fora do LLM, valide argumentos no servidor e nunca trate texto recuperado como permissão para executar ações.
 
 O campo `raciocinio` é deliberadamente uma justificativa resumida baseada em evidências, não uma transcrição de raciocínio interno do modelo.
+
+## Integração com o fluxo da Garcia e limite de runtime
+
+O pacote agora oferece `GarciaResearchAssistant` como fachada única para o fluxo Python local. Ela compõe o serviço de recuperação com o motor cognitivo e expõe `ask()`, `stream()` e encerramento de recursos. Isso integra recuperação, geração, validação e refinamento em uma API simples para ferramentas locais, testes e avaliação.
+
+```python
+from garcia_research import GarciaResearchAssistant, OpenAIAdapter
+
+with GarciaResearchAssistant(OpenAIAdapter()) as garcia:
+    result = garcia.ask(
+        "OAuth2 security architecture",
+        depth="deep",
+        focus=["PKCE", "redirect URI validation"],
+    )
+    print(result)
+```
+
+**Importante:** esta fachada não é importada pelo Cloudflare Worker. O runtime de produção continua sendo TypeScript/Cloudflare Workers AI, com pesquisa nativa em `src/services/research`. O pacote Python é opcional e local. Não existe chamada RPC ou serviço Python remoto nesta etapa; criar uma ponte desse tipo exigiria um contrato HTTP autenticado, limites de rede/tempo, observabilidade e aprovação arquitetural próprios. Essa separação evita tentar executar dependências Python incompatíveis dentro do Worker e evita duas implementações concorrentes do fluxo de produção.
+
+## Testes adversariais
+
+A suíte `tests/python/test_adversarial.py` verifica fechamento de delimitadores XML, falsificação de papéis, diretivas de ferramentas injetadas em fontes, tentativa de escape pela consulta, orçamento após escaping, caracteres de controle e títulos de fontes inventados. Esses testes são regressões determinísticas com entradas controladas; não comprovam imunidade contra ataques semânticos desconhecidos nem substituem avaliação com modelos reais.
