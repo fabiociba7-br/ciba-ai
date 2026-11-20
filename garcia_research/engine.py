@@ -111,11 +111,11 @@ class GarciaEngine:
         """Bound and XML-escape retrieved text; it remains untrusted evidence."""
         # Redact common instruction-like payloads before delimiter escaping.
         neutralized = re.sub(
-            r"(?i)ignore\\s+(?:all\\s+)?(?:previous|prior|above)\\s+instructions|"
-            r"disregard\\s+(?:all\\s+)?(?:previous|prior|above)\\s+instructions|"
-            r"reveal\\s+(?:the\\s+)?(?:system|developer)\\s+prompt|"
-            r"you\\s+are\\s+now\\s+(?:the|a)\\b|"
-            r"act\\s+as\\s+(?:the|a)\\b",
+            r"(?i)ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions|"
+            r"disregard\s+(?:all\s+)?(?:previous|prior|above)\s+instructions|"
+            r"reveal\s+(?:the\s+)?(?:system|developer)\s+prompt|"
+            r"you\s+are\s+now\s+(?:the|a)\b|"
+            r"act\s+as\s+(?:the|a)\b",
             "[INSTRUCTION-LIKE TEXT REDACTED]",
             context,
         )
