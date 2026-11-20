@@ -16,6 +16,11 @@ export interface Env {
   ADMIN_TOKEN: string;
   FACEBOOK_APP_SECRET?: string;
   COMPOSIO_API_KEY?: string;
+  GITHUB_TOKEN?: string;
+  GITHUB_REPOSITORY?: string;
+  GITHUB_BRANCH?: string;
+  GITHUB_RESEARCH_PUBLISH?: string;
+  GITHUB_REPORTS_PATH?: string;
   // Remote Composio execution is fail-closed unless explicitly enabled per environment.
   COMPOSIO_EXECUTION_ENABLED?: string;
   AI_MODEL?: string;
@@ -44,6 +49,7 @@ import { createNativeCapabilityRegistry } from "./core/native-capabilities";
 import { createD1ToolApprovalStore } from "./core/tools/durable-consent";
 import { createCibaToolRegistry } from "./core/tools/registry";
 import { createGarciaCapabilityToolRuntime } from "./core/tools/garcia-capability-tools";
+import { createGarciaResearchTool } from "./services/research";
 import { handleMcpRequest } from "./core/mcp/protocol";
 import { enqueueAgentJob, getAgentJob, cancelAgentJob } from "./core/agent-queue-store";
 import { runOneAgentQueueJob } from "./core/agent-queue-runner";
@@ -2645,7 +2651,8 @@ const handleChat = async (request: Request, env: Env) => {
           invocationId: crypto.randomUUID(),
         },
         executeReadOnlyProposals: true,
-        additionalTools: composioChatTools,
+        executionTimeoutMs: 45_000,
+        additionalTools: [...composioChatTools, createGarciaResearchTool(env)],
         approval: {
           store: createD1ToolApprovalStore(env.DB),
           identity: {
@@ -2665,6 +2672,12 @@ const handleChat = async (request: Request, env: Env) => {
           if (toolRequest.toolId === "garcia.capabilities.list" ||
               toolRequest.toolId === "garcia.capabilities.get" ||
               toolRequest.toolId === "facebook.connection.status") return true;
+
+          if (toolRequest.toolId === "garcia.research") {
+            if (toolRequest.risk !== "external" || toolRequest.requiresApproval !== true) return false;
+            const access = await requireCibaGenioAccess(env, "external_tools", device.app_id);
+            return access === null;
+          }
 
           const composioPolicy = composioChatPolicies.get(toolRequest.toolId);
           if (!composioPolicy || !env.COMPOSIO_API_KEY) return false;
@@ -2782,13 +2795,16 @@ const handleChat = async (request: Request, env: Env) => {
     ...(orchestration.toolApproval
       ? { tool_approval: orchestration.toolApproval }
       : {}),
-    ...(orchestration.toolProposal?.toolId.startsWith("composio.") &&
+    ...((orchestration.toolProposal?.toolId.startsWith("composio.") ||
+        orchestration.toolProposal?.toolId === "garcia.research") &&
       orchestration.toolProposal.requiresApproval
       ? {
           tool_proposal: {
             tool_id: orchestration.toolProposal.toolId,
-            tool_name: composioChatPolicies.get(orchestration.toolProposal.toolId)?.toolName ??
-              orchestration.toolProposal.toolId.slice("composio.".length),
+            tool_name: orchestration.toolProposal.toolId === "garcia.research"
+              ? "Pesquisa técnica da Garcia"
+              : composioChatPolicies.get(orchestration.toolProposal.toolId)?.toolName ??
+                orchestration.toolProposal.toolId.slice("composio.".length),
             risk: orchestration.toolProposal.risk,
             requires_approval: orchestration.toolProposal.requiresApproval,
             input: orchestration.toolProposal.input,
