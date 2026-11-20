@@ -178,11 +178,9 @@ internal class VoiceProfileStore(context: Context) {
         }
         val json = JSONObject(prefs.getString("profiles_json", "{}").orEmpty())
         json.remove(profileId)
-        check(prefs.edit().putString("profiles_json", json.toString()).remove("active_profile_id").takeIf {
-            prefs.getString("active_profile_id", null) == profileId
-        }?.commit() ?: prefs.edit().putString("profiles_json", json.toString()).commit()) {
-            "Não foi possível atualizar os perfis salvos."
-        }
+        val profileEditor = prefs.edit().putString("profiles_json", json.toString())
+        if (prefs.getString("active_profile_id", null) == profileId) profileEditor.remove("active_profile_id")
+        check(profileEditor.commit()) { "Não foi possível atualizar os perfis salvos." }
         if (wasActive) {
             val systemVoice = voicePrefs.getString("system_voice_id", null)
             val editor = voicePrefs.edit()
