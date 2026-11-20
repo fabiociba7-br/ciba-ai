@@ -328,7 +328,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             onError = { message, retry ->
                 streamingListening = false
                 whisperStatus = message
-                if (message.contains("pacote de idioma offline", ignoreCase = true)) {
+                if (message.contains("pt-BR", ignoreCase = true) && message.contains("offline", ignoreCase = true)) {
                     streamingUnavailable = true
                 }
                 if (retry && continuousVoice && voiceReplies) {
