@@ -41,3 +41,11 @@ Configurações → Voz e clonagem:
 ## Primeira entrega no repositório
 
 A primeira fatia adiciona o contrato comum e catálogo tipado. Ainda não inclui runtimes Pocket TTS/NeuTTS, inferência, download de pesos ou interface final; esses passos dependem da auditoria e dos testes em aparelho.
+
+## Execução em nuvem e provedores configuráveis
+
+VoxCPM2 e XTTS-v2 serão preparados para laboratório remoto, começando por Kaggle e Google Colab. A seleção do ambiente não deve ficar fixa no código do motor: cada execução solicita ao gerenciador central uma conexão configurada e compatível, permitindo escolher entre contas/instâncias disponíveis e, futuramente, outros provedores de GPU ou servidores.
+
+A saída de áudio, checkpoints e artefatos devem poder ser encaminhados para qualquer destino de armazenamento configurado no gerenciador central. Assim, ambiente de computação e armazenamento são recursos independentes e selecionáveis pela interface da Garcia.
+
+Detalhes de autenticação, cadastro de novos provedores, limites de quota, operações suportadas e segurança estão em [GARCIA_CREDENTIALS_ARCHITECTURE.md](GARCIA_CREDENTIALS_ARCHITECTURE.md). Kaggle e Colab devem ser integrados por APIs/interfaces documentadas; recursos não suportados oficialmente devem permanecer assistidos/manual, sem automação frágil de interface ou contorno de limites.
