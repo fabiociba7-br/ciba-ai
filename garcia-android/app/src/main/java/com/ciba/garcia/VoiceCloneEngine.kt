@@ -1,6 +1,7 @@
 package com.ciba.garcia
 
 import android.content.Context
+import com.ciba.garcia.chatterbox.ChatterboxNative
 
 /** Local-only contract for voice cloning. No backend or network methods exist here. */
 internal interface VoiceCloneEngine {
