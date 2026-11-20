@@ -75,6 +75,9 @@ internal class ParakeetModelStore(context: Context) {
                 onProgress(completedBytes, totalBytes)
                 continue
             }
+            require(directory.usableSpace >= asset.size + MIN_FREE_SPACE_BYTES) {
+                "Espaço livre insuficiente para instalar o modelo PT-BR. Libere pelo menos ${(asset.size + MIN_FREE_SPACE_BYTES) / (1024 * 1024)} MiB e tente novamente."
+            }
             val temporary = File(directory, "${asset.name}.download")
             temporary.delete()
             val connection = URL("$MODEL_FILES/$revision/${asset.name}?download=true").openConnection() as HttpURLConnection
@@ -139,6 +142,7 @@ internal class ParakeetModelStore(context: Context) {
     companion object {
         const val MODEL_ID = "joaorura/parakeet-tdt-0.6b-v3-ptBR-sherpa-onnx-int8"
         const val MODEL_SIZE_BYTES = 670_576_792L
+        private const val MIN_FREE_SPACE_BYTES = 96L * 1024 * 1024
         const val MODEL_SIZE_LABEL = "aprox. 640 MiB"
         const val LICENSE = "CC-BY-4.0"
         private const val MODEL_API = "https://huggingface.co/api/models/$MODEL_ID"
