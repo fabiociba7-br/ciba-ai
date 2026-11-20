@@ -46,7 +46,20 @@ internal class LocalSpeechOutput(
     private var activeUtteranceId: String? = null
     private var previewRestoreVoiceId: String? = null
 
+    private fun clearLegacyCloneData() {
+        listOf(
+            java.io.File(appContext.filesDir, "chatterbox-models"),
+            java.io.File(appContext.filesDir, "voice-profiles"),
+            java.io.File(appContext.cacheDir, "voice-imports")
+        ).forEach { directory ->
+            runCatching { if (directory.exists()) directory.deleteRecursively() }
+        }
+        appContext.getSharedPreferences("garcia_voice_profiles", Context.MODE_PRIVATE)
+            .edit().clear().apply()
+    }
+
     init {
+        clearLegacyCloneData()
         engine = TextToSpeech(appContext) { status ->
             if (closed) return@TextToSpeech
             val tts = engine
