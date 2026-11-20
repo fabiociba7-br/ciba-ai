@@ -56,6 +56,7 @@ import { authenticateDevice } from "./security/device-auth";
 import { usageFor } from "./core/usage";
 import { isAppAllowed } from "./core/apps/access";
 import { readRuntimeSettings, CONFIG_KEYS, publicConfig } from "./core/runtime-settings";
+import { requireCibaGenioAccess } from "./core/cibagenio-access";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
@@ -64,26 +65,6 @@ import { b64url, randomToken, sha256, nowIso } from "./security/crypto";
 import { MESSAGE_MAX_PAYLOAD_CHARS, MESSAGE_MAX_PENDING_PER_DESTINATION, MESSAGE_DEFAULT_TTL_HOURS, MESSAGE_MAX_TTL_HOURS, hasMessageGrant } from "./core/app-messaging";
 
 
-
-const requireCibaGenioAccess = async (
-  env: Env,
-  resourceId: string,
-  appId?: string,
-): Promise<Response | null> => {
-  const control = await env.DB.prepare(`
-    SELECT enabled, scope FROM cibagenio_controls
-    WHERE resource_id = ?
-      AND ((scope = 'app' AND scope_id = ?) OR (scope = 'global' AND scope_id = ''))
-    ORDER BY CASE WHEN scope = 'app' THEN 0 ELSE 1 END
-    LIMIT 1
-  `).bind(resourceId, appId || "").first<{ enabled: number; scope: string }>();
-  if (control?.enabled === 1) return null;
-  return json({
-    error: "resource_locked_by_cibagenio",
-    resource_id: resourceId,
-    scope: control?.scope || "global",
-  }, 403);
-};
 
 const createRuntimeProviderRegistry = (env: Env, model: string | null, maxOutputTokens: number) => {
   const implementation = new CloudflareWorkersAIProvider(env.AI);
