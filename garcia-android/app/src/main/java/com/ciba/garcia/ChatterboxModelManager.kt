@@ -173,7 +173,7 @@ internal object ChatterboxModelManager {
                 if (backup.exists()) backup.renameTo(target)
                 throw error
             }
-            verifiedFiles.remove(target.absolutePath)
+            verifiedFiles[target.absolutePath] = FileStamp(target.length(), target.lastModified())
         } catch (error: Throwable) {
             temp.delete()
             throw error
@@ -186,23 +186,36 @@ internal object ChatterboxModelManager {
         val backup = File(dir, "backup-" + UUID.randomUUID()).apply { mkdirs() }
         val targetT3 = File(dir, T3)
         val targetS3 = File(dir, S3)
+        var oldT3Moved = false
+        var oldS3Moved = false
+        var newT3Installed = false
+        var newS3Installed = false
         try {
-            if (targetT3.exists()) check(targetT3.renameTo(File(backup, T3))) { "Não foi possível preservar o T3 anterior." }
-            if (targetS3.exists()) check(targetS3.renameTo(File(backup, S3))) { "Não foi possível preservar o S3Gen anterior." }
+            if (targetT3.exists()) {
+                check(targetT3.renameTo(File(backup, T3))) { "Não foi possível preservar o T3 anterior." }
+                oldT3Moved = true
+            }
+            if (targetS3.exists()) {
+                check(targetS3.renameTo(File(backup, S3))) { "Não foi possível preservar o S3Gen anterior." }
+                oldS3Moved = true
+            }
             check(stagedT3.renameTo(targetT3)) { "Não foi possível instalar o modelo T3." }
+            newT3Installed = true
             check(stagedS3.renameTo(targetS3)) { "Não foi possível instalar o modelo S3Gen." }
+            newS3Installed = true
             File(targetT3.parentFile, T3 + ".sha256").writeText(T3_SHA256)
             File(targetS3.parentFile, S3 + ".sha256").writeText(S3_SHA256)
-            verifiedFiles.remove(targetT3.absolutePath)
-            verifiedFiles.remove(targetS3.absolutePath)
-            backup.deleteRecursively()
+            verifiedFiles[targetT3.absolutePath] = FileStamp(targetT3.length(), targetT3.lastModified())
+            verifiedFiles[targetS3.absolutePath] = FileStamp(targetS3.length(), targetS3.lastModified())
         } catch (error: Throwable) {
-            targetT3.delete()
-            targetS3.delete()
+            if (newT3Installed) targetT3.delete()
+            if (newS3Installed) targetS3.delete()
             val oldT3 = File(backup, T3)
             val oldS3 = File(backup, S3)
-            if (oldT3.exists()) oldT3.renameTo(targetT3)
-            if (oldS3.exists()) oldS3.renameTo(targetS3)
+            if (oldT3Moved && oldT3.exists()) oldT3.renameTo(targetT3)
+            if (oldS3Moved && oldS3.exists()) oldS3.renameTo(targetS3)
+            verifiedFiles.remove(targetT3.absolutePath)
+            verifiedFiles.remove(targetS3.absolutePath)
             throw error
         } finally {
             backup.deleteRecursively()
