@@ -166,7 +166,6 @@ internal class LocalSpeechOutput(
     fun isClonedRuntimeReady(): Boolean = ChatterboxVoiceCloneEngine.isReady()
     fun isReady(): Boolean = if (isCloneMode()) isCloneEngineAvailable() && profileStore.activeProfileId() != null else ready
 
-    /** Human-readable output diagnosis for the voice settings screen. */
     /** Human-readable output diagnosis; availability comes from callbacks to avoid hashing models during composition. */
     fun diagnosticStatus(available: Boolean, detail: String): String {
         if (isCloneMode()) {
