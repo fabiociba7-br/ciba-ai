@@ -85,7 +85,7 @@ class LocalPromptAdapter:
 
 
 class OpenAIAdapter:
-    """OpenAI Chat Completions adapter using an explicit API key."""
+    """OpenAI Chat Completions adapter with JSON mode and SSE streaming."""
 
     def __init__(
         self,
@@ -101,27 +101,36 @@ class OpenAIAdapter:
         self.session = requests.Session()
 
     def generate(self, prompt: str) -> str:
+        return self.generate_messages([{"role": "user", "content": prompt}])
+
+    def generate_messages(self, messages: list[dict[str, str]]) -> str:
         response = self.session.post(
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {self.api_key}",
                      "Content-Type": "application/json"},
-            json={"model": self.model, "temperature": 0.2, "response_format": {"type": "json_object"},
-                  "messages": [{"role": "user", "content": prompt}]},
+            json={"model": self.model, "temperature": 0.2,
+                  "response_format": {"type": "json_object"},
+                  "messages": messages},
             timeout=self.timeout_seconds,
         )
         response.raise_for_status()
         payload = response.json()
-        return payload["choices"][0]["message"]["content"]
+        content = payload["choices"][0]["message"]["content"]
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("OpenAI returned an empty message.")
+        return content
 
     def generate_stream(self, prompt: str) -> Iterator[str]:
-        """Yield content deltas from the OpenAI-compatible SSE stream."""
+        yield from self.generate_stream_messages([{"role": "user", "content": prompt}])
+
+    def generate_stream_messages(self, messages: list[dict[str, str]]) -> Iterator[str]:
         response = self.session.post(
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {self.api_key}",
                      "Content-Type": "application/json"},
             json={"model": self.model, "temperature": 0.2, "stream": True,
                   "response_format": {"type": "json_object"},
-                  "messages": [{"role": "user", "content": prompt}]},
+                  "messages": messages},
             timeout=self.timeout_seconds,
             stream=True,
         )
