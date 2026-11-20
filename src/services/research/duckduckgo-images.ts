@@ -6,7 +6,7 @@ function isSafePublicHttpUrl(value: string): boolean {
   try {
     const u = new URL(value), host = u.hostname.toLowerCase();
     if (u.protocol !== "https:" && u.protocol !== "http:") return false;
-    if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal") ||
+    if (!host || host.startsWith("[") || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal") ||
         host === "0.0.0.0" || host === "::1" ||
         /^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) return false;
     return true;
@@ -31,7 +31,7 @@ export class DuckDuckGoImageClient {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       if (attempt) await sleep(jitter(1800, 3200) * attempt);
       response = await this.fetcher(api.toString(), { cache: "no-store", headers: {
-        Accept: "application/json, text/javascript, */*; q=0.01", Referer: pageUrl.toString(), "User-Agent": "Mozilla/5.0",
+        Accept: "application/json, text/javascript, */*; q=0.01", Referer: pageUrl.toString(),
       }, signal: AbortSignal.timeout(8000) });
       if (response.status !== 429 && response.status !== 503) break;
     }
@@ -63,8 +63,21 @@ export class DuckDuckGoImageClient {
       const mime = (response.headers.get("content-type") || "").split(";")[0].toLowerCase();
       if (!["image/png", "image/jpeg", "image/webp"].includes(mime)) return null;
       if (Number(response.headers.get("content-length") || 0) > 8_000_000) return null;
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (!bytes.length || bytes.length > 8_000_000) return null;
+      if (!response.body) return null;
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      while (true) {
+        const part = await reader.read();
+        if (part.done) break;
+        total += part.value.byteLength;
+        if (total > 8_000_000) { await reader.cancel(); return null; }
+        chunks.push(part.value);
+      }
+      if (!total) return null;
+      const bytes = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
       return { bytes, mimeType: mime as "image/png" | "image/jpeg" | "image/webp" };
     }
     return null;
