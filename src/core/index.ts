@@ -46,11 +46,7 @@ export type { DeviceArchitecture, DeviceCapabilityDecision, DeviceCapabilityProf
 export { createAndroidWhisperCppAdapter } from "./android-whisper-bridge";
 export type { AndroidWhisperCppAdapterOptions, AndroidWhisperCppBridge, AndroidWhisperCppBridgeStatus } from "./android-whisper-bridge";
 
-export { createChatterboxRegistry, validateTextToSpeechRequest, runChatterboxSynthesis } from "./text-to-speech";
-export type { TextToSpeechRuntime, TextToSpeechConsent, TextToSpeechRequest, TextToSpeechResult, TextToSpeechAdapter, TextToSpeechEnginePolicy, TextToSpeechRegistry } from "./text-to-speech";
 
-export { createDesktopChatterboxAdapter } from "./desktop-chatterbox-bridge";
-export type { DesktopChatterboxAdapterOptions, DesktopChatterboxBridge, DesktopChatterboxBridgeStatus } from "./desktop-chatterbox-bridge";
 
 export { AGENT_QUEUE_LIMITS, isAgentQueueLeaseExpired, canRetryAgentQueueJob, isAgentQueueJobClaimable } from "./agent-queue";
 export { enqueueAgentJob, claimAgentJob, heartbeatAgentJob, completeAgentJob, failAgentJob, cancelAgentJob, getAgentJob } from "./agent-queue-store";

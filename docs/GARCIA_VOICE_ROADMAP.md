@@ -38,14 +38,14 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - Português brasileiro como idioma padrão; detecção local de atividade de voz, encerramento após 1,1 s de silêncio, timeout de 10 s sem fala, limite absoluto de 120 s e tratamento de falhas de captura.
 - Gate: testes com frases curtas/longas em pt-BR, números, pontuação, ruído e interrupção; confirmar que áudio não sai do aparelho.
 
-### Etapa 4 — preparar motor de síntese
-**Estado: TTS nativo do Android preservado; um runtime local Chatterbox.cpp foi integrado em branch de implementação para clonagem zero-shot. CI nativo e teste auditivo em aparelho ainda são gates obrigatórios; a capacidade não está marcada como disponível.**
-- Reavaliar Chatterbox para Android: o contrato existente é desktop-local e não equivale a runtime Android.
-- Conferir licença do código e dos pesos/checkpoints separadamente, suporte real a pt-BR, tamanho, RAM, CPU/GPU e latência.
-- Comparar somente alternativas open source com licença e runtime Android viáveis; escolher automaticamente a melhor opção compatível.
-- Se Chatterbox não for viável no celular, selecionar alternativa local apropriada sem alterar o requisito de custo zero.
-- Gate: decisão documentada, artefatos com hashes e prova de execução local em aparelho suportado.
-
+### Etapa 4 — selecionar e validar o novo motor de síntese e clonagem
+**Estado: clonagem desativada; nenhum motor novo foi escolhido ou integrado.**
+- Comparar os modelos indicados pelo proprietário, sem presumir compatibilidade ou disponibilidade.
+- Verificar separadamente licença do código e dos pesos, suporte real a português brasileiro, requisitos de memória, GPU, latência e limites do provedor.
+- Testar primeiro em ambiente isolado, sem alterar o aplicativo Android.
+- Definir uma interface independente do modelo para permitir substituição sem reescrever a camada de áudio.
+- Gate: testes de qualidade, desempenho, privacidade e licença aprovados antes da integração.
+ 
 ### Etapa 5 — voz da Garcia sob demanda
 **Estado: reprodução automática opcional das respostas implementada com controle nas Configurações; aguarda validação em aparelho com pacote de voz offline instalado.**
 - Integrar TTS local e adicionar botão de reprodução em cada resposta da Garcia.
@@ -90,14 +90,10 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 - Testes unitários cobrem limpeza de Markdown, parênteses, links, código e listas. O teste em aparelho real ainda é necessário para avaliar a voz e a velocidade percebida.
 
 
-## Estado adicional — clonagem de voz Android (20/11/2026)
+## Estado da clonagem de voz — 20/11/2026
 
-- Branch de implementação: `feature/garcia-voice-cloning-mainline`; PR #36 aberto em rascunho, sem merge. CI nativo e teste em aparelho ainda pendentes.
-- `VoiceProfileStore` mantém gravação, WAV normalizado, metadados e SHA-256 no storage privado do app.
-- `VoiceCloneEngine` define contrato local; `ChatterboxVoiceCloneEngine` implementa o adaptador nativo. A prévia não altera a seleção ativa.
-- `LocalSpeechOutput` separa os modos `SYSTEM` e `CLONED`. Falha do clone não faz fallback silencioso para TTS do sistema.
-- Referência de 5–30 s; recomendação de 10–15 s de fala clara. Normalização para WAV PCM mono, 24 kHz, 16 bits; validação básica rejeita silêncio/volume muito baixo, WAV truncado e clipping extremo.
-- Modelos GGUF Q4_0 (aprox. 1,1 GB no total) ficam fora do Git e são verificados por SHA-256 antes do uso.
-- O código e os modelos são locais; áudio de referência, condicionamento e PCM sintetizado não são enviados ao Worker.
-- A compilação Kotlin isolada não valida inferência. CI CMake/NDK e teste auditivo/performance em aparelho real continuam obrigatórios.
-- `src/core/native-capabilities.ts` permanece sem marcar clonagem/TTS como `available` até aprovação dos testes reais.
+- A implementação anterior de clonagem foi retirada do aplicativo e do núcleo compartilhado.
+- A saída falada permanece no Android TextToSpeech.
+- Whisper e o reconhecimento on-device continuam separados e preservados.
+- Nenhum modelo de clonagem está instalado, selecionado ou marcado como disponível.
+- A próxima implementação começará somente após a escolha e validação do novo motor.

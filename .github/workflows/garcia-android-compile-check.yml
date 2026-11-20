@@ -7,7 +7,6 @@ on:
     branches:
       - main
       - feat/garcia-research-package
-      - feature/garcia-voice-cloning-mainline
     paths:
       - "garcia-android/**"
       - ".github/workflows/garcia-android-compile-check.yml"
@@ -56,4 +55,4 @@ jobs:
           gradle-version: "8.13"
 
       - name: Run unit tests and compile Android sources only
-        run: gradle --no-daemon :app:testDebugUnitTest :app:compileDebugKotlin :app:externalNativeBuildDebug :chatterbox-runtime:externalNativeBuildDebug
+        run: gradle --no-daemon :app:testDebugUnitTest :app:compileDebugKotlin :app:externalNativeBuildDebug
