@@ -38,18 +38,18 @@ def _xml_text(value: str) -> str:
     return escape(value, {'"': "&quot;", "'": "&apos;"})
 
 
-def build_response_prompt(
+def build_response_messages(
     query: str,
     context: str,
     iteration: int,
     max_iterations: int,
     *,
     context_is_sanitized: bool = False,
-) -> str:
+) -> list[dict[str, str]]:
+    """Keep policy in the system role and place escaped evidence in the user role."""
     safe_query = _xml_text(query)
     safe_context = context if context_is_sanitized else _xml_text(context)
-    return (
-        f"{SYSTEM_PROMPT}\n{CONSTRAINTS}\n"
+    user_content = (
         f"<task iteration=\"{iteration}\" max_iterations=\"{max_iterations}\">"
         f"<user_query>{safe_query}</user_query></task>\n"
         "<context_block trust_level=\"untrusted\">\n"
@@ -58,7 +58,28 @@ def build_response_prompt(
         "If evidence does not support a definitive answer, lower confidence "
         "and enumerate the missing information."
     )
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT + "\n" + CONSTRAINTS},
+        {"role": "user", "content": user_content},
+    ]
 
+
+def build_response_prompt(
+    query: str,
+    context: str,
+    iteration: int,
+    max_iterations: int,
+    *,
+    context_is_sanitized: bool = False,
+) -> str:
+    """Compatibility prompt for providers that accept only a single text input."""
+    return "\n".join(
+        message["content"]
+        for message in build_response_messages(
+            query, context, iteration, max_iterations,
+            context_is_sanitized=context_is_sanitized,
+        )
+    )
 
 def build_refinement_prompt(query: str, gaps: list[str]) -> str:
     """Build a deterministic search query refinement from validation gaps."""
