@@ -44,7 +44,7 @@ export function createPlainTextDocumentAdapter(): NativeCapabilityAdapter {
       if (typeof text !== "string" || !text.trim() ||
           (fileName !== undefined &&
             (typeof fileName !== "string" || fileName.length > MAX_FILE_NAME_CHARS ||
-             /[\\/\u0000-\u001f]/.test(fileName))))
+             /[\\/\u0000-\u001f]/.test(fileName)))) {
         throw new Error("invalid_document_input");
       }
       const byteCount = encoder.encode(text).byteLength;
