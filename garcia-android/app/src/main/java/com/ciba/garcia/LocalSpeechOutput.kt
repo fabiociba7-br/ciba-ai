@@ -158,6 +158,7 @@ internal class LocalSpeechOutput(
     fun isSystemReady(): Boolean = ready
     fun isCloneEngineAvailable(): Boolean = ChatterboxVoiceCloneEngine.isAvailable(appContext)
     fun isCloneSelected(): Boolean = isCloneMode()
+    fun isClonedRuntimeReady(): Boolean = ChatterboxVoiceCloneEngine.isReady()
     fun isReady(): Boolean = if (isCloneMode()) isCloneEngineAvailable() && profileStore.activeProfileId() != null else ready
 
     private fun setVoiceInternal(id: String): Boolean {
@@ -233,6 +234,7 @@ internal class LocalSpeechOutput(
         ) { result ->
             Handler(Looper.getMainLooper()).post {
                 if (result.isFailure) onAvailabilityChanged(isReady(), "Falha na prévia da voz clonada: " + safeMessage(result.exceptionOrNull()!!))
+                else if (isCloneMode()) onAvailabilityChanged(true, "Prévia concluída; voz clonada ativa e pronta para as respostas.")
                 onResult(result)
             }
         }
