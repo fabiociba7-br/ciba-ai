@@ -2655,7 +2655,7 @@ const handleChat = async (request: Request, env: Env) => {
         },
         executeReadOnlyProposals: true,
         executionTimeoutMs: 45_000,
-        additionalTools: [createGarciaResearchTool({ ...env, ownerId: owner.owner_id, appId: device.app_id, deviceId: device.device_id }), ...composioChatTools],
+        additionalTools: [createGarciaResearchTool({ ...env, PUBLIC_API_BASE_URL: new URL(request.url).origin, ownerId: owner.owner_id, appId: device.app_id, deviceId: device.device_id }), ...composioChatTools],
         approval: {
           store: createD1ToolApprovalStore(env.DB),
           identity: {
