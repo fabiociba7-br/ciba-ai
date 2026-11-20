@@ -1,12 +1,15 @@
 /**
  * Reference integration for the Garcia Cloudflare Worker.
  *
+ * This follows ciba-ai's existing CibaToolDefinition/additionalTools registry
+ * contract. The tool is classified as external and requires the existing
+ * durable approval flow before dispatching an external research job.
+ *
  * Bind GITHUB_RESEARCH_TOKEN as a Worker secret (Actions: write; Contents:
  * write only if the workflow is allowed to commit). Never expose it to clients.
- * The worker dispatches the workflow and returns 202; clients poll a separate
- * status endpoint. A durable queue/job table should persist requestId/runId in
- * production rather than keeping a request open while research executes.
  */
+import type { CibaToolDefinition } from "../../src/core/tools/contracts";
+
 export interface ResearchJobEnv {
   GITHUB_RESEARCH_TOKEN: string;
   GITHUB_REPOSITORY: string; // owner/repo
@@ -19,20 +22,35 @@ type ResearchToolArgs = { topic: string; depth?: ResearchDepth; focus?: string[]
 
 const GH_API = "https://api.github.com";
 
+const GARCIA_RESEARCH_SCHEMA: Record<string, unknown> = {
+  type: "object",
+  properties: {
+    topic: { type: "string", minLength: 3, maxLength: 300 },
+    depth: { type: "string", enum: ["quick", "standard", "deep"] },
+    focus: {
+      type: "array",
+      items: { type: "string", minLength: 1, maxLength: 80 },
+      maxItems: 8,
+    },
+  },
+  required: ["topic"],
+  additionalProperties: false,
+};
+
 export async function dispatchGarciaResearch(
   env: ResearchJobEnv,
   args: ResearchToolArgs,
   requestId: string,
-): Promise<{ accepted: true; request_id: string }> {
+): Promise<{ accepted: true; request_id: string; status: "queued" }> {
   const topic = args.topic.trim();
   if (topic.length < 3 || topic.length > 300) throw new Error("invalid_research_topic");
   const focus = (args.focus || []).slice(0, 8).map((v) => v.trim()).filter(Boolean);
   const response = await fetch(
-    `${GH_API}/repos/${env.GITHUB_REPOSITORY}/actions/workflows/${env.GITHUB_RESEARCH_WORKFLOW || "research-job.yml"}/dispatches`,
+    \`\${GH_API}/repos/\${env.GITHUB_REPOSITORY}/actions/workflows/\${env.GITHUB_RESEARCH_WORKFLOW || "research-job.yml"}/dispatches\`,
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.GITHUB_RESEARCH_TOKEN}`,
+        Authorization: \`Bearer \${env.GITHUB_RESEARCH_TOKEN}\`,
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         "Content-Type": "application/json",
@@ -51,24 +69,54 @@ export async function dispatchGarciaResearch(
   );
   if (response.status !== 204) {
     // Do not forward GitHub's raw response; it may contain operational details.
-    throw new Error(`research_dispatch_failed_http_${response.status}`);
+    throw new Error(\`research_dispatch_failed_http_\${response.status}\`);
   }
-  return { accepted: true, request_id: requestId };
+  return { accepted: true, request_id: requestId, status: "queued" };
+}
+
+/** Register this definition in createGarciaCapabilityToolRuntime({additionalTools}). */
+export function createGarciaResearchTool(env: ResearchJobEnv): CibaToolDefinition<
+  ResearchToolArgs,
+  { accepted: true; request_id: string; status: "queued" }
+> {
+  return {
+    id: "garcia_research",
+    description: "Pesquisa um tópico técnico/de segurança e retorna um identificador de Job para consultar o relatório. A execução externa exige aprovação.",
+    risk: "external",
+    requiresApproval: true,
+    inputSchema: GARCIA_RESEARCH_SCHEMA,
+    async execute(input) {
+      return dispatchGarciaResearch(env, input, crypto.randomUUID());
+    },
+  };
 }
 
 /*
- * Tool definition passed to the existing LLM tool registry:
+ * Existing runtime registration inside handleChat (reference):
  *
- * import schema from "../../garcia_research/tool_schema.json";
- * tools: [schema]
+ * const researchTool = createGarciaResearchTool(env);
+ * const toolRuntime = owner && await isAppAllowed(env, device.app_id)
+ *   ? createGarciaCapabilityToolRuntime({
+ *       ...existingRuntimeOptions,
+ *       additionalTools: [...composioChatTools, researchTool],
+ *       authorize: async (toolRequest) => {
+ *         if (toolRequest.toolId === "garcia_research") {
+ *           return Boolean(env.GITHUB_RESEARCH_TOKEN) &&
+ *             device.owner_id === owner.owner_id;
+ *         }
+ *         return existingAuthorize(toolRequest);
+ *       },
+ *     })
+ *   : undefined;
  *
- * On a tool call:
- * const args = JSON.parse(toolCall.function.arguments) as ResearchToolArgs;
- * const requestId = crypto.randomUUID();
- * const job = await dispatchGarciaResearch(env, args, requestId);
- * persistJob({ requestId, status: "queued", topic: args.topic, createdAt: new Date().toISOString() });
- * return { ...job, status: "queued", message: "Research job accepted; poll its status." };
+ * The schema is then exposed through the existing registry's describe() output
+ * to runCibaOrchestrator. The LLM can propose the tool; the current durable
+ * approval flow controls execution. Do not bypass that approval with a direct
+ * fetch from user-controlled request data.
  *
- * Do not block the /ai-chat request until GitHub Actions completes. The existing
- * D1 agent-job store or a dedicated research_jobs table can persist status.
+ * Dispatch returns HTTP 202 semantics (queued) rather than waiting for Python.
+ * Persist request_id in D1/a durable job store and add a status route that
+ * finds the workflow run by its run-name correlation ID, then retrieves its
+ * garcia-research-report artifact when completed. GitHub workflow_dispatch
+ * returns 204 without a run ID, so the Worker must correlate asynchronously.
  */
