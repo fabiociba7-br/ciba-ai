@@ -92,7 +92,7 @@ Escopo exclusivo: ativação, conexão com o Ciba AI, envio de mensagens em text
 
 ## Estado adicional — clonagem de voz Android (20/11/2026)
 
-- Branch de implementação: `feature/garcia-voice-cloning-mainline`; PR ainda não criado/mesclado nesta etapa.
+- Branch de implementação: `feature/garcia-voice-cloning-mainline`; PR #36 aberto em rascunho, sem merge. CI nativo e teste em aparelho ainda pendentes.
 - `VoiceProfileStore` mantém gravação, WAV normalizado, metadados e SHA-256 no storage privado do app.
 - `VoiceCloneEngine` define contrato local; `ChatterboxVoiceCloneEngine` implementa o adaptador nativo. A prévia não altera a seleção ativa.
 - `LocalSpeechOutput` separa os modos `SYSTEM` e `CLONED`. Falha do clone não faz fallback silencioso para TTS do sistema.
