@@ -11,7 +11,7 @@ from typing import Any, Iterator, Protocol
 
 from .exceptions import ResearchError
 from .llm_provider import LLMProvider, ResilientLLMProvider
-from .prompts import build_refinement_prompt, build_response_prompt
+from .prompts import build_refinement_prompt, build_response_messages
 from .resilience import CircuitOpenError, Retrier
 
 logger = logging.getLogger(__name__)
@@ -216,9 +216,9 @@ class GarciaEngine:
         try:
             for iteration in range(1, self.config.max_iterations + 1):
                 context = self._retrieve(current_query, **kwargs)
-                prompt = build_response_prompt(current_query, context, iteration,
-                                                self.config.max_iterations, context_is_sanitized=True)
-                raw = self.llm.generate(prompt)
+                messages = build_response_messages(current_query, context, iteration,
+                                                    self.config.max_iterations, context_is_sanitized=True)
+                raw = self.llm.generate_messages(messages)
                 try:
                     candidate = self._parse_response(raw)
                 except ValueError as exc:
@@ -296,10 +296,10 @@ class GarciaEngine:
         try:
             for iteration in range(1, self.config.max_iterations + 1):
                 context = self._retrieve(current_query, **kwargs)
-                prompt = build_response_prompt(current_query, context, iteration,
-                                                self.config.max_iterations, context_is_sanitized=True)
+                messages = build_response_messages(current_query, context, iteration,
+                                                    self.config.max_iterations, context_is_sanitized=True)
                 chunks: list[str] = []
-                for chunk in self.llm.generate_stream(prompt):
+                for chunk in self.llm.generate_stream_messages(messages):
                     chunks.append(chunk)
                     yield StreamEvent("token", chunk)
                 try:
