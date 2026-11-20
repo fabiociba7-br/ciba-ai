@@ -1590,6 +1590,7 @@ const handleOwnerToolApprovalExecute = async (
       context: runtime.context,
     });
     const outputJson = JSON.stringify(output);
+    if (typeof outputJson !== "string") return json({ error: "tool_output_not_serializable" }, 502);
     if (new TextEncoder().encode(outputJson).byteLength > 64_000) {
       return json({ error: "tool_output_too_large" }, 502);
     }
