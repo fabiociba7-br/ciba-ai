@@ -303,7 +303,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                                 }
                                 if (!accepted) {
                                     busy = false
-                                    status = "Instale os modelos locais Chatterbox antes de ouvir a voz clonada."
+                                    status = if (!nativeAvailable) "Runtime nativo Chatterbox indisponível nesta arquitetura/build." else "Instale e valide os dois modelos locais Chatterbox (T3 + S3Gen) antes de ouvir a voz clonada."
                                 }
                             },
                             enabled = !busy && modelsReady && nativeAvailable && profile.integrityValid
@@ -323,7 +323,7 @@ internal fun VoiceCloningSection(voiceOutput: LocalSpeechOutput) {
                                 }
                                 if (!accepted) {
                                     busy = false
-                                    status = "Não foi possível ativar: instale e valide os modelos locais primeiro."
+                                    status = if (!nativeAvailable) "Não foi possível ativar: runtime nativo Chatterbox indisponível nesta arquitetura/build." else "Não foi possível ativar: instale e valide os dois modelos locais (T3 + S3Gen) primeiro."
                                 }
                             },
                             enabled = !busy && modelsReady && nativeAvailable && profile.integrityValid
