@@ -15,11 +15,11 @@ export const GARCIA_RESEARCH_INPUT_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
   required: ["topic"],
 };
-export function createGarciaResearchTool(env: ResearchEnv): CibaToolDefinition<ResearchToolInput, unknown> {
+export function createGarciaResearchTool(env: ResearchEnv): CibaToolDefinition {
   return {
     id: "garcia.research",
     description: "Pesquisa e sintetiza tópicos técnicos, salva relatórios no R2 ou cria/refina imagens no Estúdio Visual. Para uma criação nova use visual_mode=true e mode=generate ou search. Para iterar uma criação anterior, reutilize session_id e envie feedback; a sessão é privada do proprietário autenticado.",
     risk: "external", requiresApproval: true, inputSchema: GARCIA_RESEARCH_INPUT_SCHEMA,
-    async execute(input) { return new GarciaResearchService(env).research(input); },
+    async execute(input) { return new GarciaResearchService(env).research(input as ResearchToolInput); },
   };
 }
