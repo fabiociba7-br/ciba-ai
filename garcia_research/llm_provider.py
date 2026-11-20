@@ -30,34 +30,43 @@ class ResilientLLMProvider:
 
     def generate(self, prompt: str) -> str:
         self.breaker.before_call()
-        try:
-            result = self.retrier.run(self.provider.generate, on_failure=self.breaker.record_failure)
-        except Exception:
-            raise
+
+        def operation() -> str:
+            result = self.provider.generate(prompt)
+            if not isinstance(result, str) or not result.strip():
+                raise ValueError("LLM provider returned an empty response.")
+            return result
+
+        result = self.retrier.run(operation, on_failure=self.breaker.record_failure)
         self.breaker.record_success()
-        if not isinstance(result, str) or not result.strip():
-            self.breaker.record_failure()
-            raise ValueError("LLM provider returned an empty response.")
         return result
 
     def generate_stream(self, prompt: str) -> Iterator[str]:
-        """Stream when supported; otherwise emit the non-streaming response once."""
-        self.breaker.before_call()
+        """Stream with retry only before the first token has been emitted."""
         stream_method = getattr(self.provider, "generate_stream", None)
         if not callable(stream_method):
             yield self.generate(prompt)
             return
-        try:
-            chunks = self.retrier.run(lambda: iter(stream_method(prompt)),
-                                      on_failure=self.breaker.record_failure)
+
+        self.breaker.before_call()
+        for attempt in range(self.retrier.attempts):
             emitted = False
-            for chunk in chunks:
-                if chunk:
-                    emitted = True
-                    yield chunk
-            if not emitted:
-                raise ValueError("LLM provider returned an empty stream.")
-        except Exception:
-            self.breaker.record_failure()
-            raise
-        self.breaker.record_success()
+            try:
+                for chunk in stream_method(prompt):
+                    if chunk:
+                        emitted = True
+                        yield chunk
+                if not emitted:
+                    raise ValueError("LLM provider returned an empty stream.")
+                self.breaker.record_success()
+                return
+            except Exception:
+                self.breaker.record_failure()
+                # Retrying after emitting tokens would duplicate or corrupt output.
+                if emitted or attempt + 1 >= self.retrier.attempts:
+                    raise
+                ceiling = min(
+                    self.retrier.base_delay_seconds * (2 ** attempt),
+                    self.retrier.max_delay_seconds,
+                )
+                self.retrier.sleep(ceiling * (0.5 + self.retrier.random_value()))
