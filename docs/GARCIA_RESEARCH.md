@@ -1,53 +1,34 @@
-# Garcia Research (Python tooling)
+# Garcia Research
 
-The `garcia_research/` package is optional Python 3.10+ research tooling. It is
-not a second backend and is not deployed as part of the Cloudflare Worker.
-The canonical ciba-ai backend remains TypeScript (`src/index.ts`) and uses
-Cloudflare Workers AI through its existing provider registry.
+## Runtime de produção
 
-## Dependency injection
+A integração oficial é TypeScript nativo no Cloudflare Worker. O módulo fica em `src/services/research/` e utiliza Workers AI, DuckDuckGo, R2, D1 e KV. A ferramenta é registrada no runtime existente como `garcia.research`, classificada como externa e protegida pela aprovação durável.
 
-`GarciaResearchService` accepts an object implementing
-`LLMClient.generate(prompt: str) -> str`. This avoids creating a second model
-client or duplicating provider configuration. The repository currently has no
-Python LLM service; callers can inject an adapter that talks to an authorized
-Garcia API or another already-configured service. Without an injected client,
-query planning and synthesis use deterministic local behavior.
+O Estúdio Visual oferece criação e refinamento iterativo. O D1 guarda sessões, feedback e histórico de prompts; o R2 guarda cada imagem e os relatórios JSON/Markdown; o KV armazena temporariamente prompts refinados. A resposta HTTP inclui o objeto `visual_studio` para renderização pelo cliente.
 
-## Install and test
+GitHub é apenas o repositório do código-fonte. Não há GitHub Publisher, workflow de pesquisa ou commits de relatórios/imagens.
 
-```bash
+Consulte [RESEARCH_WORKER_GUIDE.md](RESEARCH_WORKER_GUIDE.md) para configuração de recursos Cloudflare, migração, modelos de imagem, URLs assinadas e teste local.
+
+## Pacote Python local
+
+O diretório `garcia_research/` permanece como ferramenta opcional de desenvolvimento/testes, não é importado nem executado pelo Worker. Ele faz pesquisa textual e retorna um relatório em memória/JSON; não publica artefatos e não possui integração Git.
+
+Instalação e testes:
+
+~~~bash
 python -m pip install -e ".[test]"
-pytest
-```
+python -m pytest
+~~~
 
-## Example
+Exemplo:
 
-```python
+~~~python
 from garcia_research import GarciaResearchService, ResearchConfig
 
-config = ResearchConfig(
-    repo_path="/path/to/ciba-ai",
-    branch="feat/garcia-research-package",
-    publish_enabled=False,
-)
-with GarciaResearchService(config) as research:
+with GarciaResearchService(ResearchConfig()) as research:
     report = research.run("Vulnerabilities in OAuth2 flows")
-print(report.executive_summary)
-```
+print(report.to_dict())
+~~~
 
-## Safety and publication
-
-The client uses a persistent HTTP session, bounded delays, an in-memory cache
-and exponential backoff for HTTP 429/503. It does not rotate browser identities
-or bypass CAPTCHA/access restrictions. HTTP 401/403 and challenge pages fail
-closed.
-
-The publisher never force-pushes, resets, cleans or rebases. If the branch is
-wrong it returns `skipped_wrong_branch`. If the worktree was already dirty
-before report generation, reports are saved locally and it returns
-`skipped_dirty_worktree` without committing. A rejected push returns
-`push_failed` and retains the local commit for inspection.
-
-Python tests are separate from the Cloudflare Worker Vitest suite. This package
-is intentionally excluded from `tsconfig.json` and Worker deployment.
+O cliente usa atrasos limitados, cache em memória e backoff para 429/503. Não rotaciona identidades nem contorna CAPTCHA ou restrições de acesso. Os testes Python são separados da suíte Vitest do Worker.
