@@ -297,7 +297,7 @@ class GarciaEngine:
             for iteration in range(1, self.config.max_iterations + 1):
                 context = self._retrieve(current_query, **kwargs)
                 prompt = build_response_prompt(current_query, context, iteration,
-                                                self.config.max_iterations)
+                                                self.config.max_iterations, context_is_sanitized=True)
                 chunks: list[str] = []
                 for chunk in self.llm.generate_stream(prompt):
                     chunks.append(chunk)
