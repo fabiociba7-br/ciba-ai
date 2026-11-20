@@ -26,7 +26,7 @@ internal object ClonedVoiceRuntime {
     fun isReady(): Boolean = ready.get()
     fun isLoading(): Boolean = loading
 
-    fun hasActiveProfile(context: Context): Boolean = VoiceProfileStore(context).currentProfile() != null
+    fun hasActiveProfile(context: Context): Boolean = VoiceProfileStore(context).activeProfileId() != null
 
     private fun validateReference(wav: File) {
         check(wav.isFile && wav.length() > 44L) { "A gravação original da voz não foi encontrada ou está vazia." }
@@ -114,16 +114,22 @@ internal object ClonedVoiceRuntime {
     }
 
     fun restore(context: Context, onResult: (Result<Unit>) -> Unit = {}) {
-        val profile = VoiceProfileStore(context).currentProfile()
-        if (profile == null) {
-            onResult(Result.failure(IllegalStateException("Nenhum perfil clonado está ativo.")))
-            return
-        }
-        if (ready.get() && loadedProfileId == profile.id) {
+        if (ready.get()) {
             onResult(Result.success(Unit))
             return
         }
-        activate(context, profile, onResult)
+        loading = true
+        executor.execute {
+            val result = runCatching {
+                cancelled.set(false)
+                val profile = VoiceProfileStore(context).currentProfile()
+                    ?: error("Nenhum perfil clonado válido está ativo.")
+                synchronized(lock) { loadProfileLocked(context, profile) }
+            }
+            loading = false
+            result.exceptionOrNull()?.let { GarciaLog.recordEvent(context, "Restauração da voz clonada", safeMessage(it)) }
+            onResult(result.map { Unit })
+        }
     }
 
     fun preview(
