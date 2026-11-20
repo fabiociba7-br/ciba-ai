@@ -10,18 +10,6 @@ class ResearchSource:
     provider: str = "DuckDuckGo"
 
 @dataclass(slots=True)
-class PublishResult:
-    status: str
-    message: str = ""
-    markdown_path: str | None = None
-    json_path: str | None = None
-    branch: str | None = None
-    commit: str | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-@dataclass(slots=True)
 class ResearchReport:
     topic: str
     generated_at: str
@@ -30,7 +18,6 @@ class ResearchReport:
     sources: list[ResearchSource] = field(default_factory=list)
     code_snippets: list[dict[str, str]] = field(default_factory=list)
     queries: list[str] = field(default_factory=list)
-    publication: PublishResult | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
