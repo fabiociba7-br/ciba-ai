@@ -1187,6 +1187,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     if (chatComposioProposal != null) item {
                         val proposal = chatComposioProposal!!
                         val toolName = proposal.optString("tool_name")
+                        val toolId = proposal.optString("tool_id")
+                        val isGarciaResearch = toolId == "garcia.research"
                         val conversationId = proposal.optString("conversation_id")
                         val invocationId = proposal.optString("invocation_id")
                         val toolInput = proposal.optJSONObject("input") ?: JSONObject()
@@ -1216,7 +1218,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                                 scope.launch {
                                                     try {
                                                         withContext(Dispatchers.IO) {
-                                                            client.invokeComposio("approve", toolName, conversationId, invocationId, toolInput, chatComposioApprovalId, false)
+                                                            if (isGarciaResearch) client.decideToolApproval(chatComposioApprovalId, false)
+                                                            else client.invokeComposio("approve", toolName, conversationId, invocationId, toolInput, chatComposioApprovalId, false)
                                                         }
                                                         chatComposioProposal = null
                                                         chatComposioApprovalId = ""
@@ -1235,7 +1238,8 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                                 scope.launch {
                                                     try {
                                                         withContext(Dispatchers.IO) {
-                                                            client.invokeComposio("approve", toolName, conversationId, invocationId, toolInput, chatComposioApprovalId, true)
+                                                            if (isGarciaResearch) client.decideToolApproval(chatComposioApprovalId, true)
+                                                            else client.invokeComposio("approve", toolName, conversationId, invocationId, toolInput, chatComposioApprovalId, true)
                                                         }
                                                         chatComposioApproved = true
                                                     } catch (e: Exception) {
@@ -1254,9 +1258,20 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                             scope.launch {
                                                 try {
                                                     val result = withContext(Dispatchers.IO) {
-                                                        client.invokeComposio("execute", toolName, conversationId, invocationId, toolInput, chatComposioApprovalId)
+                                                        if (isGarciaResearch) client.executeToolApproval(chatComposioApprovalId)
+                                                        else client.invokeComposio("execute", toolName, conversationId, invocationId, toolInput, chatComposioApprovalId)
                                                     }
                                                     chatComposioResult = result
+                                                    val visual = result.optJSONObject("visual_studio")
+                                                    if (visual != null) {
+                                                        val imageUrl = visual.optString("image_url")
+                                                        val sessionId = visual.optString("session_id")
+                                                        val iteration = visual.optInt("iteration", 0)
+                                                        if (imageUrl.startsWith("https://") && sessionId.length == 36) {
+                                                            history.add("assistant" to "Nova versão criada no Estúdio Visual da Garcia.\\n[[visual:$imageUrl|$sessionId|$iteration]]")
+                                                            persist()
+                                                        }
+                                                    }
                                                     chatComposioProposal = null
                                                     chatComposioApprovalId = ""
                                                 } catch (e: Exception) {
