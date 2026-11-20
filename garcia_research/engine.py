@@ -145,6 +145,42 @@ class GarciaEngine:
         result = self.retriever_retrier.run(lambda: self.retriever.run(query, **kwargs))
         return self._sanitize_context(self._context_from_retrieval(result))
 
+    @staticmethod
+    def _ground_sources(candidate: dict[str, Any], context: str) -> dict[str, Any]:
+        """Discard model-invented source titles not present in retrieved evidence."""
+        titles: set[str] = set()
+        try:
+            payload = json.loads(context)
+        except (json.JSONDecodeError, TypeError):
+            payload = None
+
+        def collect(value: Any) -> None:
+            if isinstance(value, dict):
+                title = value.get("title")
+                if isinstance(title, str) and title.strip():
+                    titles.add(title.strip())
+                for child in value.values():
+                    collect(child)
+            elif isinstance(value, list):
+                for child in value:
+                    collect(child)
+
+        collect(payload)
+        supplied = candidate.get("fontes", [])
+        if not isinstance(supplied, list):
+            supplied = []
+        grounded = [title for title in supplied
+                    if isinstance(title, str) and title.strip() in titles]
+        result = dict(candidate)
+        result["fontes"] = grounded
+        if supplied and not grounded:
+            gaps = result.get("lacunas", [])
+            if not isinstance(gaps, list):
+                gaps = []
+            result["lacunas"] = gaps + ["Nenhum título de fonte citado corresponde às fontes recuperadas."]
+            result["confianca"] = 0.0
+        return result
+
     def _refine(self, query: str, response: dict[str, Any]) -> str:
         gaps = response.get("lacunas", [])
         if not isinstance(gaps, list):
@@ -177,7 +213,7 @@ class GarciaEngine:
                         "lacunas": [str(exc)],
                     }
                 last_response = candidate
-                if self._validate_response(candidate, min_confidence=self.config.min_confidence,
+                candidate = self._ground_sources(candidate, context)\n                if self._validate_response(candidate, min_confidence=self.config.min_confidence,
                                            max_gaps=self.config.max_gaps):
                     return self._normalize(candidate)
                 if iteration < self.config.max_iterations:
