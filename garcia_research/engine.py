@@ -316,7 +316,14 @@ class GarciaEngine:
                     yield StreamEvent("reset", {"reason": "validation_failed",
                                                 "next_iteration": iteration + 1})
                     current_query = self._refine(current_query, candidate)
-            yield StreamEvent("final", self._normalize(candidate))
+            normalized = self._normalize(candidate)
+            normalized["raciocinio"] = (
+                "A validação identificou evidência insuficiente ou campos incompletos; "
+                "a resposta abaixo deve ser tratada como inconclusiva. "
+                + str(normalized["raciocinio"])
+            )
+            normalized["confianca"] = min(float(normalized["confianca"]), 0.69)
+            yield StreamEvent("final", normalized)
         except CircuitOpenError:
             yield StreamEvent("final", self._error_response(
                 "O provedor de linguagem está temporariamente indisponível.",
