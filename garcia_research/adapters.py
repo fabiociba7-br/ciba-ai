@@ -105,7 +105,7 @@ class OpenAIAdapter:
             "https://api.openai.com/v1/chat/completions",
             headers={"Authorization": f"Bearer {self.api_key}",
                      "Content-Type": "application/json"},
-            json={"model": self.model, "temperature": 0.2,
+            json={"model": self.model, "temperature": 0.2, "response_format": {"type": "json_object"},
                   "messages": [{"role": "user", "content": prompt}]},
             timeout=self.timeout_seconds,
         )
@@ -120,6 +120,7 @@ class OpenAIAdapter:
             headers={"Authorization": f"Bearer {self.api_key}",
                      "Content-Type": "application/json"},
             json={"model": self.model, "temperature": 0.2, "stream": True,
+                  "response_format": {"type": "json_object"},
                   "messages": [{"role": "user", "content": prompt}]},
             timeout=self.timeout_seconds,
             stream=True,
