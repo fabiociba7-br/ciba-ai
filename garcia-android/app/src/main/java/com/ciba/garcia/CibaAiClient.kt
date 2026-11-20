@@ -238,5 +238,17 @@ class CibaAiClient(private val store: SecureStore) {
         return request("/v1/owner/composio/invoke", "POST", payload, authenticated = true)
     }
 
+    fun decideToolApproval(approvalId: String, allow: Boolean): JSONObject {
+        require(approvalId.matches(Regex("[A-Za-z0-9_-]{16,128}"))) { "Identificador de aprovação inválido." }
+        return request("/v1/owner/tool-approvals/$approvalId/decision", "POST",
+            JSONObject().put("allow", allow), authenticated = true)
+    }
+
+    fun executeToolApproval(approvalId: String): JSONObject {
+        require(approvalId.matches(Regex("[A-Za-z0-9_-]{16,128}"))) { "Identificador de aprovação inválido." }
+        return request("/v1/owner/tool-approvals/$approvalId/execute", "POST",
+            JSONObject(), authenticated = true)
+    }
+
     fun usage(): JSONObject = request("/v1/usage", "GET", authenticated = true)
 }
