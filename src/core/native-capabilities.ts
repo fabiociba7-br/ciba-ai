@@ -154,7 +154,6 @@ export const GARCIA_NATIVE_CAPABILITIES: NativeCapabilityDefinition[] = [
     category: "text_to_speech",
     description: "Síntese de voz local para respostas faladas e leitura de conteúdo; sem provedores remotos.",
     sourceRepositories: [
-      "resemble-ai/chatterbox",
       "OHF-Voice/piper1-gpl",
       "hexgrad/kokoro",
       "kyutai-labs/pocket-tts",
@@ -175,7 +174,6 @@ export const GARCIA_NATIVE_CAPABILITIES: NativeCapabilityDefinition[] = [
     category: "voice_conversion",
     description: "Conversão vocal e personalização mediante autorização do titular da voz.",
     sourceRepositories: [
-      "resemble-ai/chatterbox",
       "SWivid/F5-TTS",
       "RVC-Project/Retrieval-based-Voice-Conversion-WebUI",
     ],

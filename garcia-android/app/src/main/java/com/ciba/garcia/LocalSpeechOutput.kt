@@ -12,10 +12,10 @@ internal data class GarciaVoiceOption(val id: String, val name: String, val lang
 /** Removes visual Markdown syntax before system TTS; the visible message is never modified. */
 internal fun speechFriendlyText(source: String): String {
     val text = source
-        .replace(Regex("(?s)```.*?```"), " ")
+        .replace(Regex("(?s)\\x60\\x60\\x60.*?\\x60\\x60\\x60"), " ")
         .replace(Regex("!\\[([^]]*)\\]\\([^)]*\\)"), "$1")
         .replace(Regex("\\[([^]]+)\\]\\([^)]*\\)"), "$1")
-        .replace(Regex("`([^`]+)`"), "$1")
+        .replace(Regex("\\x60([^\\x60]+)\\x60"), "$1")
         .replace(Regex("(?m)^[ \\t]{0,3}#{1,6}[ \\t]*"), "")
         .replace(Regex("(?m)^[ \\t]*>[ \\t]?"), "")
         .replace(Regex("(?m)^[ \\t]*[-*+][ \\t]+"), "")
@@ -31,10 +31,7 @@ internal fun speechFriendlyText(source: String): String {
         .trim()
 }
 
-/**
- * Keeps Android TTS and local cloned speech as separate, explicit modes.
- * CLONED never silently falls back to SYSTEM when the model/runtime fails.
- */
+/** Android system TTS only. Voice cloning engines are intentionally kept outside this adapter. */
 internal class LocalSpeechOutput(
     context: Context,
     private val onAvailabilityChanged: (Boolean, String) -> Unit,
@@ -43,7 +40,6 @@ internal class LocalSpeechOutput(
 ) {
     private val appContext = context.applicationContext
     private val preferences = appContext.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
-    private val profileStore = VoiceProfileStore(appContext)
     private var engine: TextToSpeech? = null
     private var ready = false
     private var closed = false
@@ -56,19 +52,17 @@ internal class LocalSpeechOutput(
             val tts = engine
             if (status != TextToSpeech.SUCCESS || tts == null) {
                 ready = false
-                if (isCloneMode()) restoreCloneMode()
-                else onAvailabilityChanged(false, "Motor de voz do Android indisponível.")
+                onAvailabilityChanged(false, "Motor de voz do Android indisponível.")
                 return@TextToSpeech
             }
             val voices = supportedVoices(tts)
             if (voices.isEmpty()) {
                 ready = false
-                if (isCloneMode()) restoreCloneMode()
-                else onAvailabilityChanged(false, "Nenhuma voz em português foi encontrada. Instale vozes nas configurações de texto para fala do Android.")
+                onAvailabilityChanged(false, "Nenhuma voz em português foi encontrada. Instale vozes nas configurações de texto para fala do Android.")
                 return@TextToSpeech
             }
             val preferred = preferences.getString("system_voice_id", null)
-                ?: preferences.getString("voice_id", null)?.takeUnless { it.startsWith(CLONE_PREFIX) }
+                ?: preferences.getString("voice_id", null)?.takeUnless { it.startsWith(LEGACY_CLONE_PREFIX) }
             val chosen = voices.firstOrNull { it.name == preferred }
                 ?: voices.firstOrNull { it.locale.country == "BR" && !it.isNetworkConnectionRequired }
                 ?: voices.firstOrNull { it.locale.country == "BR" }
@@ -107,37 +101,14 @@ internal class LocalSpeechOutput(
                 }
             })
             ready = true
-            if (preferences.getString("system_voice_id", null).isNullOrBlank()) {
-                preferences.edit().putString("system_voice_id", chosen.name).apply()
-            }
-            if (isCloneMode()) restoreCloneMode()
-            else {
-                if (preferences.getString("voice_id", null).isNullOrBlank()) {
-                    preferences.edit().putString("voice_id", chosen.name).apply()
-                }
-                onAvailabilityChanged(true, statusLabel(chosen))
-            }
-        }
-    }
-
-    private fun isCloneMode(): Boolean =
-        preferences.getString("voice_mode", "system") == "cloned" ||
-            preferences.getString("voice_id", null)?.startsWith(CLONE_PREFIX) == true
-
-    private fun restoreCloneMode() {
-        if (!ChatterboxVoiceCloneEngine.isNativeAvailable()) {
-            onAvailabilityChanged(false, "O runtime nativo da voz clonada não está disponível nesta arquitetura. A Garcia não trocará para outra voz automaticamente.")
-            return
-        }
-        runCatching { ChatterboxModelManager.installed(appContext) }
-        ChatterboxVoiceCloneEngine.restore(appContext) { result ->
-            Handler(Looper.getMainLooper()).post {
-                if (closed) return@post
-                result.fold(
-                    { onAvailabilityChanged(true, "Voz clonada local pronta para as respostas da Garcia.") },
-                    { onAvailabilityChanged(false, "Não foi possível carregar a voz clonada: " + safeMessage(it) + ". Nenhuma voz substituta será usada.") }
-                )
-            }
+            // Migrate any previously selected clone profile back to the available Android voice.
+            preferences.edit()
+                .putString("voice_mode", "system")
+                .putString("voice_id", chosen.name)
+                .putString("system_voice_id", chosen.name)
+                .remove("cloned_voice_id")
+                .apply()
+            onAvailabilityChanged(true, statusLabel(chosen))
         }
     }
 
@@ -161,27 +132,14 @@ internal class LocalSpeechOutput(
 
     fun selectedVoice(): String? = preferences.getString("voice_id", null)
     fun isSystemReady(): Boolean = ready
-    fun isCloneEngineAvailable(): Boolean = ChatterboxVoiceCloneEngine.isAvailable(appContext)
-    fun isCloneSelected(): Boolean = isCloneMode()
-    fun isClonedRuntimeReady(): Boolean = ChatterboxVoiceCloneEngine.isReady()
-    fun isReady(): Boolean = if (isCloneMode()) isCloneEngineAvailable() && profileStore.activeProfileId() != null else ready
+    fun isReady(): Boolean = ready
 
-    /** Human-readable output diagnosis; availability comes from callbacks to avoid hashing models during composition. */
     fun diagnosticStatus(available: Boolean, detail: String): String {
-        if (isCloneMode()) {
-            val profileName = profileStore.currentName().ifBlank { "perfil não encontrado" }
-            return when {
-                !ChatterboxVoiceCloneEngine.isNativeAvailable() ->
-                    "CLONED selecionado mas indisponível: runtime nativo ausente ($profileName)"
-                !available -> "CLONED selecionado mas indisponível: $detail ($profileName)"
-                ChatterboxVoiceCloneEngine.isReady() -> "CLONED pronto ($profileName)"
-                else -> "CLONED disponível · runtime preparando ($profileName)"
-            }
-        }
         val voiceName = engine?.voice?.name?.replace('_', ' ')
             ?: preferences.getString("system_voice_id", null)?.replace('_', ' ')
-        return if (ready) "SYSTEM pronto" + (voiceName?.let { " · $it" } ?: "") + " · offline"
-        else "SYSTEM indisponível: nenhuma voz local pronta"
+        return if (available && ready) "SYSTEM pronto" + (voiceName?.let { " · $it" } ?: "") +
+            if (engine?.voice?.isNetworkConnectionRequired == true) " · requer internet" else " · offline"
+        else "SYSTEM indisponível: " + detail.ifBlank { "nenhuma voz local pronta" }
     }
 
     private fun setVoiceInternal(id: String): Boolean {
@@ -197,7 +155,6 @@ internal class LocalSpeechOutput(
 
     fun selectVoice(id: String): Boolean {
         if (closed || !ready || !setVoiceInternal(id)) return false
-        ChatterboxVoiceCloneEngine.release()
         previewRestoreVoiceId = null
         preferences.edit()
             .putString("voice_mode", "system")
@@ -209,82 +166,13 @@ internal class LocalSpeechOutput(
         return true
     }
 
-    /** Preview changes only the temporary TTS voice; saved mode/profile remain untouched. */
+    /** Preview changes only the temporary TTS voice; the saved selection remains untouched. */
     fun previewVoice(id: String): Boolean {
         if (closed || !ready) return false
         val previous = engine?.voice?.name ?: preferences.getString("system_voice_id", null)
         if (!setVoiceInternal(id)) return false
         previewRestoreVoiceId = previous?.takeIf { it != id }
         return speakSystem("Olá! Eu sou a Garcia. Esta é uma amostra da minha voz. Você pode ouvir outras opções antes de escolher.")
-    }
-
-    fun selectClonedProfile(profile: GarciaVoiceProfile, onResult: (Result<Unit>) -> Unit = {}): Boolean {
-        if (closed) {
-            val error = IllegalStateException("A saída de voz já foi encerrada.")
-            onResult(Result.failure(error))
-            return false
-        }
-        if (!ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
-            runCatching { ChatterboxModelManager.installed(appContext) }
-        }
-        if (!ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
-            val error = IllegalStateException("Instale e valide os modelos locais Chatterbox (T3 + S3Gen) antes de ativar a voz clonada.")
-            onAvailabilityChanged(false, error.message ?: "Motor de clonagem indisponível.")
-            onResult(Result.failure(error))
-            return false
-        }
-        return runCatching {
-            profileStore.select(profile)
-            ChatterboxVoiceCloneEngine.activate(appContext, profile) { result ->
-                Handler(Looper.getMainLooper()).post {
-                    result.fold(
-                        { onAvailabilityChanged(true, "Voz clonada '${profile.name}' pronta. As respostas faladas usarão este perfil local.") },
-                        { onAvailabilityChanged(false, "Falha ao ativar a voz clonada: " + safeMessage(it) + ". Sem fallback automático.") }
-                    )
-                    onResult(result)
-                }
-            }
-            true
-        }.getOrElse {
-            onAvailabilityChanged(false, safeMessage(it))
-            onResult(Result.failure(it))
-            false
-        }
-    }
-
-    /** Preview uses the supplied profile without changing the active selection. */
-    fun previewClonedProfile(profile: GarciaVoiceProfile, onResult: (Result<Unit>) -> Unit = {}): Boolean {
-        if (closed) {
-            onResult(Result.failure(IllegalStateException("A saída de voz já foi encerrada.")))
-            return false
-        }
-        if (!ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
-            runCatching { ChatterboxModelManager.installed(appContext) }
-        }
-        if (!ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
-            onResult(Result.failure(IllegalStateException("Instale e valide os modelos locais Chatterbox (T3 + S3Gen) antes de ouvir a voz clonada.")))
-            return false
-        }
-        ChatterboxVoiceCloneEngine.preview(
-            appContext,
-            profile,
-            "Olá! Eu sou a Garcia. Esta é uma amostra da voz clonada que você escolheu para mim."
-        ) { result ->
-            Handler(Looper.getMainLooper()).post {
-                if (result.isFailure) onAvailabilityChanged(isReady(), "Falha na prévia da voz clonada: " + safeMessage(result.exceptionOrNull()!!))
-                else if (isCloneMode()) onAvailabilityChanged(true, "Prévia concluída; voz clonada ativa e pronta para as respostas.")
-                onResult(result)
-            }
-        }
-        return true
-    }
-
-    fun onProfileDeleted(profileId: String, wasActive: Boolean) {
-        if (!wasActive) return
-        ChatterboxVoiceCloneEngine.release()
-        val restored = preferences.getString("voice_id", null)
-        if (ready && !restored.isNullOrBlank()) setVoiceInternal(restored)
-        onAvailabilityChanged(ready, if (ready) "Perfil removido. Voz do sistema restaurada." else "Perfil removido. Instale uma voz do Android para voltar a ouvir respostas.")
     }
 
     private fun speakSystem(text: String): Boolean {
@@ -304,72 +192,14 @@ internal class LocalSpeechOutput(
 
     fun speak(text: String): Boolean {
         previewRestoreVoiceId = null
-        val cleanText = speechFriendlyText(text).take(MAX_SPOKEN_CHARS)
-        if (cleanText.isBlank() || closed) return false
-        if (isCloneMode()) {
-            // A cold process has no in-memory verification stamp. Re-check both GGUFs on disk once.
-            if (ChatterboxVoiceCloneEngine.isNativeAvailable() &&
-                !ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
-                runCatching { ChatterboxModelManager.installed(appContext) }
-            }
-            if (!ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
-                val reason = if (!ChatterboxVoiceCloneEngine.isNativeAvailable()) {
-                    "o runtime nativo Chatterbox não está disponível"
-                } else {
-                    "T3/S3Gen não estão instalados ou falharam na validação SHA-256"
-                }
-                onAvailabilityChanged(false, "A voz clonada está selecionada, mas " + reason + ". Nenhuma voz substituta será usada.")
-                return false
-            }
-            val utteranceId = "garcia-clone-" + System.nanoTime()
-            activeUtteranceId = utteranceId
-            try {
-                ChatterboxVoiceCloneEngine.speak(
-                    appContext,
-                    cleanText,
-                    onStarted = {
-                        Handler(Looper.getMainLooper()).post {
-                            if (!closed && activeUtteranceId == utteranceId) onUtteranceStarted()
-                        }
-                    },
-                    onDone = {
-                        Handler(Looper.getMainLooper()).post {
-                            if (!closed && activeUtteranceId == utteranceId) {
-                                activeUtteranceId = null
-                                onUtteranceDone()
-                            }
-                        }
-                    },
-                    onError = { error ->
-                        Handler(Looper.getMainLooper()).post {
-                            if (!closed && activeUtteranceId == utteranceId) {
-                                activeUtteranceId = null
-                                onUtteranceDone()
-                                onAvailabilityChanged(false, "Falha na voz clonada: " + safeMessage(error) + ". Não houve substituição por outra voz.")
-                            }
-                        }
-                    }
-                )
-            } catch (error: Throwable) {
-                Handler(Looper.getMainLooper()).post {
-                    if (!closed && activeUtteranceId == utteranceId) {
-                        activeUtteranceId = null
-                        onUtteranceDone()
-                        onAvailabilityChanged(false, "Falha na voz clonada: " + safeMessage(error) + ". Não houve substituição por outra voz.")
-                    }
-                }
-            }
-            return true
-        }
-        return speakSystem(cleanText)
+        return speakSystem(text)
     }
 
     fun stop() {
         activeUtteranceId = null
         previewRestoreVoiceId = null
-        ChatterboxVoiceCloneEngine.stop()
         engine?.stop()
-        if (!isCloneMode()) preferences.getString("system_voice_id", null)?.let(::setVoiceInternal)
+        preferences.getString("system_voice_id", null)?.let(::setVoiceInternal)
         onUtteranceDone()
     }
 
@@ -380,20 +210,14 @@ internal class LocalSpeechOutput(
         engine?.stop()
         engine?.shutdown()
         engine = null
-        ChatterboxVoiceCloneEngine.release()
     }
 
     private fun statusLabel(voice: android.speech.tts.Voice) =
         "Resposta por voz pronta · ${voice.name.replace('_', ' ')}" +
             if (voice.isNetworkConnectionRequired) " · requer internet" else " · offline"
 
-    private fun safeMessage(error: Throwable): String =
-        (error.message ?: error.javaClass.simpleName)
-            .replace(Regex("/(?:data|storage|mnt)/[^\\s]+"), "[arquivo local]")
-            .take(300)
-
     companion object {
-        private const val CLONE_PREFIX = "clone:"
+        private const val LEGACY_CLONE_PREFIX = "clone:"
         private const val MAX_SPOKEN_CHARS = 8_000
         private const val SPEECH_RATE = 1.15f
     }

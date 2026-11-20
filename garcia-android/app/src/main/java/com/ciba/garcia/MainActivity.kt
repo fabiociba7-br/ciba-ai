@@ -1401,7 +1401,6 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         val voiceOptions = voiceOutput.availableVoices()
         val sectionTitle = when (settingsSection) {
             "voice" -> "Voz e conversação"
-            "voiceClone" -> "Clonar minha voz"
             "speech" -> "Transcrição de voz"
             "accounts" -> "Contas e integrações"
             "diagnostics" -> "Uso e diagnóstico"
@@ -1420,7 +1419,6 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         Spacer(Modifier.height(8.dp))
                         listOf(
                             "voice" to ("Voz e conversação" to "Escolha uma voz do Android e configure a conversa por voz"),
-                            "voiceClone" to ("Clonar minha voz" to "Gravar ou importar uma referência, testar e ativar um perfil local"),
                             "speech" to ("Transcrição de voz" to "Instalar, reparar ou remover o modelo Whisper"),
                             "accounts" to ("Contas e integrações" to "Facebook e serviços conectados"),
                             "composio" to ("Composio" to "Conectar Gmail e outros serviços com permissões controladas"),
@@ -1453,18 +1451,6 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         Text(voiceStatus, color = Muted, fontSize = 12.sp)
                         Spacer(Modifier.height(8.dp))
                         Text("Voz da Garcia", fontWeight = FontWeight.Bold)
-                        if (voiceOutput.isCloneSelected()) {
-                            val offlineSystemVoice = voiceOptions.firstOrNull { it.offline }
-                            OutlinedButton(
-                                onClick = {
-                                    if (offlineSystemVoice != null && !voiceOutput.selectVoice(offlineSystemVoice.id)) {
-                                        error = "Não foi possível voltar para a voz do Android."
-                                    }
-                                },
-                                enabled = offlineSystemVoice != null && voiceOutput.isSystemReady(),
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Voltar para voz do Android") }
-                        }
                         if (voiceOptions.isEmpty()) {
                             Text("Nenhuma voz em português foi encontrada. Instale outras vozes nas configurações de texto para fala do Android.", color = Muted, fontSize = 12.sp)
                         } else {
@@ -1521,8 +1507,6 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             color = Muted,
                             fontSize = 11.sp
                         )
-                    } else if (settingsSection == "voiceClone") {
-                        VoiceCloningSection(voiceOutput)
                     } else if (settingsSection == "speech") {
                         Text("Modelo de transcrição local", fontWeight = FontWeight.Bold)
                         Text(whisperStatus, color = Muted, fontSize = 12.sp)
