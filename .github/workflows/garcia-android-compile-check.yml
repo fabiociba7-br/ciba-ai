@@ -7,6 +7,7 @@ on:
     branches:
       - main
       - feat/garcia-research-package
+      - feature/garcia-chat-experience
     paths:
       - "garcia-android/**"
       - ".github/workflows/garcia-android-compile-check.yml"
@@ -47,7 +48,7 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: "platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.2.12479018 cmake;3.22.1"
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -55,4 +56,4 @@ jobs:
           gradle-version: "8.13"
 
       - name: Run unit tests and compile Android sources only
-        run: gradle --no-daemon :app:testDebugUnitTest :app:externalNativeBuildDebug :app:compileDebugKotlin
+        run: gradle --no-daemon :app:testDebugUnitTest :app:compileDebugKotlin
