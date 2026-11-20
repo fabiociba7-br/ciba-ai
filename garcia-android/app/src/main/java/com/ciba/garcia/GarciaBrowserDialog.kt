@@ -256,7 +256,7 @@ internal fun GarciaBrowserDialog(onDismiss: () -> Unit, onSharePage: (String) ->
 
         view.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
             val uri = runCatching { Uri.parse(url) }.getOrNull()
-            if (uri?.scheme !in setOf("http", "https")) {
+            if (uri == null || uri.scheme !in setOf("http", "https")) {
                 Toast.makeText(context, "Download bloqueado: endereço inválido.", Toast.LENGTH_SHORT).show()
             } else {
                 runCatching {
