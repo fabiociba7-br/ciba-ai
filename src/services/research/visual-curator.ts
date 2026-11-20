@@ -130,7 +130,9 @@ export class VisualCurator {
       const previousAsset = await this.sessions.getLatestAsset(session.sessionId);
       if (!previousAsset) throw new Error("visual_previous_asset_missing");
       previousPrompt = previousAsset.promptUsed;
-      previousImage = await readR2Image(this.env, previousAsset.r2Key);
+      if (session.mode === "generate" && previousAsset.sourceKind !== "reference_search") {
+        previousImage = await readR2Image(this.env, previousAsset.r2Key);
+      }
     } else {
       const topic = (input.topic || "").trim();
       if (topic.length < 3 || topic.length > 300) throw new Error("invalid_visual_topic");
