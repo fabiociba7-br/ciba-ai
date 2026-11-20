@@ -14,8 +14,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: garcia-android-compile-check
-  cancel-in-progress: true
+  group: garcia-android-compile-check-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   compile:
@@ -25,10 +25,10 @@ jobs:
       run:
         working-directory: garcia-android
     steps:
-      - name: Checkout main
+      - name: Checkout source revision
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 1
 
       - name: Set up Java 17
