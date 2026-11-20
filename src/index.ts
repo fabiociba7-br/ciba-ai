@@ -25,7 +25,7 @@ export interface Env {
 }
 
 import { getLimit, resolveModel, isValidAppId, ZERO_COST_MODELS, MAX_ADMIN_AUTH_FAILURES_PER_MINUTE, MAX_OUTPUT_TOKENS, MAX_MESSAGE_CHARS, MAX_TOTAL_INPUT_CHARS } from "./policy";
-import { runCibaOrchestrator, CloudflareWorkersAIProvider, createProviderRegistry, listAgents, listGarciaSkills } from "./core";
+import { runCibaOrchestrator, listAgents, listGarciaSkills } from "./core";
 import { validateCuratedMemory } from "./core/memory";
 import { prepareMemoryCandidate } from "./core/memory-candidates";
 import { classifyMemoryProposal } from "./core/memory-learning";
@@ -57,34 +57,13 @@ import { usageFor } from "./core/usage";
 import { isAppAllowed } from "./core/apps/access";
 import { readRuntimeSettings, CONFIG_KEYS, publicConfig } from "./core/runtime-settings";
 import { requireCibaGenioAccess } from "./core/cibagenio-access";
+import { createRuntimeProviderRegistry } from "./core/runtime-provider-registry";
 
 type ChatImage = { mime_type: "image/jpeg" | "image/png" | "image/webp"; data: string };
 type ChatMessage = { role: "user" | "assistant"; content: string; images?: ChatImage[] };
 
 import { b64url, randomToken, sha256, nowIso } from "./security/crypto";
 import { MESSAGE_MAX_PAYLOAD_CHARS, MESSAGE_MAX_PENDING_PER_DESTINATION, MESSAGE_DEFAULT_TTL_HOURS, MESSAGE_MAX_TTL_HOURS, hasMessageGrant } from "./core/app-messaging";
-
-
-
-const createRuntimeProviderRegistry = (env: Env, model: string | null, maxOutputTokens: number) => {
-  const implementation = new CloudflareWorkersAIProvider(env.AI);
-  // The registry intentionally accepts plain data records only. Adapt the
-  // class instance to an own-property record before registering it.
-  const provider = {
-    id: implementation.id,
-    enabled: implementation.enabled,
-    generate: (request: Parameters<typeof implementation.generate>[0]) =>
-      implementation.generate(request),
-  };
-  const roles = ["general", "reasoning", "research", "coding", "creative", "verification"] as const;
-  return createProviderRegistry([provider], model ? [{
-    providerId: provider.id,
-    modelId: model,
-    roles: [...roles],
-    maxOutputTokens,
-    zeroCostApproved: ZERO_COST_MODELS.has(model),
-  }] : []);
-};
 
 
 
