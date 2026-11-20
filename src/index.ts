@@ -2795,8 +2795,9 @@ const handleChat = async (request: Request, env: Env) => {
     ...(orchestration.toolApproval
       ? { tool_approval: orchestration.toolApproval }
       : {}),
-    ...((orchestration.toolProposal?.toolId.startsWith("composio.") ||
-        orchestration.toolProposal?.toolId === "garcia.research") &&
+    ...(orchestration.toolProposal &&
+      (orchestration.toolProposal.toolId.startsWith("composio.") ||
+        orchestration.toolProposal.toolId === "garcia.research") &&
       orchestration.toolProposal.requiresApproval
       ? {
           tool_proposal: {
