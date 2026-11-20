@@ -87,7 +87,7 @@ class RobustDuckDuckGoClient:
                     retry_after = None
                 self._sleep_backoff(attempt, retry_after)
                 continue
-            if response.status_code >= 500:
+            if isinstance(response.status_code, int) and response.status_code >= 500:
                 if attempt >= self.config.max_retries:
                     raise ResearchError(
                         f"DuckDuckGo server error persisted (HTTP {response.status_code})."
