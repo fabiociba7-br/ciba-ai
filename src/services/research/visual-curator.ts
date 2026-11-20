@@ -121,6 +121,7 @@ export class VisualCurator {
   }
   async createOrIterate(input: ResearchToolInput): Promise<VisualStudioResult> {
     const feedback = (input.feedback || "").trim();
+    const isNewSession = !input.session_id;
     let session: VisualSession, previousPrompt = "";
     let previousImage: ImageBytes | null = null;
     if (input.session_id) {
@@ -135,49 +136,59 @@ export class VisualCurator {
       if (topic.length < 3 || topic.length > 300) throw new Error("invalid_visual_topic");
       session = await this.sessions.startSession(topic, input.mode || "generate");
     }
-    const mode = session.mode;
-    const prompt = input.session_id
-      ? await refinePrompt(this.env, session.topic, previousPrompt, feedback, session.promptHistory)
-      : await refinePrompt(this.env, session.topic, "", (input.focus || []).join("; "), []);
-    let image: ImageBytes, analysis: VisionResult, sourceUrl: string | undefined;
-    if (mode === "search") {
-      const candidates = await this.imageSearch.search(prompt);
-      let best: { image: ImageBytes; analysis: VisionResult; candidate: typeof candidates[number] } | null = null;
-      for (const candidate of candidates.slice(0, 5)) {
-        const downloaded = await this.imageSearch.download(candidate);
-        if (!downloaded) continue;
-        const candidateAnalysis = await analyzeImage(this.env, downloaded, prompt, feedback);
-        if (candidateAnalysis.available && (!best || candidateAnalysis.score > best.analysis.score)) best = { image: downloaded, analysis: candidateAnalysis, candidate };
+    try {
+      const mode = session.mode;
+      const prompt = input.session_id
+        ? await refinePrompt(this.env, session.topic, previousPrompt, feedback, session.promptHistory)
+        : await refinePrompt(this.env, session.topic, "", (input.focus || []).join("; "), []);
+      let image: ImageBytes, analysis: VisionResult, sourceUrl: string | undefined;
+      if (mode === "search") {
+        const candidates = await this.imageSearch.search(prompt);
+        let best: { image: ImageBytes; analysis: VisionResult; candidate: typeof candidates[number] } | null = null;
+        for (const candidate of candidates.slice(0, 5)) {
+          const downloaded = await this.imageSearch.download(candidate);
+          if (!downloaded) continue;
+          const candidateAnalysis = await analyzeImage(this.env, downloaded, prompt, feedback);
+          if (candidateAnalysis.available && (!best || candidateAnalysis.score > best.analysis.score)) best = { image: downloaded, analysis: candidateAnalysis, candidate };
+        }
+        if (!best) throw new Error("visual_search_no_vision_curated_images");
+        image = best.image; analysis = best.analysis; sourceUrl = best.candidate.pageUrl;
+      } else {
+        const form = new FormData();
+        form.set("prompt", prompt);
+        form.set("width", "480");
+        form.set("height", "480");
+        form.set("guidance", "3.5");
+        if (previousImage) {
+          form.set("input_image_0", new Blob([previousImage.bytes], { type: previousImage.mimeType }), "previous-iteration." +
+            (previousImage.mimeType === "image/jpeg" ? "jpg" : previousImage.mimeType === "image/webp" ? "webp" : "png"));
+        }
+        const serialized = new Response(form);
+        const contentType = serialized.headers.get("content-type");
+        if (!serialized.body || !contentType) throw new Error("image_multipart_serialization_failed");
+        const generated = await this.env.AI.run(this.env.GARCIA_IMAGE_MODEL || "@cf/black-forest-labs/flux-2-klein-4b", {
+          multipart: { body: serialized.body, contentType },
+        });
+        image = await fetchGeneratedImage(generated);
+        analysis = await analyzeImage(this.env, image, prompt, feedback);
       }
-      if (!best) throw new Error("visual_search_no_vision_curated_images");
-      image = best.image; analysis = best.analysis; sourceUrl = best.candidate.pageUrl;
-    } else {
-      const form = new FormData();
-      form.set("prompt", prompt);
-      form.set("width", "480");
-      form.set("height", "480");
-      form.set("guidance", "3.5");
-      if (previousImage) {
-        form.set("input_image_0", new Blob([previousImage.bytes], { type: previousImage.mimeType }), "previous-iteration." +
-          (previousImage.mimeType === "image/jpeg" ? "jpg" : previousImage.mimeType === "image/webp" ? "webp" : "png"));
+      const extension = image.mimeType === "image/png" ? "png" : image.mimeType === "image/webp" ? "webp" : "jpg";
+      const key = "owners/" + this.env.ownerId + "/visual/" + session.sessionId + "/iteration-" + session.currentIteration + "." + extension;
+      const imageUrl = await this.artifacts.putImage(key, image.bytes, image.mimeType);
+      try {
+        await this.sessions.saveAsset(session, { r2Key: key, imageUrl, promptUsed: prompt, visionAnalysis: analysis.analysis,
+          userFeedback: feedback || null, sourceKind: mode === "search" ? "reference_search" : previousImage ? "edited" : "generated", mimeType: image.mimeType });
+      } catch (error) {
+        await this.env.GARCIA_ARTIFACTS.delete(key);
+        throw error;
       }
-      const serialized = new Response(form);
-      const contentType = serialized.headers.get("content-type");
-      if (!serialized.body || !contentType) throw new Error("image_multipart_serialization_failed");
-      const generated = await this.env.AI.run(this.env.GARCIA_IMAGE_MODEL || "@cf/black-forest-labs/flux-2-klein-4b", {
-        multipart: { body: serialized.body, contentType },
-      });
-      image = await fetchGeneratedImage(generated);
-      analysis = await analyzeImage(this.env, image, prompt, feedback);
+      return { session_id: session.sessionId, iteration: session.currentIteration, image_url: imageUrl,
+        visual_analysis: analysis.analysis, prompt_used: prompt,
+        suggested_next_steps: ["Ajustar composição, iluminação ou paleta de cores", "Dar mais destaque a um componente específico", "Criar uma variação mantendo os elementos aprovados"],
+        mode, ...(sourceUrl ? { source_url: sourceUrl } : {}) };
+    } catch (error) {
+      if (isNewSession) await this.sessions.deleteEmptySession(session.sessionId);
+      throw error;
     }
-    const extension = image.mimeType === "image/png" ? "png" : image.mimeType === "image/webp" ? "webp" : "jpg";
-    const key = "owners/" + this.env.ownerId + "/visual/" + session.sessionId + "/iteration-" + session.currentIteration + "." + extension;
-    const imageUrl = await this.artifacts.putImage(key, image.bytes, image.mimeType);
-    await this.sessions.saveAsset(session, { r2Key: key, imageUrl, promptUsed: prompt, visionAnalysis: analysis.analysis,
-      userFeedback: feedback || null, sourceKind: mode === "search" ? "reference_search" : previousImage ? "edited" : "generated", mimeType: image.mimeType });
-    return { session_id: session.sessionId, iteration: session.currentIteration, image_url: imageUrl,
-      visual_analysis: analysis.analysis, prompt_used: prompt,
-      suggested_next_steps: ["Ajustar composição, iluminação ou paleta de cores", "Dar mais destaque a um componente específico", "Criar uma variação mantendo os elementos aprovados"],
-      mode, ...(sourceUrl ? { source_url: sourceUrl } : {}) };
   }
 }
