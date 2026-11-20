@@ -1,62 +1,95 @@
-# Garcia Research nativo no Cloudflare Worker
+# Garcia Research + Visual Studio no Cloudflare Worker
 
 ## Arquitetura
 
-A pesquisa agora é executada pelo próprio Worker TypeScript. O pacote Python garcia_research permanece independente e não é importado pelo runtime Edge.
+A Garcia executa pesquisa e criação visual dentro do mesmo Worker TypeScript. O pacote Python continua independente e não participa do runtime Edge.
 
-1. O runCibaOrchestrator apresenta a ferramenta garcia.research ao especialista de pesquisa/coding.
-2. O modelo devolve uma proposta no protocolo interno CIBA_TOOL_CALL_V1.
-3. O registry valida o schema e a aprovação durável D1 é solicitada, porque a operação pode publicar um commit remoto.
-4. Após aprovação, GarciaResearchService gera queries com o binding env.AI, consulta DuckDuckGo com fetch, sintetiza evidências com o mesmo binding e publica o Markdown pela GitHub Contents API.
-5. O resultado volta ao orquestrador e é sintetizado na resposta da Garcia.
+- Workers AI: planejamento de queries/prompts, síntese e análise visual.
+- DuckDuckGo HTML/Images: descoberta de fontes e referências visuais; bloqueios e CAPTCHA encerram a busca sem evasão.
+- R2 (GARCIA_ARTIFACTS): imagens, relatórios JSON/Markdown e versões.
+- D1: sessões visuais, iterações, feedback, análise, assets e isolamento por owner/app/device.
+- KV (GARCIA_PROMPT_CACHE): cache temporário de prompts refinados com TTL.
+- GitHub: somente código-fonte; não recebe relatórios, imagens ou commits gerados pela pesquisa.
 
-Não há GitHub Actions, subprocess, Python runtime ou webhook no caminho da pesquisa.
+A ferramenta continua registrada como garcia.research para preservar compatibilidade. O modo visual é acionado por visual_mode=true. mode=generate cria/edita imagens; mode=search pesquisa referências e aplica curadoria por Vision AI.
 
-## Configuração
+## Iteração visual
 
-O wrangler.toml define:
+Primeira solicitação:
 
-- GITHUB_REPOSITORY: owner/repo
-- GITHUB_BRANCH: branch que recebe os relatórios
-- GITHUB_RESEARCH_PUBLISH: true para publicar
-- GITHUB_REPORTS_PATH: diretório remoto dos relatórios
+~~~json
+{
+  "topic": "Diagrama visual da arquitetura OAuth2",
+  "visual_mode": true,
+  "mode": "generate",
+  "focus": ["backend", "PKCE", "fluxo de tokens"]
+}
+~~~
 
-O token é sempre um secret, nunca uma variável versionada.
+A resposta inclui session_id, iteration, image_url, visual_analysis e prompt_used. Para refinar, o modelo reutiliza session_id e envia feedback:
 
-Produção:
+~~~json
+{
+  "session_id": "UUID retornado pela primeira execução",
+  "feedback": "Deixe o fundo mais escuro e dê mais destaque ao componente backend"
+}
+~~~
+
+O D1 conserva o histórico e cada iteração grava uma nova imagem no R2; a versão anterior permanece disponível.
+
+## Modelos de imagem
+
+O wrangler.toml configura openai/gpt-image-1.5 via binding Workers AI. A documentação do Cloudflare descreve geração e edição por prompt, com imagens de referência no parâmetro images[]. Esse é um modelo de provedor terceiro dentro do catálogo Cloudflare e pode gerar cobrança/depender da disponibilidade da conta. A síntese e visão usam o modelo configurado em AI_MODEL/GARCIA_VISION_MODEL.
+
+Fontes oficiais:
+- Workers AI GPT Image 1.5: https://developers.cloudflare.com/workers-ai/models/openai/gpt-image-1.5/
+- Workers AI FLUX.2 Klein 4B: https://developers.cloudflare.com/workers-ai/models/flux-2-klein-4b/
+- R2 Workers API: https://developers.cloudflare.com/r2/get-started/workers-api/
+
+## Preparar Cloudflare
+
+Crie o bucket:
 
 ~~~bash
-npx wrangler secret put GITHUB_TOKEN
+npx wrangler r2 bucket create garcia-artifacts
 ~~~
 
-Desenvolvimento local, em .dev.vars (não versionar):
+Crie o namespace KV e copie o ID retornado para GARCIA_PROMPT_CACHE.id em wrangler.toml:
 
-~~~dotenv
-GITHUB_TOKEN=github_pat_...
+~~~bash
+npx wrangler kv namespace create GARCIA_PROMPT_CACHE
 ~~~
 
-Use um token fine-grained restrito ao repositório escolhido, com Contents: Read and write. Não conceda Actions, Administration ou permissões desnecessárias.
+O ID zero no arquivo é somente um placeholder para desenvolvimento local. Não faça deploy remoto até substituí-lo pelo ID real.
 
-Para executar sem publicar, configure GITHUB_RESEARCH_PUBLISH=false no ambiente local.
+Configure os secrets:
 
-## Segurança e limites
+~~~bash
+npx wrangler secret put ARTIFACT_URL_SECRET
+~~~
 
-- A ferramenta é risk: external e requiresApproval: true. A pesquisa e o commit só começam depois da aprovação durável já implementada pelo backend.
-- O Worker usa env.AI; não existe chave LLM duplicada.
-- O cliente DuckDuckGo usa cache em memória por isolate, timeout, backoff exponencial, jitter e Retry-After para 429/503. Uma página de CAPTCHA/challenge é tratada como bloqueio; não há tentativa de contornar CAPTCHA, rotacionar identidades ou mascarar automação.
-- Os resultados externos são dados não confiáveis para o prompt de síntese.
-- A publicação usa GitHub Contents API, lê o SHA atual quando o arquivo existe e envia sha no update. Não há force push. HTTP 409/422 e proteção de branch resultam em erro explícito.
-- O limite da ferramenta no registry é de 45 segundos. Pesquisas profundas podem exceder limites operacionais; reduza depth ou separe a execução se a latência do provider crescer.
-- Com GITHUB_RESEARCH_PUBLISH=false, a pesquisa não publica. Quando GITHUB_RESEARCH_PUBLISH=true, GITHUB_TOKEN e GITHUB_REPOSITORY são obrigatórios; a ausência deles falha explicitamente. Se a publicação estiver habilitada, erros do GitHub não são silenciosamente ignorados.
+Use um valor aleatório forte com pelo menos 32 bytes. O segredo assina URLs temporárias de leitura de artefatos. Não o coloque no repositório nem no wrangler.toml.
 
-## Teste local
+Defina PUBLIC_API_BASE_URL no wrangler.toml para a URL pública do Worker, por exemplo a URL real workers.dev ou domínio de API. As URLs de artefatos são assinadas e expiram; o bucket R2 permanece privado e não precisa de acesso público.
+
+## Migração e teste local
 
 ~~~bash
 npm install
+npx wrangler d1 migrations apply ciba-ai-db --local
 npm run check
 npx wrangler dev
 ~~~
 
-No chat da Garcia, solicite por exemplo: “Pesquise as falhas de segurança em OAuth2, com foco em PKCE e redirect_uri”. O modelo pode propor garcia.research; a interface recebe uma proposta de ferramenta para aprovação. Depois da aprovação, a resposta inclui o relatório e, se configurado, o caminho e URL do commit.
+O Wrangler simula R2 e KV localmente. Os objetos locais ficam no estado local do Wrangler e não alteram o bucket de produção. Para testar com recursos remotos, configure explicitamente os bindings remotos e entenda que as gravações afetarão a conta Cloudflare.
 
-Para validar o parser isoladamente, os testes em tests/services/research.test.ts mockam o HTML e a API GitHub. Não disparam tráfego real ao DuckDuckGo nem criam commits reais.
+No chat, peça uma imagem e depois responda com um ajuste. A ferramenta deve reutilizar o session_id que retornou. A busca de imagens pode ser bloqueada pelo provedor; nesse caso, a Garcia informa a falha e não tenta contornar o bloqueio.
+
+## Segurança e limites
+
+- A ferramenta é risk=external e requiresApproval=true. A aprovação durável D1 existente continua obrigatória antes de pesquisa externa, geração de imagem ou armazenamento.
+- Todas as sessões e chaves R2 são prefixadas pelo owner_id e validadas também por app_id/device_id.
+- URLs de artefatos são HMAC assinadas e temporárias; não habilite public access no bucket.
+- O Worker valida tipo e tamanho das imagens e limita redirecionamentos de download.
+- Resultados e imagens externas são conteúdo não confiável. A análise visual é avaliação de aderência, não certificação de direitos autorais nem de precisão técnica.
+- O limite do registry é de 45 segundos. Geração de imagem e curadoria de várias referências podem exceder esse limite; nesse caso, a execução falha em vez de afirmar que concluiu.
