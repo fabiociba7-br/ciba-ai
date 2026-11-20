@@ -1,16 +1,15 @@
 package com.ciba.garcia.chatterbox
 
 object ChatterboxNative {
-    init { System.loadLibrary("garcia_chatterbox") }
+    private val loadFailure: Throwable? = runCatching { System.loadLibrary("garcia_chatterbox") }.exceptionOrNull()
 
-    @JvmStatic external fun nativeCreate(
-        t3Path: String,
-        s3Path: String,
-        referenceWav: String,
-        voiceDirectory: String,
-        language: String = "pt"
-    ): Boolean
+    @JvmStatic fun isLibraryLoaded(): Boolean = loadFailure == null
 
+    @JvmStatic fun libraryStatus(): String =
+        if (loadFailure == null) "Runtime nativo carregado."
+        else "Runtime nativo Chatterbox indisponível para esta arquitetura."
+
+    @JvmStatic external fun nativeCreate(t3Path: String, s3Path: String, referenceWav: String, voiceDirectory: String, language: String): Boolean
     @JvmStatic external fun nativeSynthesize(text: String): FloatArray
     @JvmStatic external fun nativeCancel()
     @JvmStatic external fun nativeRelease()
