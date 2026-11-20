@@ -175,5 +175,5 @@ def test_markdown_json_fence_is_supported():
     from garcia_research.engine import GarciaEngine
 
     fence = chr(96) * 3
-    parsed = GarciaEngine._parse_response(fence + "json\\n" + valid_payload() + "\\n" + fence)
+    parsed = GarciaEngine._parse_response(fence + "json\n" + valid_payload() + "\n" + fence)
     assert parsed["resposta"].startswith("Implemente PKCE")
