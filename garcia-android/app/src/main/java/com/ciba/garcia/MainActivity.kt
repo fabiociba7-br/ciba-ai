@@ -444,6 +444,24 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
             } catch (e: Exception) {
                 whisperStatus = e.message ?: "Falha na transcrição local"
                 GarciaLog.record(context, "Whisper transcrição", e)
+                if (continuousVoice && voiceReplies && streamingSpeech.isAvailable && !streamingUnavailable) {
+                    // Recover the current voice turn with Android's strictly on-device recognizer.
+                    streamingTranscript = ""
+                    streamingListening = streamingSpeech.start()
+                    if (streamingListening) {
+                        whisperStatus = "Whisper falhou nesta captura; fallback Android on-device ativo."
+                        GarciaLog.recordEvent(context, "Voz", "Fallback para reconhecimento Android on-device após falha do Whisper.")
+                    } else {
+                        continuousVoice = false
+                        context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
+                            .edit().putBoolean("continuous", false).apply()
+                        whisperStatus = "Whisper falhou e o fallback Android não iniciou. Verifique os logs de diagnóstico."
+                    }
+                } else if (continuousVoice) {
+                    continuousVoice = false
+                    context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
+                        .edit().putBoolean("continuous", false).apply()
+                }
             } finally { whisperBusy = false }
         }
     }
@@ -453,11 +471,12 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         if (granted) {
             if (input.isNotBlank() || attachment != null || busy || whisperBusy) {
                 error = "Envie ou limpe o texto pendente antes de iniciar outra captura."
-            } else if (continuousVoice && streamingSpeech.isAvailable && !streamingUnavailable) {
+            } else if (continuousVoice && whisperModelInfo == null && streamingSpeech.isAvailable && !streamingUnavailable) {
+                // Whisper is always the primary engine. Android on-device is fallback only.
                 streamingTranscript = ""
                 error = ""
                 streamingListening = streamingSpeech.start()
-                whisperStatus = if (streamingListening) "Reconhecimento offline em tempo real ativo" else whisperStatus
+                whisperStatus = if (streamingListening) "Fallback Android on-device ativo" else "Não foi possível iniciar o reconhecimento de voz."
             } else if (whisperModelInfo == null) {
                 error = "Instale um modelo Whisper em Configurações antes de gravar."
             } else scope.launch {
@@ -487,6 +506,22 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             withContext(Dispatchers.IO) { whisperRecorder.cancel() }
                             whisperStatus = captureError.message ?: "A captura de voz foi interrompida."
                             GarciaLog.record(context, "Whisper captura", captureError)
+                            if (continuousVoice && voiceReplies && streamingSpeech.isAvailable && !streamingUnavailable) {
+                                streamingTranscript = ""
+                                streamingListening = streamingSpeech.start()
+                                if (streamingListening) {
+                                    whisperStatus = "Falha na captura Whisper; fallback Android on-device ativo."
+                                    GarciaLog.recordEvent(context, "Voz", "Fallback Android on-device após erro de captura Whisper.")
+                                } else {
+                                    continuousVoice = false
+                                    context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
+                                        .edit().putBoolean("continuous", false).apply()
+                                }
+                            } else if (continuousVoice) {
+                                continuousVoice = false
+                                context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
+                                    .edit().putBoolean("continuous", false).apply()
+                            }
                         }
                     }
                 } catch (e: Exception) { error = e.message ?: "Não foi possível iniciar a gravação."; whisperRecording = false }
@@ -1441,9 +1476,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                     } else if (settingsSection == "voice") {
                         Text("Diagnóstico de áudio", fontWeight = FontWeight.Bold)
                         val inputStatus = when {
-                            streamingSpeech.isAvailable && !streamingUnavailable && whisperModelInfo != null -> "On-device OK · Whisper OK (reserva)"
-                            streamingSpeech.isAvailable && !streamingUnavailable -> "On-device OK"
-                            whisperModelInfo != null -> "Whisper OK" + if (streamingUnavailable) " · fallback ativo" else ""
+                            whisperModelInfo != null && streamingSpeech.isAvailable && !streamingUnavailable -> "Whisper primário OK · Android on-device reserva disponível"
+                            whisperModelInfo != null -> "Whisper primário OK" + if (streamingUnavailable) " · reserva Android indisponível" else ""
+                            streamingSpeech.isAvailable && !streamingUnavailable -> "Android on-device (fallback; Whisper não instalado)"
                             else -> "nenhum mecanismo local disponível"
                         }
                         Text("Entrada: $inputStatus", color = Muted, fontSize = 12.sp)
