@@ -16,11 +16,13 @@ export interface Env {
   ADMIN_TOKEN: string;
   FACEBOOK_APP_SECRET?: string;
   COMPOSIO_API_KEY?: string;
-  GITHUB_TOKEN?: string;
-  GITHUB_REPOSITORY?: string;
-  GITHUB_BRANCH?: string;
-  GITHUB_RESEARCH_PUBLISH?: string;
-  GITHUB_REPORTS_PATH?: string;
+  GARCIA_ARTIFACTS: R2Bucket;
+  GARCIA_PROMPT_CACHE: KVNamespace;
+  GARCIA_IMAGE_MODEL?: string;
+  GARCIA_VISION_MODEL?: string;
+  PUBLIC_API_BASE_URL?: string;
+  ARTIFACT_URL_SECRET?: string;
+  ARTIFACT_URL_TTL_SECONDS?: string;
   // Remote Composio execution is fail-closed unless explicitly enabled per environment.
   COMPOSIO_EXECUTION_ENABLED?: string;
   AI_MODEL?: string;
@@ -50,6 +52,7 @@ import { createD1ToolApprovalStore } from "./core/tools/durable-consent";
 import { createCibaToolRegistry } from "./core/tools/registry";
 import { createGarciaCapabilityToolRuntime } from "./core/tools/garcia-capability-tools";
 import { createGarciaResearchTool } from "./services/research";
+import { verifySignedArtifactUrl } from "./services/research/artifact-publisher";
 import { handleMcpRequest } from "./core/mcp/protocol";
 import { enqueueAgentJob, getAgentJob, cancelAgentJob } from "./core/agent-queue-store";
 import { runOneAgentQueueJob } from "./core/agent-queue-runner";
@@ -2652,7 +2655,7 @@ const handleChat = async (request: Request, env: Env) => {
         },
         executeReadOnlyProposals: true,
         executionTimeoutMs: 45_000,
-        additionalTools: [createGarciaResearchTool(env), ...composioChatTools],
+        additionalTools: [createGarciaResearchTool({ ...env, ownerId: owner.owner_id, appId: device.app_id, deviceId: device.device_id }), ...composioChatTools],
         approval: {
           store: createD1ToolApprovalStore(env.DB),
           identity: {
@@ -4140,6 +4143,23 @@ const handleRequest = async (
 ): Promise<Response> => {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+  if (request.method === "GET" && url.pathname.startsWith("/v1/artifacts/")) {
+    const key = decodeURIComponent(url.pathname.slice("/v1/artifacts/".length));
+    const expires = Number(url.searchParams.get("expires"));
+    const signature = url.searchParams.get("sig") || "";
+    if (!env.ARTIFACT_URL_SECRET || !await verifySignedArtifactUrl(env.ARTIFACT_URL_SECRET, key, expires, signature)) {
+      return json({ error: "artifact_url_invalid_or_expired" }, 403);
+    }
+    const object = await env.GARCIA_ARTIFACTS.get(key);
+    if (!object) return json({ error: "artifact_not_found" }, 404);
+    const headers = new Headers();
+    object.writeHttpMetadata(headers);
+    headers.set("etag", object.httpEtag);
+    headers.set("cache-control", "private, max-age=300");
+    headers.set("x-content-type-options", "nosniff");
+    headers.set("content-disposition", "inline");
+    return new Response(object.body, { headers });
+  }
   if ((url.pathname === "/privacy" || url.pathname === "/data-deletion") && request.method === "GET") {
     const isDeletion = url.pathname === "/data-deletion";
     const title = isDeletion ? "Exclusão de dados — Garcia" : "Política de Privacidade — Garcia";
