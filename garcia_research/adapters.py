@@ -26,7 +26,7 @@ class LocalPromptAdapter:
     def _plan_queries(prompt: str) -> str:
         match = re.search(r"topic:\s*['\"](.+?)['\"]", prompt, re.IGNORECASE)
         topic = match.group(1) if match else prompt.strip()
-        focus_match = re.search(r"focus:\s*(.+)", prompt, re.IGNORECASE)
+        focus_match = re.search(r"focus:\s*([^.]+)", prompt, re.IGNORECASE)
         focus = focus_match.group(1).strip() if focus_match else ""
         suffix = f" {focus}" if focus else ""
         queries = [
@@ -46,7 +46,7 @@ class LocalPromptAdapter:
     @staticmethod
     def _synthesize(prompt: str) -> str:
         evidence: list[dict[str, Any]] = []
-        marker = re.search(r"Evidence:\\s*", prompt, re.IGNORECASE)
+        marker = re.search(r"Evidence:\s*", prompt, re.IGNORECASE)
         if marker:
             try:
                 decoder = json.JSONDecoder()
