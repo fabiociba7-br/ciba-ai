@@ -2652,7 +2652,7 @@ const handleChat = async (request: Request, env: Env) => {
         },
         executeReadOnlyProposals: true,
         executionTimeoutMs: 45_000,
-        additionalTools: [...composioChatTools, createGarciaResearchTool(env)],
+        additionalTools: [createGarciaResearchTool(env), ...composioChatTools],
         approval: {
           store: createD1ToolApprovalStore(env.DB),
           identity: {
