@@ -68,7 +68,7 @@ Java_com_ciba_garcia_chatterbox_ChatterboxNative_nativeCreate(
         return JNI_TRUE;
     } catch (const std::exception & error) {
         __android_log_print(ANDROID_LOG_ERROR, TAG, "Engine load failed (details withheld).");
-        throwState(env, "Falha ao carregar o motor local de voz.");
+        throwState(env, std::string("Falha ao carregar o motor local de voz: ") + error.what());
         return JNI_FALSE;
     }
 }
@@ -101,7 +101,7 @@ Java_com_ciba_garcia_chatterbox_ChatterboxNative_nativeSynthesize(
         env->SetFloatArrayRegion(output, 0, (jsize)result.pcm.size(), result.pcm.data());
         return output;
     } catch (const std::exception & error) {
-        throwState(env, "Falha durante a síntese local de voz.");
+        throwState(env, std::string("Falha durante a síntese local de voz: ") + error.what());
         return nullptr;
     }
 }

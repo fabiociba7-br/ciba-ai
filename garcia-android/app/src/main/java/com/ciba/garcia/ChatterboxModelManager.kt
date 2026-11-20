@@ -44,9 +44,12 @@ internal object ChatterboxModelManager {
     suspend fun importModels(context: Context, uris: List<Uri>, progress: (DownloadProgress) -> Unit = {}): Models = withContext(Dispatchers.IO) {
         require(uris.size == 2) { "Selecione os dois arquivos GGUF do Chatterbox." }
         val dir = File(context.filesDir, "chatterbox-models").apply { mkdirs() }
-        val required = if (File(dir, T3).exists() || File(dir, S3).exists()) 2_500L else 1_250L
+        // The import is staged in the same filesystem and the existing pair
+        // is moved to a backup by rename (not copied). Only one staged pair
+        // must fit, whether this is a fresh install or a replacement.
+        val required = 1_250L
         require(StatFs(context.filesDir.absolutePath).availableBytes >= required * 1024 * 1024) {
-            "A Garcia precisa de espaço livre suficiente para importar e validar os dois modelos."
+            "Libere pelo menos 1,25 GB no armazenamento interno da Garcia para importar os dois modelos."
         }
         val staging = File(dir, "import-" + UUID.randomUUID()).apply { mkdirs() }
         try {
@@ -119,21 +122,43 @@ internal object ChatterboxModelManager {
 
     suspend fun download(context: Context, progress: (DownloadProgress) -> Unit = {}): Models = withContext(Dispatchers.IO) {
         val dir = File(context.filesDir, "chatterbox-models").apply { mkdirs() }
-        val t3 = File(dir, T3)
-        val s3 = File(dir, S3)
-        val needsT3 = !verified(t3, T3_SHA256)
-        val needsS3 = !verified(s3, S3_SHA256)
-        if (needsT3 || needsS3) {
-            val replacingExisting = (needsT3 && t3.exists()) || (needsS3 && s3.exists())
-            val requiredMb = if (replacingExisting) 2_500L else 1_500L
-            require(StatFs(context.filesDir.absolutePath).availableBytes >= requiredMb * 1024 * 1024) {
-                "A Garcia precisa de pelo menos $requiredMb MB livres para baixar e validar os modelos."
-            }
+        installed(context)?.let { return@withContext it }
+
+        // Stage a complete, verified pair before replacing either installed
+        // model. A failed second download can no longer leave a mixed pair.
+        val requiredMb = 1_250L
+        require(StatFs(context.filesDir.absolutePath).availableBytes >= requiredMb * 1024 * 1024) {
+            "Libere pelo menos 1,25 GB no armazenamento interno para baixar e validar os modelos Chatterbox."
         }
-        if (needsT3) downloadOne(T3, t3, T3_SHA256, progress)
-        if (needsS3) downloadOne(S3, s3, S3_SHA256, progress)
-        require(verified(t3, T3_SHA256) && verified(s3, S3_SHA256)) { "Os arquivos não passaram na validação GGUF." }
-        Models(t3, s3)
+        val staging = File(dir, "download-" + UUID.randomUUID()).apply { mkdirs() }
+        val stagedT3 = File(staging, T3)
+        val stagedS3 = File(staging, S3)
+        val currentT3 = File(dir, T3)
+        val currentS3 = File(dir, S3)
+        try {
+            if (verified(currentT3, T3_SHA256)) {
+                currentT3.copyTo(stagedT3, overwrite = true)
+                writeMarker(stagedT3, T3_SHA256)
+                verifiedFiles[stagedT3.absolutePath] = FileStamp(stagedT3.length(), stagedT3.lastModified())
+            } else {
+                downloadOne(T3, stagedT3, T3_SHA256, progress)
+            }
+            if (verified(currentS3, S3_SHA256)) {
+                currentS3.copyTo(stagedS3, overwrite = true)
+                writeMarker(stagedS3, S3_SHA256)
+                verifiedFiles[stagedS3.absolutePath] = FileStamp(stagedS3.length(), stagedS3.lastModified())
+            } else {
+                downloadOne(S3, stagedS3, S3_SHA256, progress)
+            }
+            require(verified(stagedT3, T3_SHA256) && verified(stagedS3, S3_SHA256)) {
+                "Os dois modelos baixados não passaram na verificação SHA-256."
+            }
+            replacePair(dir, stagedT3, stagedS3)
+            installed(context) ?: error("Os modelos não passaram na validação final após a instalação.")
+            Models(currentT3, currentS3)
+        } finally {
+            staging.deleteRecursively()
+        }
     }
 
     private fun downloadOne(name: String, target: File, expectedSha256: String, progress: (DownloadProgress) -> Unit) {
