@@ -129,6 +129,7 @@ internal class LocalSpeechOutput(
             onAvailabilityChanged(false, "O runtime nativo da voz clonada não está disponível nesta arquitetura. A Garcia não trocará para outra voz automaticamente.")
             return
         }
+        runCatching { ChatterboxModelManager.installed(appContext) }
         ChatterboxVoiceCloneEngine.restore(appContext) { result ->
             Handler(Looper.getMainLooper()).post {
                 if (closed) return@post
@@ -165,6 +166,26 @@ internal class LocalSpeechOutput(
     fun isClonedRuntimeReady(): Boolean = ChatterboxVoiceCloneEngine.isReady()
     fun isReady(): Boolean = if (isCloneMode()) isCloneEngineAvailable() && profileStore.activeProfileId() != null else ready
 
+    /** Human-readable output diagnosis for the voice settings screen. */
+    fun diagnosticStatus(): String {
+        if (isCloneMode()) {
+            val profileName = profileStore.currentName().ifBlank { "perfil não encontrado" }
+            return when {
+                !ChatterboxVoiceCloneEngine.isNativeAvailable() ->
+                    "CLONED selecionado mas indisponível: runtime nativo ausente ($profileName)"
+                !ChatterboxVoiceCloneEngine.isAvailable(appContext) ->
+                    "CLONED selecionado mas indisponível: T3/S3Gen ausentes ou SHA-256 inválido ($profileName)"
+                ChatterboxVoiceCloneEngine.isReady() ->
+                    "CLONED pronto ($profileName)"
+                else -> "CLONED selecionado · runtime preparando ($profileName)"
+            }
+        }
+        val voiceName = engine?.voice?.name?.replace('_', ' ')
+            ?: preferences.getString("system_voice_id", null)?.replace('_', ' ')
+        return if (ready) "SYSTEM pronto" + (voiceName?.let { " · $it" } ?: "") + " · offline"
+        else "SYSTEM indisponível: nenhuma voz local pronta"
+    }
+
     private fun setVoiceInternal(id: String): Boolean {
         val tts = engine ?: return false
         val voice = supportedVoices(tts).firstOrNull { it.name == id } ?: return false
@@ -200,8 +221,16 @@ internal class LocalSpeechOutput(
     }
 
     fun selectClonedProfile(profile: GarciaVoiceProfile, onResult: (Result<Unit>) -> Unit = {}): Boolean {
-        if (closed || !ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
-            val error = IllegalStateException("Instale e valide os modelos locais Chatterbox antes de ativar a voz clonada.")
+        if (closed) {
+            val error = IllegalStateException("A saída de voz já foi encerrada.")
+            onResult(Result.failure(error))
+            return false
+        }
+        if (!ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
+            runCatching { ChatterboxModelManager.installed(appContext) }
+        }
+        if (!ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
+            val error = IllegalStateException("Instale e valide os modelos locais Chatterbox (T3 + S3Gen) antes de ativar a voz clonada.")
             onAvailabilityChanged(false, error.message ?: "Motor de clonagem indisponível.")
             onResult(Result.failure(error))
             return false
@@ -227,8 +256,15 @@ internal class LocalSpeechOutput(
 
     /** Preview uses the supplied profile without changing the active selection. */
     fun previewClonedProfile(profile: GarciaVoiceProfile, onResult: (Result<Unit>) -> Unit = {}): Boolean {
-        if (closed || !ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
-            onResult(Result.failure(IllegalStateException("Instale os modelos locais Chatterbox antes de ouvir a voz clonada.")))
+        if (closed) {
+            onResult(Result.failure(IllegalStateException("A saída de voz já foi encerrada.")))
+            return false
+        }
+        if (!ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
+            runCatching { ChatterboxModelManager.installed(appContext) }
+        }
+        if (!ChatterboxVoiceCloneEngine.isAvailable(appContext)) {
+            onResult(Result.failure(IllegalStateException("Instale e valide os modelos locais Chatterbox (T3 + S3Gen) antes de ouvir a voz clonada.")))
             return false
         }
         ChatterboxVoiceCloneEngine.preview(
@@ -279,8 +315,9 @@ internal class LocalSpeechOutput(
             }
             val utteranceId = "garcia-clone-" + System.nanoTime()
             activeUtteranceId = utteranceId
-            ChatterboxVoiceCloneEngine.speak(
-                appContext,
+            try {
+                ChatterboxVoiceCloneEngine.speak(
+                    appContext,
                 cleanText,
                 onStarted = {
                     Handler(Looper.getMainLooper()).post {
@@ -303,8 +340,17 @@ internal class LocalSpeechOutput(
                             onAvailabilityChanged(false, "Falha na voz clonada: " + safeMessage(error) + ". Não houve substituição por outra voz.")
                         }
                     }
+                    }
+                )
+            } catch (error: Throwable) {
+                Handler(Looper.getMainLooper()).post {
+                    if (!closed && activeUtteranceId == utteranceId) {
+                        activeUtteranceId = null
+                        onUtteranceDone()
+                        onAvailabilityChanged(false, "Falha na voz clonada: " + safeMessage(error) + ". Não houve substituição por outra voz.")
+                    }
                 }
-            )
+            }
             return true
         }
         return speakSystem(cleanText)
