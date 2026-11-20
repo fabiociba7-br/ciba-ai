@@ -6,6 +6,8 @@ on:
   push:
     branches:
       - main
+      - refactor/backend-modularization
+      - "fix/**"
     paths:
       - "garcia-android/**"
       - ".github/workflows/garcia-android-compile-check.yml"
