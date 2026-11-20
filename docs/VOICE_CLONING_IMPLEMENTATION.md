@@ -1,58 +1,66 @@
-# Garcia — on-device voice cloning
+# Garcia — clonagem de voz local no Android
 
-Status: Android capture, profile management, model download, and native runtime integration are implemented in the feature branch. CI compilation and physical-device inference are still validation gates; do not describe the feature as production-verified until both pass.
+Status: implementação candidata na branch `feature/garcia-voice-cloning-mainline`. O código Kotlin, o módulo JNI/CMake e o fluxo de perfis foram portados e endurecidos; a validação CMake/NDK desta branch e a prova auditiva/performance em aparelho real ainda são gates. Não classificar como produção ou capacidade disponível antes desses gates.
 
-## User experience
+## Arquitetura
 
-- Ordinary text chat remains text-only.
-- Speech output is used only when the user explicitly starts voice conversation.
-- The user can import an audio file or record a sample directly in Garcia.
-- The screen provides a short reading script, playback of the reference sample, profile naming, consent confirmation, and generated-voice preview.
-- Profiles can be selected, renamed, and deleted. A newly saved profile does not overwrite older profiles.
-- The active profile is used by Garcia's voice-only speech output. If a profile is active but its engine is not ready, Garcia does not silently substitute a different voice.
-- Reference audio, normalized WAV, model files, and conditioning cache remain in app-private storage. No recording or synthesis request is uploaded to a cloud API.
-- Profile creation requires the user's own voice or explicit authorization from the recorded speaker.
+- `VoiceProfileStore`: CRUD local de perfis, nome, duração, timestamp, caminho relativo, SHA-256 da referência e WAV normalizado. Arquivos em `filesDir/voice-profiles/<id>/`; nenhum caminho arbitrário é aceito.
+- `VoiceAudioNormalizer`: decodifica formatos suportados pelo Android e normaliza para WAV PCM mono, 24 kHz, 16 bits.
+- `VoiceCloneEngine`: interface local de disponibilidade, ativação, prévia, síntese, cancelamento e liberação.
+- `ChatterboxVoiceCloneEngine`: adaptador da implementação nativa Chatterbox.
+- `ClonedVoiceRuntime`: serializa carregamento, prévia, síntese e liberação; extrai e reutiliza cinco tensores de condicionamento por perfil.
+- `LocalSpeechOutput`: mantém TTS nativo Android no modo `SYSTEM`; usa PCM local no modo `CLONED`. Não há fallback silencioso.
+- `VoiceCloningSection`: grava/importa, salva, pré-visualiza sem selecionar, ativa explicitamente e exclui perfis.
 
-## Runtime and native build
+## Motor selecionado
 
-### Selected engine: chatterbox.cpp
+**Chatterbox Multilingual V3 via chatterbox.cpp**
 
-Repository: https://github.com/gianni-cor/chatterbox.cpp
+- Repositório: https://github.com/gianni-cor/chatterbox.cpp
+- Commit fixo: `ddca05fb69c2910b0d7b5eae420d360ed98c067b`
+- Código upstream e modelo ResembleAI estão publicados sob MIT; o runtime ggml também é MIT.
+- Android module: `:chatterbox-runtime`, CMake/NDK, JNI, ABI `arm64-v8a` e `x86_64`.
+- Saída: PCM mono 24 kHz reproduzido por `AudioTrack`.
+- CPU-only, até quatro threads. Não há aceleração GPU ativada.
 
-Pinned source commit: `ddca05fb69c2910b0d7b5eae420d360ed98c067b`.
+### Modelos
 
-The Android library module `:chatterbox-runtime` builds this C++ runtime in a separate CMake project. This isolation is intentional: Garcia already builds Whisper.cpp with a different GGML tree, and the Chatterbox fork carries its own pinned GGML revision and patches. Do not merge the two GGML builds into one CMake target graph without a deliberate compatibility review.
+Os dois arquivos GGUF Q4_0 ficam como assets de uma release GitHub, nunca no Git ou no APK:
 
-A Garcia patch extends the persistent public Engine API to support the multilingual T3 path: MTL tokenizer, Portuguese language selection, CFG/min-p/exaggeration parameters, conditional/unconditional logits, and multilingual sampling. It also adds writing and reloading the five cached voice-conditioning tensors. The engine remains resident between utterances; Garcia does not launch the CLI or reload model weights for each sentence.
+| Arquivo | Tamanho | SHA-256 |
+|---|---:|---|
+| `chatterbox-t3-mtl-v3-q4_0.gguf` | 344,985,408 bytes | `d886fba27183c3000becb096b1a16526fafb67fe7abd541d7901040931524d16` |
+| `chatterbox-s3gen-mtl-v3-q4_0.gguf` | 788,379,872 bytes | `ab3b5339f7305d5c35641a4db5024bea6aab9e2376d7f42d388a49b0b8d4145f` |
 
-The JNI API exposes model loading, reference conditioning, PCM synthesis, cancellation, and release. Kotlin serializes engine use and plays the returned 24 kHz mono PCM through AudioTrack.
+Release: https://github.com/fabiociba7-br/ciba-ai/releases/tag/garcia-chatterbox-v3-models
 
-### Model files
+O download é iniciado pelo usuário e armazenado em `filesDir/chatterbox-models`. Também é possível importar os dois GGUFs manualmente. Cada arquivo é validado pelo cabeçalho GGUF e pelo SHA-256 fixado no app; importação dos dois arquivos é transacional para preservar a instalação anterior em caso de falha. Os pesos não são incluídos em commits, APKs ou artefatos de CI.
 
-The app downloads the two Q4_K multilingual GGUF files only after the user taps the download control:
+O modelo utilizado é o multilingual V3 geral, com idioma `pt`. Ele aceita português, mas não é o fine-tune dedicado pt-BR. A versão pt-BR dedicada existe upstream, porém ainda não foi convertida para este formato GGUF e validada com o runtime Android.
 
-- `chatterbox-t3-q4_k.gguf`
-- `chatterbox-s3gen-q4_k.gguf`
+## Fluxo e privacidade
 
-Source: `cstr/chatterbox-GGUF`, pinned revision `c45504bb8d55473a2213db17ec472ed11b69056a`. The listed file sizes are approximately 382 MB and 255 MB. SHA-256 checks are performed against the pinned file hashes before a model is accepted. The app checks available storage, validates GGUF headers, and stores models under app-private files. Models are not bundled into the APK.
+1. O usuário grava ou importa áudio de 5–30 s; recomenda-se 10–15 s de fala clara e sem música/ruído.
+2. O app valida duração/tamanho, normaliza o áudio e salva a referência e os checksums no storage privado.
+3. O botão **Ouvir voz clonada** sintetiza uma prévia com o perfil selecionado sem alterar a voz ativa.
+4. **Usar esta voz** persiste `voice_mode=cloned` e o ID do perfil. As respostas faladas passam pelo motor local.
+5. Excluir o perfil ativo apaga referência/cache e restaura o TTS do sistema.
+6. Se motor/modelo/perfil falhar, a UI mostra erro e não substitui silenciosamente a voz.
 
-CPU is the current build baseline. OpenCL/Adreno acceleration is not enabled in this Android module yet; do not claim GPU acceleration or real-time performance.
+Áudio original, WAV, cache de condicionamento e PCM sintetizado nunca são enviados ao Worker Ciba AI nem a terceiros. O motor não tem API de rede. Whisper/STT permanece separado e não participa da clonagem.
 
-## Reference audio and profile lifecycle
+## Validação pendente
 
-- Prefer 10–15 seconds of clear, single-speaker speech; the engine requires more than five seconds.
-- Imported audio and microphone recordings are validated locally.
-- Audio is normalized to mono 24 kHz WAV. PCM WAV, M4A/AAC and formats supported by Android MediaExtractor can be decoded locally.
-- The engine extracts speaker embedding, speech tokens, CAMPPlus embedding, prompt tokens, and reference mel features.
-- All five conditioning tensors are cached under the named profile and reused when that profile is selected again.
-- Profile sample, normalized WAV, and conditioning cache live under the app's private `filesDir/voice-profiles/<profile-id>/` directory.
-- Avoid music, overlapping speakers, strong reverberation, clipping, and long silence.
+- CI: `:app:testDebugUnitTest`, `:app:compileDebugKotlin`, `:app:externalNativeBuildDebug` e `:chatterbox-runtime:externalNativeBuildDebug`.
+- Aparelho real: instalar/importar modelos, gravar/importar referência, validar prévia audível, ativar perfil e ouvir uma resposta real da Garcia, alternar para SYSTEM, excluir perfil, interromper reprodução e verificar ausência de áudio enviado à rede.
+- Medir tempo de inicialização, latência por frase, pico de RAM, temperatura e estabilidade em aparelho intermediário. Não prometer tempo real ou qualidade de clonagem antes dessas medições.
+- `src/core/native-capabilities.ts` permanece `planned` / `review_required`; não marcar `available` nesta fase.
+- A release atual fixa os hashes dos modelos consumidos pelo app; a revisão exata do snapshot Hugging Face usado na conversão original ainda precisa ser registrada para reprodutibilidade integral do rebuild.
 
-## Validation gates
+## Segurança e compatibilidade
 
-- Android unit tests and Kotlin compilation.
-- Separate `:chatterbox-runtime:externalNativeBuildDebug` CMake/NDK build, with no APK task.
-- Confirm the pinned model files load with the pinned C++ engine.
-- Physical-device test: import and record samples, create and reload multiple profiles, synthesize Portuguese, play audio, cancel synthesis, and verify that normal text chat remains silent.
-- Do not claim voice similarity, acceptable latency, or production readiness until the physical-device test passes.
-- Routine CI must not generate APKs. Create an APK only when explicitly requested or required for device validation.
+- Consentimento explícito de que a voz é do usuário ou que há autorização da pessoa gravada.
+- SHA-256 de referência, WAV e modelos; caminhos relativos e confinados ao storage privado.
+- Sem modelos no Git, sem upload de áudio, sem serviços pagos e sem fallback em nuvem.
+- TTS nativo permanece intacto para o modo SYSTEM.
+- Nenhuma permissão nova de storage foi adicionada; gravação usa a permissão de microfone já existente.
