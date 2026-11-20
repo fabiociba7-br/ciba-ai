@@ -46,13 +46,14 @@ class LocalPromptAdapter:
     @staticmethod
     def _synthesize(prompt: str) -> str:
         evidence: list[dict[str, Any]] = []
-        marker = re.search(r"Evidence:\s*(\[.*\])\s*$", prompt, re.IGNORECASE | re.DOTALL)
+        marker = re.search(r"Evidence:\\s*", prompt, re.IGNORECASE)
         if marker:
             try:
-                parsed = json.loads(marker.group(1))
+                decoder = json.JSONDecoder()
+                parsed, _ = decoder.raw_decode(prompt[marker.end():].lstrip())
                 if isinstance(parsed, list):
                     evidence = [item for item in parsed if isinstance(item, dict)]
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, TypeError):
                 evidence = []
         insights = []
         for item in evidence[:12]:
