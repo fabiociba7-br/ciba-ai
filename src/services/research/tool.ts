@@ -13,9 +13,7 @@ export const GARCIA_RESEARCH_INPUT_SCHEMA: Record<string, unknown> = {
     feedback: { type: "string", minLength: 1, maxLength: 1200 },
   },
   additionalProperties: false,
-  allOf: [
-    { if: { required: ["session_id"] }, then: { required: ["feedback"] }, else: { required: ["topic"] } },
-  ],
+  required: ["topic"],
 };
 export function createGarciaResearchTool(env: ResearchEnv): CibaToolDefinition<ResearchToolInput, unknown> {
   return {
