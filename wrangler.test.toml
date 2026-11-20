@@ -17,3 +17,11 @@ binding = "DB"
 database_name = "ciba-ai-test-db"
 database_id = "00000000-0000-0000-0000-000000000000"
 migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "GARCIA_ARTIFACTS"
+bucket_name = "garcia-artifacts-test"
+
+[[kv_namespaces]]
+binding = "GARCIA_PROMPT_CACHE"
+id = "00000000000000000000000000000001"
