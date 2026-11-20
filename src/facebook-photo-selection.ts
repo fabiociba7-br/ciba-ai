@@ -30,8 +30,8 @@ export function selectRequestedFacebookPhotos(
     const number = Number(numberedPhoto[1]);
     const photo = number >= 1 ? photos[number - 1] : undefined;
     return photo
-      ? { photos: [photo], responseText: \`Aqui está a foto \${number} do seu Facebook.\` }
-      : { photos: [], responseText: \`Não encontrei a foto \${number} entre as fotos disponíveis do seu Facebook.\` };
+      ? { photos: [photo], responseText: "Aqui está a foto " + number + " do seu Facebook." }
+      : { photos: [], responseText: "Não encontrei a foto " + number + " entre as fotos disponíveis do seu Facebook." };
   }
 
   const multiple = /\b(?:fotos|imagens|todas|algumas)\b/i.test(userText);
