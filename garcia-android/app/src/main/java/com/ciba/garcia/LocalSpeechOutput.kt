@@ -239,8 +239,8 @@ internal class LocalSpeechOutput(
         return true
     }
 
-    fun onProfileDeleted(profileId: String) {
-        if (preferences.getString("cloned_voice_id", null) != profileId) return
+    fun onProfileDeleted(profileId: String, wasActive: Boolean) {
+        if (!wasActive) return
         ChatterboxVoiceCloneEngine.release()
         val restored = preferences.getString("voice_id", null)
         if (ready && !restored.isNullOrBlank()) setVoiceInternal(restored)
