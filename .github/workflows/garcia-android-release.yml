@@ -2,6 +2,12 @@ name: Garcia Android Release
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/garcia-pockettts-android-integration
+    paths:
+      - "garcia-android/**"
+      - ".github/workflows/garcia-android-release.yml"
 
 permissions:
   contents: write
@@ -26,7 +32,7 @@ jobs:
       - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.ref }}
           fetch-depth: 1
 
       - name: Resolve release version from gradle.properties
@@ -82,12 +88,6 @@ jobs:
           chmod 600 "$RUNNER_TEMP/garcia-release.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/garcia-release.jks" >> "$GITHUB_ENV"
 
-      - name: Run unit tests before release assembly
-        shell: bash
-        run: |
-          set -euo pipefail
-          gradle --no-daemon :app:testDebugUnitTest
-
       - name: Build signed release APK
         shell: bash
         run: |
@@ -96,6 +96,12 @@ jobs:
           gradle --no-daemon :app:assembleRelease \
             "-PVERSION_CODE=$VERSION_CODE" \
             "-PVERSION_NAME=$VERSION_NAME"
+
+      - name: Run unit tests after APK assembly
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:testDebugUnitTest
 
       - name: Verify package, version and APK signature
         shell: bash
@@ -125,22 +131,3 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish direct APK on GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ env.VERSION_NAME }}
-          name: Garcia ${{ env.VERSION_NAME }}
-          body: |
-            Signed Android APK for Garcia ${{ env.VERSION_NAME }}.
-
-            Package: com.ciba.garcia
-            Version code: ${{ env.VERSION_CODE }}
-
-            The APK and SHA-256 checksum are attached directly to this GitHub Release.
-          files: |
-            garcia-android/app/build/outputs/apk/release/*.apk
-            ${{ runner.temp }}/garcia-apk-sha256.txt
-          fail_on_unmatched_files: true
-          overwrite_files: true
-          draft: false
-          prerelease: false

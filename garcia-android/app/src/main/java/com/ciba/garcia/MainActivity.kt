@@ -567,6 +567,29 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var pairingCode by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
     var settingsSection by remember { mutableStateOf("menu") }
+    val pocketVoiceProfileManager = remember {
+        com.ciba.garcia.voice.pockettts.PocketTtsVoiceProfileManager(
+            java.io.File(context.filesDir, "pockettts/profiles")
+        )
+    }
+    var pocketVoiceProfiles by remember {
+        mutableStateOf(emptyList<com.ciba.garcia.voice.pockettts.PocketTtsVoiceProfileManager.VoiceProfile>())
+    }
+    var selectedPocketVoiceProfileId by remember {
+        mutableStateOf(context.getSharedPreferences("garcia_pockettts", Context.MODE_PRIVATE).getString("selected_profile", "").orEmpty())
+    }
+    var pocketVoiceMode by remember {
+        mutableStateOf(context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).getString("voice_mode", "system").orEmpty())
+    }
+    LaunchedEffect(showSettings, settingsSection) {
+        if (showSettings && settingsSection == "voice") {
+            pocketVoiceProfiles = withContext(Dispatchers.IO) { pocketVoiceProfileManager.listProfiles() }
+            selectedPocketVoiceProfileId = context.getSharedPreferences("garcia_pockettts", Context.MODE_PRIVATE)
+                .getString("selected_profile", "").orEmpty()
+            pocketVoiceMode = context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
+                .getString("voice_mode", "system").orEmpty()
+        }
+    }
     var agentRole by remember { mutableStateOf("general") }
     var agentPrompt by remember { mutableStateOf("") }
     var agentTaskId by remember { mutableStateOf(store.get("last_agent_task_id").orEmpty()) }
@@ -695,7 +718,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
         if (whisperRecording) { whisperRecording = false; whisperRecorder.cancel() }
         streamingSpeech.stop(); streamingListening = false
-        voiceOutput.stop()
+        com.ciba.garcia.voice.pockettts.PocketTtsPlayback.stop(); voiceOutput.stop()
         persist()
         currentChatId = chat.id
         history.clear()
@@ -813,8 +836,18 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 }
                 // Voice replies apply to text chat and voice chat; continuous mode
                 // only controls whether the microphone automatically reopens after speech.
-                if (voiceReplies && voiceAvailable) {
-                    val spoken = voiceOutput.speak(answer)
+                if (voiceReplies && (voiceAvailable || com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context))) {
+                    val usePocketTts = com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context)
+                    if (usePocketTts) voiceSpeaking = true
+                    val pocketSpoken = try {
+                        usePocketTts && com.ciba.garcia.voice.pockettts.PocketTtsPlayback.speak(context, answer)
+                    } finally {
+                        if (usePocketTts) {
+                            voiceSpeaking = false
+                            if (continuousVoice && voiceReplies) autoListenPending = true
+                        }
+                    }
+                    val spoken = pocketSpoken || (!usePocketTts && voiceAvailable && voiceOutput.speak(answer))
                     if (!spoken) autoListenPending = false
                 } else autoListenPending = false
                 GarciaLog.recordEvent(context, "chat", "HTTP 200 · resposta recebida e salva no histórico · ${answer.length} caracteres")
@@ -1015,7 +1048,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 whisperStatus = "Conversa por voz encerrada"
                             } else if (!whisperBusy) {
                                 if (whisperModelInfo == null && !streamingSpeech.isAvailable) error = "Este aparelho não oferece reconhecimento offline em tempo real. Baixe e instale o modelo Whisper nas Configurações."
-                                else if (!voiceAvailable) error = voiceStatus
+                                else if (!voiceAvailable && !com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context)) error = voiceStatus
                                 else if (input.isNotBlank() || attachment != null) error = "Envie ou limpe o texto pendente antes de iniciar a conversa por voz."
                                 else {
                                     streamingUnavailable = false
@@ -1215,8 +1248,13 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 if (!user) {
                                     TextButton(
                                         onClick = {
-                                            if (voiceAvailable) voiceOutput.speak(shownText)
-                                            else error = voiceStatus
+                                            if (voiceAvailable || com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context)) {
+                                                scope.launch {
+                                                    val pocketSpoken = com.ciba.garcia.voice.pockettts.PocketTtsPlayback.speak(context, shownText)
+                                                    if (!pocketSpoken && voiceAvailable && !voiceOutput.speak(shownText)) error = voiceStatus
+                                                    else if (!pocketSpoken && !voiceAvailable) error = "Não foi possível inicializar o Pocket TTS. Verifique o pacote de modelos e o perfil vocal."
+                                                }
+                                            } else error = voiceStatus
                                         },
                                         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
                                     ) {
@@ -1438,6 +1476,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         val voiceOptions = voiceOutput.availableVoices()
         val sectionTitle = when (settingsSection) {
             "voice" -> "Voz e conversação"
+            "cloning" -> "Clonagem de voz"
             "speech" -> "Transcrição de voz"
             "accounts" -> "Contas e integrações"
             "diagnostics" -> "Uso e diagnóstico"
@@ -1457,6 +1496,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         Spacer(Modifier.height(8.dp))
                         listOf(
                             "voice" to ("Voz e conversação" to "Escolha uma voz do Android e configure a conversa por voz"),
+                            "cloning" to ("Clonagem de voz" to "Configurar o Pocket TTS offline e perfis de voz"),
                             "speech" to ("Transcrição de voz" to "Instalar, reparar ou remover o modelo Whisper"),
                             "accounts" to ("Contas e integrações" to "Facebook e serviços conectados"),
                             "composio" to ("Composio" to "Conectar Gmail e outros serviços com permissões controladas"),
@@ -1489,7 +1529,43 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         Text("Saída: " + voiceOutput.diagnosticStatus(voiceAvailable, voiceStatus), color = Muted, fontSize = 12.sp)
                         Text(voiceStatus, color = Muted, fontSize = 12.sp)
                         Spacer(Modifier.height(8.dp))
-                        Text("Voz da Garcia", fontWeight = FontWeight.Bold)
+                        Text("Voz personalizada · Pocket TTS", fontWeight = FontWeight.Bold)
+                        Text("Perfis de áudio importados para a Garcia. Escolha um para usar como voz padrão nas respostas do chat e na conversação por voz.", color = Muted, fontSize = 12.sp)
+                        if (pocketVoiceProfiles.isEmpty()) {
+                            Text("Nenhum perfil importado. Importe um áudio em Configurações → Clonagem de voz.", color = Muted, fontSize = 12.sp)
+                        } else {
+                            pocketVoiceProfiles.forEach { profile ->
+                                val selected = selectedPocketVoiceProfileId == profile.id
+                                val isDefault = selected && pocketVoiceMode == "pockettts"
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(profile.displayName, fontWeight = if (isDefault) FontWeight.Bold else FontWeight.Normal, fontSize = 13.sp)
+                                        Text("Pocket TTS · " + String.format("%.1f", profile.durationSeconds) + " s · " + if (isDefault) "Voz padrão" else if (selected) "Selecionado" else "Perfil importado", color = Muted, fontSize = 11.sp)
+                                    }
+                                    TextButton(
+                                        onClick = {
+                                            context.getSharedPreferences("garcia_pockettts", Context.MODE_PRIVATE)
+                                                .edit().putString("selected_profile", profile.id).apply()
+                                            context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
+                                                .edit().putString("voice_mode", "pockettts").apply()
+                                            selectedPocketVoiceProfileId = profile.id
+                                            pocketVoiceMode = "pockettts"
+                                            error = ""
+                                        },
+                                        enabled = !isDefault && com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isConfigured(context)
+                                    ) { Text(if (isDefault) "Padrão" else "Definir padrão") }
+                                }
+                                HorizontalDivider()
+                            }
+                        }
+                        if (pocketVoiceMode == "pockettts" && !com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context)) {
+                            Text("Perfil escolhido, mas falta instalar um pacote de modelos Pocket TTS para ativar a síntese.", color = Muted, fontSize = 11.sp)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text("Vozes do Android", fontWeight = FontWeight.Bold)
                         if (voiceOptions.isEmpty()) {
                             Text("Nenhuma voz em português foi encontrada. Instale outras vozes nas configurações de texto para fala do Android.", color = Muted, fontSize = 12.sp)
                         } else {
@@ -1504,7 +1580,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                         if (!voiceOutput.previewVoice(voice.id)) error = "Não foi possível reproduzir a amostra desta voz."
                                     }, enabled = voiceOutput.isSystemReady()) { Text("Ouvir") }
                                     TextButton(onClick = {
-                                        if (!voiceOutput.selectVoice(voice.id)) error = "Não foi possível selecionar esta voz."
+                                        if (!voiceOutput.selectVoice(voice.id)) error = "Não foi possível selecionar esta voz." else pocketVoiceMode = "system"
                                     }, enabled = voiceOutput.isSystemReady() && !selected) { Text(if (selected) "Atual" else "Usar") }
                                 }
                                 HorizontalDivider()
@@ -1523,7 +1599,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     streamingSpeech.stop(); streamingListening = false
                                     context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
                                 }
-                            }, enabled = voiceAvailable)
+                            }, enabled = voiceAvailable || com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context))
                         }
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text("Conversação contínua por voz", modifier = Modifier.weight(1f), fontSize = 13.sp)
@@ -1539,13 +1615,15 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     whisperStatus = "Conversa por voz pausada"
                                 } else if (!voiceReplies) error = "Ative também a leitura automática das respostas."
                                 else if (whisperModelInfo == null && (!streamingSpeech.isAvailable || streamingUnavailable)) error = "Instale o modelo Whisper ou disponibilize o reconhecimento offline do Android."
-                            }, enabled = voiceAvailable && voiceReplies && (whisperModelInfo != null || streamingSpeech.isAvailable) && !busy && !whisperRecording && !streamingListening)
+                            }, enabled = (voiceAvailable || com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context)) && voiceReplies && (whisperModelInfo != null || streamingSpeech.isAvailable) && !busy && !whisperRecording && !streamingListening)
                         }
                         Text(
                             "Com respostas faladas ligadas, a Garcia também lê as respostas no chat de texto. A conversação contínua controla somente a reabertura automática do microfone. Entrada e saída usam recursos locais; nenhum áudio ou modelo é enviado ao Worker ou a terceiros.",
                             color = Muted,
                             fontSize = 11.sp
                         )
+                    } else if (settingsSection == "cloning") {
+                        com.ciba.garcia.voice.pockettts.PocketTtsSettingsScreen()
                     } else if (settingsSection == "speech") {
                         Text("Modelo de transcrição local", fontWeight = FontWeight.Bold)
                         Text(whisperStatus, color = Muted, fontSize = 12.sp)
