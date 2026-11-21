@@ -837,8 +837,17 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 // Voice replies apply to text chat and voice chat; continuous mode
                 // only controls whether the microphone automatically reopens after speech.
                 if (voiceReplies && (voiceAvailable || com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context))) {
-                    val pocketSpoken = com.ciba.garcia.voice.pockettts.PocketTtsPlayback.speak(context, answer)
-                    val spoken = pocketSpoken || (voiceAvailable && voiceOutput.speak(answer))
+                    val usePocketTts = com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context)
+                    if (usePocketTts) voiceSpeaking = true
+                    val pocketSpoken = try {
+                        usePocketTts && com.ciba.garcia.voice.pockettts.PocketTtsPlayback.speak(context, answer)
+                    } finally {
+                        if (usePocketTts) {
+                            voiceSpeaking = false
+                            if (continuousVoice && voiceReplies) autoListenPending = true
+                        }
+                    }
+                    val spoken = pocketSpoken || (!usePocketTts && voiceAvailable && voiceOutput.speak(answer))
                     if (!spoken) autoListenPending = false
                 } else autoListenPending = false
                 GarciaLog.recordEvent(context, "chat", "HTTP 200 · resposta recebida e salva no histórico · ${answer.length} caracteres")
