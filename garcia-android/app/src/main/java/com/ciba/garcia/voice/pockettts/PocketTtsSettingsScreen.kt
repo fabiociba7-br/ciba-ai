@@ -160,6 +160,22 @@ fun PocketTtsSettingsScreen() {
                 }
             }
         }
+        val selectedPack = packs.firstOrNull { it.id == selectedPackId }
+        val hasReference = selectedProfileId.isNotBlank() ||
+            selectedPack?.voicesDirectory?.walkTopDown()?.any { it.isFile && it.extension.equals("wav", true) } == true
+        Button(
+            onClick = {
+                scope.launch {
+                    busy = true
+                    status = "Inicializando Pocket TTS e sintetizando amostra…"
+                    val success = PocketTtsPlayback.speak(context, "Olá! Esta é uma amostra da voz selecionada na Garcia.")
+                    status = if (success) "Amostra reproduzida com sucesso." else "Não foi possível sintetizar. Confira o modelo, a ABI e o perfil vocal."
+                    busy = false
+                }
+            },
+            enabled = !busy && selectedPack != null && hasReference,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Testar voz selecionada") }
         if (busy) CircularProgressIndicator()
         Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
         Text("A disponibilidade da clonagem depende de um pacote compatível instalado e da validação do runtime nativo neste aparelho.", style = MaterialTheme.typography.bodySmall)
