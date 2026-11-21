@@ -86,6 +86,7 @@ internal object PocketTtsPlayback {
             try {
                 // Start playback before inference; the first generated chunk is audible immediately.
                 track.play()
+                var totalFramesWritten = 0L
                 val generated = engine.synthesizeTo(
                     SpeechRequest(text = text, languageTag = "pt-BR", referenceAudioPath = defaultVoice.absolutePath)
                 ) { chunk ->
@@ -94,14 +95,14 @@ internal object PocketTtsPlayback {
                         val written = track.write(chunk, offset, chunk.size - offset, AudioTrack.WRITE_BLOCKING)
                         if (written <= 0) return@synthesizeTo false
                         offset += written
+                        totalFramesWritten += written / 2L
                     }
                     true
                 }
                 if (!generated) return@withLock false
-                val totalFrames = track.playbackHeadPosition.toLong()
-                // Wait for the queued stream to drain. playbackHeadPosition wraps only after ~24 h.
+                // Wait until every generated frame has actually reached the speaker.
                 while (track.playState == AudioTrack.PLAYSTATE_PLAYING &&
-                    track.playbackHeadPosition.toLong() < totalFrames) {
+                    track.playbackHeadPosition.toLong() < totalFramesWritten) {
                     kotlinx.coroutines.delay(30)
                 }
                 true
