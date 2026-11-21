@@ -30,9 +30,9 @@ internal object PocketTtsPlayback {
         val pack = PocketTtsModelPackManager(File(context.filesDir, "pockettts/models"))
             .listInstalledPacks().firstOrNull { it.id == packId } ?: return@withContext false
         val profileId = prefs.getString("selected_profile", "").orEmpty()
-        val profile = if (profileId.isNotBlank()) File(context.filesDir, "pockettts/profiles/$profileId.wav") else null
-        val defaultVoice = pack.voicesDirectory.walkTopDown().firstOrNull { it.isFile && it.extension.equals("wav", true) }
-            ?: return@withContext false
+        val profile = if (profileId.isNotBlank()) File(context.filesDir, "pockettts/profiles/$profileId.wav").takeIf { it.isFile } else null
+        val bundledVoice = pack.voicesDirectory.walkTopDown().firstOrNull { it.isFile && it.extension.equals("wav", true) }
+        val defaultVoice = profile ?: bundledVoice ?: return@withContext false
         val engine = PocketTtsVoiceEngine(
             modelsDirectory = pack.modelsDirectory,
             voicesDirectory = pack.voicesDirectory,
@@ -49,7 +49,7 @@ internal object PocketTtsPlayback {
                 EngineResult.Ready -> Unit
                 is EngineResult.Unavailable, is EngineResult.Failed -> return@withContext false
             }
-            val reference = profile?.takeIf { it.isFile } ?: defaultVoice
+            val reference = defaultVoice
             when (val result = engine.synthesize(SpeechRequest(text = text, referenceAudioPath = reference.absolutePath))) {
                 is SpeechResult.Failed -> false
                 is SpeechResult.Audio -> playPcm(result.pcm16, result.sampleRateHz, result.channels)
