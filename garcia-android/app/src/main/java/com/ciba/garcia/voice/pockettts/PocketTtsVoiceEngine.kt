@@ -10,12 +10,7 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/**
- * Adapter between Garcia's VoiceEngine contract and the embedded Pocket TTS JNI runtime.
- *
- * The caller supplies paths from Garcia's private model/profile store. No Android
- * companion package, system TTS provider, or external app is involved.
- */
+/** Persistent adapter for the embedded Pocket TTS JNI runtime. */
 internal class PocketTtsVoiceEngine(
     private val modelsDirectory: File,
     private val voicesDirectory: File,
@@ -33,6 +28,7 @@ internal class PocketTtsVoiceEngine(
     private var native: NativePocketTts? = null
 
     override suspend fun initialize(): EngineResult = withContext(Dispatchers.IO) {
+        if (native != null) return@withContext EngineResult.Ready
         if (Build.SUPPORTED_ABIS.none { it == "arm64-v8a" }) {
             return@withContext EngineResult.Unavailable("Pocket TTS requer Android ARM64 (arm64-v8a).")
         }
@@ -55,24 +51,16 @@ internal class PocketTtsVoiceEngine(
         }
         val missing = required.filterNot { File(modelsDirectory, it).isFile }
         if (missing.isNotEmpty()) {
-            return@withContext EngineResult.Unavailable(
-                "Pacote Pocket TTS incompleto. Arquivos ausentes: ${missing.joinToString()}"
-            )
+            return@withContext EngineResult.Unavailable("Pacote Pocket TTS incompleto. Arquivos ausentes: ${missing.joinToString()}")
         }
         if (!voicesDirectory.isDirectory || !defaultVoiceFile.isFile) {
             return@withContext EngineResult.Unavailable("Nenhuma voz padrão válida foi encontrada no armazenamento privado.")
         }
         try {
-            native?.close()
             native = NativePocketTts(
-                modelsDirectory.absolutePath,
-                voicesDirectory.absolutePath,
-                precision,
-                temperature,
-                lsdSteps,
-                threads.coerceIn(1, 8),
-                sentencePauseMs.coerceIn(0, 2000),
-                maxTextTokens.coerceIn(10, 200)
+                modelsDirectory.absolutePath, voicesDirectory.absolutePath, precision,
+                temperature, lsdSteps, threads.coerceIn(1, 8),
+                sentencePauseMs.coerceIn(0, 2000), maxTextTokens.coerceIn(10, 200)
             )
             EngineResult.Ready
         } catch (error: Throwable) {
@@ -81,44 +69,44 @@ internal class PocketTtsVoiceEngine(
         }
     }
 
+    /** Legacy buffered synthesis path, retained for callers using the common VoiceEngine contract. */
     override suspend fun synthesize(request: SpeechRequest): SpeechResult = withContext(Dispatchers.IO) {
-        if (request.text.isBlank()) return@withContext SpeechResult.Failed("O texto para síntese está vazio.")
-        if (!request.languageTag.startsWith("pt", ignoreCase = true)) {
-            return@withContext SpeechResult.Failed("Este perfil do Pocket TTS está configurado para português.")
-        }
-        val runtime = native ?: return@withContext SpeechResult.Failed("O Pocket TTS ainda não foi inicializado.")
-        val voice = request.referenceAudioPath?.let(::File) ?: defaultVoiceFile
-        if (!voice.isFile || !voice.canRead()) {
-            return@withContext SpeechResult.Failed("O arquivo de referência vocal não existe ou não pode ser lido.")
-        }
-
-        val pcm = ByteArrayOutputStream()
-        var sampleCount = 0L
-        val success = try {
-            runtime.synthesize(request.text, voice.absolutePath) { samples ->
-                if (samples.isEmpty()) return@synthesize true
-                if (sampleCount + samples.size > MAX_SAMPLES) return@synthesize false
-                val bytes = ByteArray(samples.size * 2)
-                var offset = 0
-                for (sample in samples) {
-                    val clipped = sample.coerceIn(-1.0f, 1.0f)
-                    val value = (clipped * if (clipped < 0f) 32768f else 32767f).toInt()
-                    bytes[offset++] = (value and 0xff).toByte()
-                    bytes[offset++] = ((value ushr 8) and 0xff).toByte()
-                }
-                pcm.write(bytes)
-                sampleCount += samples.size
-                true
-            }
-        } catch (error: Throwable) {
-            return@withContext SpeechResult.Failed(error.message ?: "Erro durante a síntese Pocket TTS.")
-        }
-        if (!success || pcm.size() == 0) {
-            SpeechResult.Failed("A síntese Pocket TTS foi interrompida ou não produziu áudio.")
-        } else {
-            SpeechResult.Audio(pcm.toByteArray(), SAMPLE_RATE_HZ, channels = 1)
-        }
+        val output = ByteArrayOutputStream()
+        val ok = synthesizeTo(request) { chunk -> output.write(chunk); true }
+        if (ok && output.size() > 0) SpeechResult.Audio(output.toByteArray(), SAMPLE_RATE_HZ, channels = 1)
+        else SpeechResult.Failed("A síntese Pocket TTS foi interrompida ou não produziu áudio.")
     }
+
+    /**
+     * Sends PCM chunks to the consumer as soon as the native runtime produces them.
+     * The consumer provides backpressure, allowing AudioTrack to play while inference continues.
+     */
+    suspend fun synthesizeTo(request: SpeechRequest, onPcmChunk: (ByteArray) -> Boolean): Boolean =
+        withContext(Dispatchers.IO) {
+            if (request.text.isBlank() || !request.languageTag.startsWith("pt", ignoreCase = true)) return@withContext false
+            val runtime = native ?: return@withContext false
+            val voice = request.referenceAudioPath?.let(::File) ?: defaultVoiceFile
+            if (!voice.isFile || !voice.canRead()) return@withContext false
+            var sampleCount = 0L
+            try {
+                runtime.synthesize(request.text, voice.absolutePath) { samples ->
+                    if (samples.isEmpty()) return@synthesize true
+                    if (sampleCount + samples.size > MAX_SAMPLES) return@synthesize false
+                    val bytes = ByteArray(samples.size * 2)
+                    var offset = 0
+                    for (sample in samples) {
+                        val clipped = sample.coerceIn(-1.0f, 1.0f)
+                        val value = (clipped * if (clipped < 0f) 32768f else 32767f).toInt()
+                        bytes[offset++] = (value and 0xff).toByte()
+                        bytes[offset++] = ((value ushr 8) and 0xff).toByte()
+                    }
+                    sampleCount += samples.size
+                    onPcmChunk(bytes)
+                } && sampleCount > 0
+            } catch (_: Throwable) {
+                false
+            }
+        }
 
     override fun close() {
         native?.close()
