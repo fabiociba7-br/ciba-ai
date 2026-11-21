@@ -14,7 +14,7 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Keeps the native model session warm between answers and streams PCM directly to AudioTrack.
+ * Keeps the native model session warm and primes AudioTrack before audible playback.
  * A single mutex serializes inference because the embedded native runtime is not re-entrant.
  */
 internal object PocketTtsPlayback {
@@ -84,9 +84,10 @@ internal object PocketTtsPlayback {
                 runCatching { old.pause(); old.flush(); old.stop(); old.release() }
             }
             try {
-                // Start playback before inference; the first generated chunk is audible immediately.
-                track.play()
+                // Do not start an empty streaming track: that causes an immediate underrun
+                // while the first Pocket TTS inference is still being produced.
                 var totalFramesWritten = 0L
+                var playbackStarted = false
                 val generated = engine.synthesizeTo(
                     SpeechRequest(text = text, languageTag = "pt-BR", referenceAudioPath = defaultVoice.absolutePath)
                 ) { chunk ->
@@ -96,12 +97,22 @@ internal object PocketTtsPlayback {
                         if (written <= 0) return@synthesizeTo false
                         offset += written
                         totalFramesWritten += written / 2L
+                        if (!playbackStarted && totalFramesWritten >= PREBUFFER_FRAMES) {
+                            track.play()
+                            playbackStarted = true
+                        }
                     }
                     true
                 }
                 if (!generated) return@withLock false
+                // Short utterances may not reach the prebuffer threshold; start them once
+                // synthesis is complete, rather than leaving their PCM queued forever.
+                if (!playbackStarted && totalFramesWritten > 0L) {
+                    track.play()
+                    playbackStarted = true
+                }
                 // Wait until every generated frame has actually reached the speaker.
-                while (track.playState == AudioTrack.PLAYSTATE_PLAYING &&
+                while (playbackStarted && track.playState == AudioTrack.PLAYSTATE_PLAYING &&
                     track.playbackHeadPosition.toLong() < totalFramesWritten) {
                     kotlinx.coroutines.delay(30)
                 }
@@ -143,11 +154,15 @@ internal object PocketTtsPlayback {
                     .setSampleRate(SAMPLE_RATE_HZ)
                     .setChannelMask(mask)
                     .build())
-                .setBufferSizeInBytes(maxOf(minBuffer * 2, 32 * 1024))
+                // Four seconds of queue capacity gives inference and Android's audio thread
+                // room to absorb scheduling jitter without starving the speaker.
+                .setBufferSizeInBytes(maxOf(minBuffer * 4, SAMPLE_RATE_HZ * BYTES_PER_FRAME * 4))
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
         }.getOrNull()
     }
 
     private const val SAMPLE_RATE_HZ = 24_000
+    private const val BYTES_PER_FRAME = 2
+    private const val PREBUFFER_FRAMES = SAMPLE_RATE_HZ * 3L / 4L
 }
