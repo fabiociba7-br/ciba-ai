@@ -2,6 +2,7 @@
 #include <atomic>
 #include <limits>
 #include <mutex>
+#include <new>
 #include <string>
 
 extern "C" {
