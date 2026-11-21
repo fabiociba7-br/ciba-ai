@@ -89,11 +89,11 @@ fun PocketTtsSettingsScreen() {
     val profilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) scope.launch {
             busy = true
-            status = "Importando e validando áudio WAV…"
+            status = "Decodificando e convertendo áudio para WAV PCM 24 kHz mono…"
             try {
                 val profile = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri)?.use { profileManager.importWav(profileName, it) }
-                        ?: error("Não foi possível abrir o áudio selecionado.")
+                    val normalizedWav = PocketTtsAudioImporter.decodeToPcmWav(context.contentResolver, uri)
+                    profileManager.importWav(profileName, normalizedWav.inputStream())
                 }
                 selectedProfileId = profile.id
                 preferences.edit().putString("selected_profile", profile.id).apply()
@@ -111,7 +111,7 @@ fun PocketTtsSettingsScreen() {
     ) {
         Text("Pocket TTS nativo · clonagem offline", fontWeight = FontWeight.Bold)
         Text("Modelos e perfis ficam no armazenamento privado da Garcia. Nenhum aplicativo complementar é necessário.", style = MaterialTheme.typography.bodySmall)
-        Text("Compatibilidade: Android ARM64 (arm64-v8a) · áudio de referência WAV PCM 16-bit, mono, 24 kHz, de 3 a 30 segundos.", style = MaterialTheme.typography.bodySmall)
+        Text("Áudio de referência: importe WAV, MP3, M4A ou AAC. A Garcia converte automaticamente para WAV PCM 16-bit, mono, 24 kHz (3 a 30 segundos).", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(4.dp))
         Text("Modelos", fontWeight = FontWeight.SemiBold)
         Text("Importe o pacote ZIP completo. A Garcia valida manifesto, arquivos obrigatórios, caminhos e limites antes de instalá-lo.", style = MaterialTheme.typography.bodySmall)
@@ -141,7 +141,7 @@ fun PocketTtsSettingsScreen() {
             modifier = Modifier.fillMaxWidth(), enabled = !busy
         )
         OutlinedButton(onClick = { profilePicker.launch(arrayOf("audio/wav", "audio/x-wav", "audio/*", "*/*")) }, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
-            Text("Importar áudio WAV para clonagem")
+            Text("Importar áudio para clonagem")
         }
         if (profiles.isEmpty()) Text("Nenhum perfil vocal importado.", style = MaterialTheme.typography.bodySmall)
         profiles.forEach { profile ->
