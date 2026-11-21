@@ -55,6 +55,7 @@ internal class PocketTtsModelPackManager(private val privateRoot: File) {
                         throw IllegalArgumentException("Caminho inválido no ZIP: $name")
                     }
                     if (entry.isDirectory) {
+                        validateAllowedDirectory(name)
                         if (!destination.exists() && !destination.mkdirs()) {
                             throw IllegalStateException("Não foi possível criar a pasta $name.")
                         }
@@ -181,6 +182,12 @@ internal class PocketTtsModelPackManager(private val privateRoot: File) {
         return normalized
     }
 
+    private fun validateAllowedDirectory(path: String) {
+        val allowed = path == "models" || path == "voices" ||
+            path.startsWith("voices/")
+        if (!allowed) throw IllegalArgumentException("Diretório não permitido no pacote: $path")
+    }
+
     private fun validateAllowedPath(path: String) {
         val allowedRoot = path == "manifest.json" ||
             path == "MODEL_LICENSE.txt" ||
@@ -188,7 +195,8 @@ internal class PocketTtsModelPackManager(private val privateRoot: File) {
             path.startsWith("models/") ||
             path.startsWith("voices/")
         if (!allowedRoot) throw IllegalArgumentException("Arquivo não permitido no pacote: $path")
-        if (path.startsWith("models/") && path.substringAfterLast('/') !in ALL_MODEL_FILES) {
+        if (path.startsWith("models/") &&
+            (path.count { it == '/' } != 1 || path.removePrefix("models/") !in ALL_MODEL_FILES)) {
             throw IllegalArgumentException("Arquivo de modelo desconhecido: $path")
         }
         if (path.startsWith("voices/") && !path.endsWith(".wav", ignoreCase = true)) {
