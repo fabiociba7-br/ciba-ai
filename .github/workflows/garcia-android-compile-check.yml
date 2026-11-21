@@ -6,6 +6,7 @@ on:
   push:
     branches:
       - main
+      - refactor/backend-modularization
     paths:
       - "garcia-android/**"
       - ".github/workflows/garcia-android-compile-check.yml"
@@ -25,10 +26,10 @@ jobs:
       run:
         working-directory: garcia-android
     steps:
-      - name: Checkout main
+      - name: Checkout triggering ref
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 1
 
       - name: Set up Java 17
