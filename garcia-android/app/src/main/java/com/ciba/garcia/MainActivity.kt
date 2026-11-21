@@ -567,6 +567,29 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
     var pairingCode by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
     var settingsSection by remember { mutableStateOf("menu") }
+    val pocketVoiceProfileManager = remember {
+        com.ciba.garcia.voice.pockettts.PocketTtsVoiceProfileManager(
+            java.io.File(context.filesDir, "pockettts/profiles")
+        )
+    }
+    var pocketVoiceProfiles by remember {
+        mutableStateOf(emptyList<com.ciba.garcia.voice.pockettts.PocketTtsVoiceProfileManager.VoiceProfile>())
+    }
+    var selectedPocketVoiceProfileId by remember {
+        mutableStateOf(context.getSharedPreferences("garcia_pockettts", Context.MODE_PRIVATE).getString("selected_profile", "").orEmpty())
+    }
+    var pocketVoiceMode by remember {
+        mutableStateOf(context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).getString("voice_mode", "system").orEmpty())
+    }
+    LaunchedEffect(showSettings, settingsSection) {
+        if (showSettings && settingsSection == "voice") {
+            pocketVoiceProfiles = withContext(Dispatchers.IO) { pocketVoiceProfileManager.listProfiles() }
+            selectedPocketVoiceProfileId = context.getSharedPreferences("garcia_pockettts", Context.MODE_PRIVATE)
+                .getString("selected_profile", "").orEmpty()
+            pocketVoiceMode = context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
+                .getString("voice_mode", "system").orEmpty()
+        }
+    }
     var agentRole by remember { mutableStateOf("general") }
     var agentPrompt by remember { mutableStateOf("") }
     var agentTaskId by remember { mutableStateOf(store.get("last_agent_task_id").orEmpty()) }
@@ -1216,7 +1239,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 if (!user) {
                                     TextButton(
                                         onClick = {
-                                            if (voiceAvailable || com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isConfigured(context)) {
+                                            if (voiceAvailable || com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context)) {
                                                 scope.launch {
                                                     val pocketSpoken = com.ciba.garcia.voice.pockettts.PocketTtsPlayback.speak(context, shownText)
                                                     if (!pocketSpoken && voiceAvailable && !voiceOutput.speak(shownText)) error = voiceStatus
@@ -1497,7 +1520,43 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                         Text("Saída: " + voiceOutput.diagnosticStatus(voiceAvailable, voiceStatus), color = Muted, fontSize = 12.sp)
                         Text(voiceStatus, color = Muted, fontSize = 12.sp)
                         Spacer(Modifier.height(8.dp))
-                        Text("Voz da Garcia", fontWeight = FontWeight.Bold)
+                        Text("Voz personalizada · Pocket TTS", fontWeight = FontWeight.Bold)
+                        Text("Perfis de áudio importados para a Garcia. Escolha um para usar como voz padrão nas respostas do chat e na conversação por voz.", color = Muted, fontSize = 12.sp)
+                        if (pocketVoiceProfiles.isEmpty()) {
+                            Text("Nenhum perfil importado. Importe um áudio em Configurações → Clonagem de voz.", color = Muted, fontSize = 12.sp)
+                        } else {
+                            pocketVoiceProfiles.forEach { profile ->
+                                val selected = selectedPocketVoiceProfileId == profile.id
+                                val isDefault = selected && pocketVoiceMode == "pockettts"
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(profile.displayName, fontWeight = if (isDefault) FontWeight.Bold else FontWeight.Normal, fontSize = 13.sp)
+                                        Text("Pocket TTS · " + String.format("%.1f", profile.durationSeconds) + " s · " + if (isDefault) "Voz padrão" else if (selected) "Selecionado" else "Perfil importado", color = Muted, fontSize = 11.sp)
+                                    }
+                                    TextButton(
+                                        onClick = {
+                                            context.getSharedPreferences("garcia_pockettts", Context.MODE_PRIVATE)
+                                                .edit().putString("selected_profile", profile.id).apply()
+                                            context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
+                                                .edit().putString("voice_mode", "pockettts").apply()
+                                            selectedPocketVoiceProfileId = profile.id
+                                            pocketVoiceMode = "pockettts"
+                                            error = ""
+                                        },
+                                        enabled = !isDefault && com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isConfigured(context)
+                                    ) { Text(if (isDefault) "Padrão" else "Definir padrão") }
+                                }
+                                HorizontalDivider()
+                            }
+                        }
+                        if (pocketVoiceMode == "pockettts" && !com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context)) {
+                            Text("Perfil escolhido, mas falta instalar um pacote de modelos Pocket TTS para ativar a síntese.", color = Muted, fontSize = 11.sp)
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text("Vozes do Android", fontWeight = FontWeight.Bold)
                         if (voiceOptions.isEmpty()) {
                             Text("Nenhuma voz em português foi encontrada. Instale outras vozes nas configurações de texto para fala do Android.", color = Muted, fontSize = 12.sp)
                         } else {
