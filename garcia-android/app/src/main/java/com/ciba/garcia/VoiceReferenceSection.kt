@@ -192,7 +192,7 @@ fun VoiceReferenceSection() {
                 OutlinedButton(onClick = { stopPreview() }, enabled = previewing, modifier = Modifier.weight(1f)) { Text("Parar prévia") }
             }
         }
-        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+        if (busy) CircularProgressIndicator(modifier = Modifier.size(20.dp))
         Text(status, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
         Text("A amostra fica privada neste aparelho. A conexão com um motor de clonagem será adicionada somente após validar o modelo escolhido e sua compatibilidade.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
     }
