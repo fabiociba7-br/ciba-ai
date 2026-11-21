@@ -115,12 +115,14 @@ internal class LocalSpeechOutput(
             })
             ready = true
             // Migrate any previously selected clone profile back to the available Android voice.
-            preferences.edit()
-                .putString("voice_mode", "system")
+            val voicePreferences = preferences.edit()
                 .putString("voice_id", chosen.name)
                 .putString("system_voice_id", chosen.name)
                 .remove("cloned_voice_id")
-                .apply()
+            if (preferences.getString("voice_mode", null) != "pockettts") {
+                voicePreferences.putString("voice_mode", "system")
+            }
+            voicePreferences.apply()
             onAvailabilityChanged(true, statusLabel(chosen))
         }
     }
