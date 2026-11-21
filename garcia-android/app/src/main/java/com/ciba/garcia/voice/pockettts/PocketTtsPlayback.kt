@@ -23,6 +23,11 @@ internal object PocketTtsPlayback {
         return File(context.filesDir, "pockettts/models/$id/manifest.json").isFile
     }
 
+    /** True only when the user explicitly chose a Pocket TTS profile as the default output voice. */
+    fun isSelected(context: Context): Boolean =
+        context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE)
+            .getString("voice_mode", "system") == "pockettts" && isConfigured(context)
+
     suspend fun speak(context: Context, text: String): Boolean = withContext(Dispatchers.IO) {
         if (text.isBlank()) return@withContext false
         val prefs = context.getSharedPreferences("garcia_pockettts", Context.MODE_PRIVATE)
