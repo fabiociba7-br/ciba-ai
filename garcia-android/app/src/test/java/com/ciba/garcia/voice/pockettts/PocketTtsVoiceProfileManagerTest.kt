@@ -24,12 +24,12 @@ class PocketTtsVoiceProfileManagerTest {
         assertEquals(1, listed.size)
         assertEquals("Voz de teste", listed.single().displayName)
         assertEquals(imported.id, listed.single().id)
-        assertTrue(File(root, "${imported.id}.json").isFile)
+        assertTrue(File(root, "${imported.id}.properties").isFile)
 
         assertTrue(manager.deleteProfile(imported.id))
         assertTrue(manager.listProfiles().isEmpty())
         assertFalse(imported.file.exists())
-        assertFalse(File(root, "${imported.id}.json").exists())
+        assertFalse(File(root, "${imported.id}.properties").exists())
     }
 
     @Test
