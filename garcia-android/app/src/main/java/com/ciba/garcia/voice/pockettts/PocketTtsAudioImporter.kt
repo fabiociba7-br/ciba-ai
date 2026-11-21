@@ -27,8 +27,8 @@ internal object PocketTtsAudioImporter {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
         try {
-            resolver.openAssetFileDescriptor(uri, "r")?.use { descriptor ->
-                extractor.setDataSource(descriptor.fileDescriptor, descriptor.startOffset, descriptor.length)
+            resolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+                extractor.setDataSource(descriptor.fileDescriptor)
             } ?: throw IllegalArgumentException("Não foi possível abrir o áudio selecionado.")
 
             var audioTrack = -1
