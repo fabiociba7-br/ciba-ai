@@ -34,7 +34,7 @@ import { classifyMemoryProposal } from "./core/memory-learning";
 import { analyzeMemoryRelationships, type MemoryInsightRecord } from "./core/memory-insights";
 import { buildOwnerProfile } from "./core/owner-profile";
 import { rankRelevantMemories, buildProfileAwareChatMemoryContext, type MemorySearchRecord } from "./core/memory-retrieval";
-import { validateAppProfile } from "./core/apps/registry";
+import { validateAppProfile, parseStoredAppCapabilities, parseStoredAppTaskTypes } from "./core/apps/registry";
 import { isAppTaskType, selectTaskRoute } from "./core/task-coordinator";
 import { consolidateTaskResults, type TaskResultRecord } from "./core/task-results";
 import { buildTaskSynthesisRequest, MAX_TASK_SYNTHESIS_OUTPUT_TOKENS } from "./core/task-synthesis";
