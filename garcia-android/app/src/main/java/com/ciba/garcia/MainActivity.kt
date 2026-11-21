@@ -836,7 +836,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 }
                 // Voice replies apply to text chat and voice chat; continuous mode
                 // only controls whether the microphone automatically reopens after speech.
-                if (voiceReplies && (voiceAvailable || com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isConfigured(context))) {
+                if (voiceReplies && (voiceAvailable || com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context))) {
                     val pocketSpoken = com.ciba.garcia.voice.pockettts.PocketTtsPlayback.speak(context, answer)
                     val spoken = pocketSpoken || (voiceAvailable && voiceOutput.speak(answer))
                     if (!spoken) autoListenPending = false
@@ -1571,7 +1571,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                         if (!voiceOutput.previewVoice(voice.id)) error = "Não foi possível reproduzir a amostra desta voz."
                                     }, enabled = voiceOutput.isSystemReady()) { Text("Ouvir") }
                                     TextButton(onClick = {
-                                        if (!voiceOutput.selectVoice(voice.id)) error = "Não foi possível selecionar esta voz."
+                                        if (!voiceOutput.selectVoice(voice.id)) error = "Não foi possível selecionar esta voz." else pocketVoiceMode = "system"
                                     }, enabled = voiceOutput.isSystemReady() && !selected) { Text(if (selected) "Atual" else "Usar") }
                                 }
                                 HorizontalDivider()
