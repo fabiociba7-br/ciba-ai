@@ -1039,7 +1039,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 whisperStatus = "Conversa por voz encerrada"
                             } else if (!whisperBusy) {
                                 if (whisperModelInfo == null && !streamingSpeech.isAvailable) error = "Este aparelho não oferece reconhecimento offline em tempo real. Baixe e instale o modelo Whisper nas Configurações."
-                                else if (!voiceAvailable) error = voiceStatus
+                                else if (!voiceAvailable && !com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context)) error = voiceStatus
                                 else if (input.isNotBlank() || attachment != null) error = "Envie ou limpe o texto pendente antes de iniciar a conversa por voz."
                                 else {
                                     streamingUnavailable = false
@@ -1590,7 +1590,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     streamingSpeech.stop(); streamingListening = false
                                     context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
                                 }
-                            }, enabled = voiceAvailable)
+                            }, enabled = voiceAvailable || com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context))
                         }
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Text("Conversação contínua por voz", modifier = Modifier.weight(1f), fontSize = 13.sp)
@@ -1606,7 +1606,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                     whisperStatus = "Conversa por voz pausada"
                                 } else if (!voiceReplies) error = "Ative também a leitura automática das respostas."
                                 else if (whisperModelInfo == null && (!streamingSpeech.isAvailable || streamingUnavailable)) error = "Instale o modelo Whisper ou disponibilize o reconhecimento offline do Android."
-                            }, enabled = voiceAvailable && voiceReplies && (whisperModelInfo != null || streamingSpeech.isAvailable) && !busy && !whisperRecording && !streamingListening)
+                            }, enabled = (voiceAvailable || com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isSelected(context)) && voiceReplies && (whisperModelInfo != null || streamingSpeech.isAvailable) && !busy && !whisperRecording && !streamingListening)
                         }
                         Text(
                             "Com respostas faladas ligadas, a Garcia também lê as respostas no chat de texto. A conversação contínua controla somente a reabertura automática do microfone. Entrada e saída usam recursos locais; nenhum áudio ou modelo é enviado ao Worker ou a terceiros.",
