@@ -1,6 +1,6 @@
 package com.ciba.garcia.voice.pockettts
 
-import org.json.JSONObject
+import java.util.Properties
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
@@ -31,16 +31,17 @@ internal class PocketTtsVoiceProfileManager(private val privateRoot: File) {
         val id = UUID.randomUUID().toString()
         val root = privateRoot.canonicalFile
         val destination = File(root, "$id.wav")
-        val metadata = File(root, "$id.json")
+        val metadata = File(root, "$id.properties")
         val temporary = File(root, ".$id.tmp")
-        val temporaryMetadata = File(root, ".$id.json.tmp")
+        val temporaryMetadata = File(root, ".$id.properties.tmp")
         try {
             temporary.writeBytes(bytes)
-            temporaryMetadata.writeText(
-                JSONObject().put("id", id).put("displayName", safeName)
-                    .put("durationSeconds", duration.toDouble()).toString(),
-                Charsets.UTF_8
-            )
+            val profileMetadata = Properties().apply {
+                setProperty("id", id)
+                setProperty("displayName", safeName)
+                setProperty("durationSeconds", duration.toString())
+            }
+            temporaryMetadata.outputStream().use { profileMetadata.store(it, "Garcia Pocket TTS voice profile") }
             if (!temporary.renameTo(destination)) {
                 throw IllegalStateException("Não foi possível salvar o perfil de voz.")
             }
@@ -66,11 +67,11 @@ internal class PocketTtsVoiceProfileManager(private val privateRoot: File) {
                 runCatching {
                     val duration = validatePcmWav(file.readBytes())
                     val id = file.nameWithoutExtension
-                    val metadataFile = File(privateRoot, "$id.json")
+                    val metadataFile = File(privateRoot, "$id.properties")
                     val displayName = if (metadataFile.isFile) {
-                        JSONObject(metadataFile.readText(Charsets.UTF_8))
-                            .takeIf { it.optString("id") == id }
-                            ?.optString("displayName")
+                        Properties().apply { metadataFile.inputStream().use { load(it) } }
+                            .takeIf { it.getProperty("id") == id }
+                            ?.getProperty("displayName")
                             ?.takeIf { it.isNotBlank() }
                     } else null
                     VoiceProfile(id, displayName ?: id, file, duration)
@@ -83,7 +84,7 @@ internal class PocketTtsVoiceProfileManager(private val privateRoot: File) {
         require(id.matches(PROFILE_ID)) { "Identificador de voz inválido." }
         val root = privateRoot.canonicalFile
         val file = File(root, "$id.wav").canonicalFile
-        val metadata = File(root, "$id.json").canonicalFile
+        val metadata = File(root, "$id.properties").canonicalFile
         require(file.parentFile == root && metadata.parentFile == root) { "Caminho de perfil inválido." }
         val audioDeleted = !file.exists() || file.delete()
         val metadataDeleted = !metadata.exists() || metadata.delete()
