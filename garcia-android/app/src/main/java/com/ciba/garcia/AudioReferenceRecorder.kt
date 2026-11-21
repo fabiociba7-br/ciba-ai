@@ -190,7 +190,14 @@ class AudioReferenceRecorder(private val outputDirectory: File) {
             out.writeShortLE(BITS_PER_SAMPLE)
             out.writeBytes("data")
             out.writeIntLE(dataLength)
-            raw.inputStream().use { input -> input.copyTo(out) }
+            raw.inputStream().use { input ->
+                val buffer = ByteArray(16 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    out.write(buffer, 0, count)
+                }
+            }
         }
     }
 
