@@ -1549,22 +1549,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                             fontSize = 11.sp
                         )
                     } else if (settingsSection == "cloning") {
-                        val arm64Available = android.os.Build.SUPPORTED_ABIS.any { it.equals("arm64-v8a", ignoreCase = true) }
-                        Text("Pocket TTS nativo · clonagem offline", fontWeight = FontWeight.Bold)
-                        Text(
-                            "A Garcia está sendo preparada para incorporar o motor Pocket TTS diretamente ao aplicativo. Clonagem, modelos e perfis serão gerenciados pela própria Garcia, sem instalar outro aplicativo.",
-                            color = Muted,
-                            fontSize = 12.sp
-                        )
-                        if (!arm64Available) {
-                            Text("A primeira versão do motor nativo exige ARM64 (arm64-v8a). Este aparelho não informa essa ABI.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Estado: integração nativa em desenvolvimento. O motor ainda não está disponível para clonagem nesta versão. Não instale um aplicativo complementar; aguarde a versão da Garcia com o runtime e o gerenciador de modelos incorporados.",
-                            color = Muted,
-                            fontSize = 12.sp
-                        )
+                        com.ciba.garcia.voice.pockettts.PocketTtsSettingsScreen()
                     } else if (settingsSection == "speech") {
                         Text("Modelo de transcrição local", fontWeight = FontWeight.Bold)
                         Text(whisperStatus, color = Muted, fontSize = 12.sp)
