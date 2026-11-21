@@ -1,5 +1,6 @@
 package com.ciba.garcia.voice.pockettts
 
+import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
@@ -17,24 +18,42 @@ internal class PocketTtsVoiceProfileManager(private val privateRoot: File) {
     )
 
     fun importWav(displayName: String, input: InputStream): VoiceProfile {
-        val safeName = displayName.trim().take(64).ifBlank { "Minha voz" }
+        val safeName = displayName.trim()
+            .filterNot { it.isISOControl() }
+            .take(64)
+            .ifBlank { "Minha voz" }
         if (!privateRoot.exists() && !privateRoot.mkdirs()) {
             throw IllegalStateException("Não foi possível criar o armazenamento privado das vozes.")
         }
+        require(privateRoot.isDirectory) { "O armazenamento privado das vozes não é um diretório." }
         val bytes = input.use { readBounded(it, MAX_WAV_BYTES) }
         val duration = validatePcmWav(bytes)
         val id = UUID.randomUUID().toString()
-        val destination = File(privateRoot.canonicalFile, "$id.wav")
-        val temporary = File(privateRoot.canonicalFile, ".$id.tmp")
+        val root = privateRoot.canonicalFile
+        val destination = File(root, "$id.wav")
+        val metadata = File(root, "$id.json")
+        val temporary = File(root, ".$id.tmp")
+        val temporaryMetadata = File(root, ".$id.json.tmp")
         try {
             temporary.writeBytes(bytes)
+            temporaryMetadata.writeText(
+                JSONObject().put("id", id).put("displayName", safeName)
+                    .put("durationSeconds", duration.toDouble()).toString(),
+                Charsets.UTF_8
+            )
             if (!temporary.renameTo(destination)) {
                 throw IllegalStateException("Não foi possível salvar o perfil de voz.")
+            }
+            if (!temporaryMetadata.renameTo(metadata)) {
+                destination.delete()
+                throw IllegalStateException("Não foi possível salvar os dados do perfil de voz.")
             }
             return VoiceProfile(id, safeName, destination, duration)
         } catch (error: Throwable) {
             temporary.delete()
+            temporaryMetadata.delete()
             destination.delete()
+            metadata.delete()
             throw error
         }
     }
@@ -42,22 +61,33 @@ internal class PocketTtsVoiceProfileManager(private val privateRoot: File) {
     fun listProfiles(): List<VoiceProfile> {
         if (!privateRoot.isDirectory) return emptyList()
         return privateRoot.listFiles().orEmpty()
-            .filter { it.isFile && it.name.matches(Regex("[0-9a-fA-F-]{36}\\.wav")) }
+            .filter { it.isFile && it.name.matches(PROFILE_WAV_NAME) }
             .mapNotNull { file ->
                 runCatching {
                     val duration = validatePcmWav(file.readBytes())
-                    VoiceProfile(file.nameWithoutExtension, file.nameWithoutExtension, file, duration)
+                    val id = file.nameWithoutExtension
+                    val metadataFile = File(privateRoot, "$id.json")
+                    val displayName = if (metadataFile.isFile) {
+                        JSONObject(metadataFile.readText(Charsets.UTF_8))
+                            .takeIf { it.optString("id") == id }
+                            ?.optString("displayName")
+                            ?.takeIf { it.isNotBlank() }
+                    } else null
+                    VoiceProfile(id, displayName ?: id, file, duration)
                 }.getOrNull()
             }
-            .sortedBy { it.displayName }
+            .sortedBy { it.displayName.lowercase() }
     }
 
     fun deleteProfile(id: String): Boolean {
-        require(id.matches(Regex("[0-9a-fA-F-]{36}"))) { "Identificador de voz inválido." }
+        require(id.matches(PROFILE_ID)) { "Identificador de voz inválido." }
         val root = privateRoot.canonicalFile
         val file = File(root, "$id.wav").canonicalFile
-        require(file.parentFile == root) { "Caminho de perfil inválido." }
-        return !file.exists() || file.delete()
+        val metadata = File(root, "$id.json").canonicalFile
+        require(file.parentFile == root && metadata.parentFile == root) { "Caminho de perfil inválido." }
+        val audioDeleted = !file.exists() || file.delete()
+        val metadataDeleted = !metadata.exists() || metadata.delete()
+        return audioDeleted && metadataDeleted
     }
 
     private fun validatePcmWav(bytes: ByteArray): Float {
@@ -69,6 +99,10 @@ internal class PocketTtsVoiceProfileManager(private val privateRoot: File) {
             throw IllegalArgumentException("O arquivo precisa estar no formato WAV/RIFF.")
         }
         val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        val riffSize = buffer.getInt(4).toLong() and 0xffffffffL
+        if (riffSize + 8L != bytes.size.toLong()) {
+            throw IllegalArgumentException("O tamanho declarado no cabeçalho WAV não corresponde ao arquivo.")
+        }
         var offset = 12
         var format = -1
         var channels = -1
@@ -80,7 +114,8 @@ internal class PocketTtsVoiceProfileManager(private val privateRoot: File) {
             val chunkSize = buffer.getInt(offset + 4).toLong() and 0xffffffffL
             val start = offset + 8
             val end = start.toLong() + chunkSize
-            if (end > bytes.size || end < start) {
+            val paddedEnd = end + (chunkSize and 1L)
+            if (end > bytes.size || paddedEnd > bytes.size || end < start) {
                 throw IllegalArgumentException("O WAV contém um bloco truncado ou inválido.")
             }
             when (chunkId) {
@@ -91,10 +126,14 @@ internal class PocketTtsVoiceProfileManager(private val privateRoot: File) {
                     sampleRate = buffer.getInt(start + 4)
                     bitsPerSample = buffer.getShort(start + 14).toInt() and 0xffff
                 }
-                "data" -> dataBytes = chunkSize.toInt()
+                "data" -> {
+                    if (chunkSize > Int.MAX_VALUE) throw IllegalArgumentException("Bloco de áudio muito grande.")
+                    dataBytes = chunkSize.toInt()
+                }
             }
-            offset = (end + (chunkSize and 1L)).toInt()
+            offset = paddedEnd.toInt()
         }
+        if (offset != bytes.size) throw IllegalArgumentException("Estrutura de blocos WAV inválida.")
         if (format != 1 || channels != 1 || sampleRate != SAMPLE_RATE_HZ || bitsPerSample != 16) {
             throw IllegalArgumentException(
                 "Use WAV PCM de 16 bits, mono, 24 kHz. Converta o áudio antes de importar."
@@ -116,7 +155,8 @@ internal class PocketTtsVoiceProfileManager(private val privateRoot: File) {
         while (true) {
             val count = input.read(buffer)
             if (count < 0) break
-            if (output.size() + count > limit) {
+            if (count == 0) continue
+            if (output.size().toLong() + count > limit) {
                 throw IllegalArgumentException("O WAV excede o limite de 8 MB.")
             }
             output.write(buffer, 0, count)
@@ -129,5 +169,7 @@ internal class PocketTtsVoiceProfileManager(private val privateRoot: File) {
         private const val MIN_DURATION_SECONDS = 3f
         private const val MAX_DURATION_SECONDS = 30f
         private const val MAX_WAV_BYTES = 8 * 1024 * 1024
+        private val PROFILE_ID = Regex("[0-9a-fA-F-]{36}")
+        private val PROFILE_WAV_NAME = Regex("[0-9a-fA-F-]{36}\\.wav")
     }
 }
