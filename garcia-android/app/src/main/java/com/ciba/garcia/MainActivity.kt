@@ -695,7 +695,7 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
         context.getSharedPreferences("garcia_voice", Context.MODE_PRIVATE).edit().putBoolean("continuous", false).apply()
         if (whisperRecording) { whisperRecording = false; whisperRecorder.cancel() }
         streamingSpeech.stop(); streamingListening = false
-        voiceOutput.stop()
+        com.ciba.garcia.voice.pockettts.PocketTtsPlayback.stop(); voiceOutput.stop()
         persist()
         currentChatId = chat.id
         history.clear()
@@ -813,8 +813,9 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                 }
                 // Voice replies apply to text chat and voice chat; continuous mode
                 // only controls whether the microphone automatically reopens after speech.
-                if (voiceReplies && voiceAvailable) {
-                    val spoken = voiceOutput.speak(answer)
+                if (voiceReplies && (voiceAvailable || com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isConfigured(context))) {
+                    val pocketSpoken = com.ciba.garcia.voice.pockettts.PocketTtsPlayback.speak(context, answer)
+                    val spoken = pocketSpoken || (voiceAvailable && voiceOutput.speak(answer))
                     if (!spoken) autoListenPending = false
                 } else autoListenPending = false
                 GarciaLog.recordEvent(context, "chat", "HTTP 200 · resposta recebida e salva no histórico · ${answer.length} caracteres")
@@ -1215,8 +1216,13 @@ private fun GarciaApp(store: SecureStore, client: CibaAiClient) {
                                 if (!user) {
                                     TextButton(
                                         onClick = {
-                                            if (voiceAvailable) voiceOutput.speak(shownText)
-                                            else error = voiceStatus
+                                            if (voiceAvailable || com.ciba.garcia.voice.pockettts.PocketTtsPlayback.isConfigured(context)) {
+                                                scope.launch {
+                                                    val pocketSpoken = com.ciba.garcia.voice.pockettts.PocketTtsPlayback.speak(context, shownText)
+                                                    if (!pocketSpoken && voiceAvailable && !voiceOutput.speak(shownText)) error = voiceStatus
+                                                    else if (!pocketSpoken && !voiceAvailable) error = "Não foi possível inicializar o Pocket TTS. Verifique o pacote de modelos e o perfil vocal."
+                                                }
+                                            } else error = voiceStatus
                                         },
                                         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
                                     ) {
