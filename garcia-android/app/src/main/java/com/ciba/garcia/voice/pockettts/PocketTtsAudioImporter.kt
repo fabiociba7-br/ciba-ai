@@ -26,10 +26,13 @@ internal object PocketTtsAudioImporter {
     fun decodeToPcmWav(resolver: ContentResolver, uri: Uri): ByteArray {
         val extractor = MediaExtractor()
         var codec: MediaCodec? = null
+        var descriptor: android.os.ParcelFileDescriptor? = null
         try {
-            resolver.openFileDescriptor(uri, "r")?.use { descriptor ->
-                extractor.setDataSource(descriptor.fileDescriptor)
-            } ?: throw IllegalArgumentException("Não foi possível abrir o áudio selecionado.")
+            // Keep the descriptor open for the entire extractor lifetime. MediaExtractor
+            // may continue reading from the FD after setDataSource() returns.
+            descriptor = resolver.openFileDescriptor(uri, "r")
+                ?: throw IllegalArgumentException("Não foi possível abrir o áudio selecionado.")
+            extractor.setDataSource(descriptor.fileDescriptor)
 
             var audioTrack = -1
             var inputFormat: MediaFormat? = null
@@ -130,6 +133,7 @@ internal object PocketTtsAudioImporter {
             runCatching { codec?.stop() }
             runCatching { codec?.release() }
             runCatching { extractor.release() }
+            runCatching { descriptor?.close() }
         }
     }
 
